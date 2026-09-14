@@ -33,10 +33,13 @@ export default function CashFlow() {
           <>
             <Card style={{ marginTop: 9 }} testID="cashflow-card">
               <Row between style={{ alignItems: "flex-start" }}>
-                <View><Lbl>Closing balance</Lbl><Money size={20} testID="cashflow-closing">{money(d.closing)}</Money></View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Lbl>Net movement</Lbl>
-                  <Money size={13} tone={d.net >= 0 ? "pos" : "neg"}>{d.net >= 0 ? "+ " : "− "}{money(d.net)}</Money>
+                <View style={{ flexShrink: 1, paddingRight: 10 }}>
+                  <Lbl>Closing balance</Lbl>
+                  <Money size={20} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="cashflow-closing">{money(d.closing)}</Money>
+                </View>
+                <View style={{ alignItems: "flex-end", flexShrink: 0 }}>
+                  <Lbl numberOfLines={1}>Net movement</Lbl>
+                  <Money size={13} numberOfLines={1} tone={d.net >= 0 ? "pos" : "neg"}>{d.net >= 0 ? "+ " : "− "}{money(d.net)}</Money>
                 </View>
               </Row>
               <View style={{ marginTop: 12 }}><AreaSpark points={d.series.map((x: any) => x.value)} /></View>

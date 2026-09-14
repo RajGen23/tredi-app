@@ -18,7 +18,7 @@ const useStyles = makeStyles((c) => ({
   bizName: { fontFamily: fonts.bold, fontSize: 13.5, color: c.onSurfaceInverse },
   shop: { fontFamily: fonts.regular, fontSize: 10.5, color: c.onDeepSoft },
   hero: { borderWidth: 0, boxShadow: `0 8px 22px ${c.shadow}`, elevation: 3 },
-  big: { fontFamily: fonts.monoSemibold, fontSize: 25, letterSpacing: -1, color: c.onSurface },
+  big: { fontFamily: fonts.monoSemibold, fontSize: 23, letterSpacing: -0.8, color: c.onSurface },
   edit: { fontFamily: fonts.bold, fontSize: 12, color: c.green700 },
   scLabel: { fontFamily: fonts.semibold, fontSize: 10, color: c.onSurface, textAlign: "center", marginTop: 4 },
   legend: { width: 8, height: 8, borderRadius: 3 },
@@ -40,13 +40,13 @@ export default function Home() {
 
   return (
     <View style={s.root} testID="home-screen">
-      <View style={[s.teal, { height: insets.top + 132 }]} />
-      <View style={{ paddingTop: insets.top, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 10 }}>
+      <View style={[s.teal, { height: insets.top + 138 }]} />
+      <View style={{ paddingTop: insets.top, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12 }}>
         <IconBtn teal name="settings-outline" testID="home-settings" onPress={() => router.push("/(tabs)/more")} />
-        <Pressable style={{ flex: 1, alignItems: "center" }} testID="home-business-switcher"
+        <Pressable style={{ flex: 1, alignItems: "center", paddingHorizontal: 4 }} testID="home-business-switcher"
           onPress={() => router.push("/shops")} onLongPress={() => router.push("/businesses")}>
-          <Text style={s.bizName}>{business?.name ?? "TREDI"} ⌄</Text>
-          <Text style={s.shop}>{shops.data?.active || "All shops"}</Text>
+          <Text style={s.bizName} numberOfLines={1}>{business?.name ?? "TREDI"} ⌄</Text>
+          <Text style={s.shop} numberOfLines={1}>{shops.data?.active || "All shops"}</Text>
         </Pressable>
         <IconBtn teal name="search-outline" testID="home-search" onPress={() => router.push("/search")} />
         <IconBtn teal name="notifications-outline" testID="home-notifications" dot={!!notifications.data?.count} onPress={() => router.push("/notifications")} />
@@ -55,18 +55,18 @@ export default function Home() {
         {!d ? <Card style={s.hero}><Loading /></Card> : (
           <Card style={s.hero} testID="home-total-sales-card">
             <Row between style={{ alignItems: "flex-start" }}>
-              <View>
+              <View style={{ flexShrink: 1, paddingRight: 10 }}>
                 <Lbl>Total sales</Lbl>
-                <Text style={s.big} testID="home-total-sales">{money(d.total_sales)}</Text>
+                <Text style={s.big} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} testID="home-total-sales">{money(d.total_sales)}</Text>
                 <Sub style={{ marginTop: 1 }}>
                   {d.month} ⌄{d.change_pct !== null ? <> · <Text style={{ color: d.change_pct >= 0 ? colors.green700 : colors.coral, fontFamily: fonts.bold }}>{d.change_pct >= 0 ? "▲" : "▼"} {Math.abs(d.change_pct)}%</Text> vs last month</> : null}
                 </Sub>
               </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Lbl>Received</Lbl>
-                <Money tone="pos" testID="home-received">{money(d.received)}</Money>
-                <Lbl style={{ marginTop: 5 }}>Owed</Lbl>
-                <Money tone="neg" testID="home-owed">{money(d.owed)}</Money>
+              <View style={{ alignItems: "flex-end", flexShrink: 0 }}>
+                <Lbl numberOfLines={1}>Received</Lbl>
+                <Money tone="pos" numberOfLines={1} testID="home-received">{money(d.received)}</Money>
+                <Lbl style={{ marginTop: 5 }} numberOfLines={1}>Owed</Lbl>
+                <Money tone="neg" numberOfLines={1} testID="home-owed">{money(d.owed)}</Money>
               </View>
             </Row>
             <View style={{ marginTop: 10 }}><Prog pct={pct} /></View>

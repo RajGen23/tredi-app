@@ -47,7 +47,7 @@ const useStyles = makeStyles((c) => ({
   progFill: { height: "100%", borderRadius: 9, backgroundColor: c.brandPrimary },
   appbar: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 },
   appbarTitle: { flex: 1, fontFamily: fonts.bold, fontSize: 17, letterSpacing: -0.17, color: c.onSurface },
-  ic: { width: 32, height: 32, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: c.brandTertiary },
+  ic: { width: 36, height: 36, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: c.brandTertiary },
   icTeal: { backgroundColor: c.onDeepWell },
   divider: { height: 1, backgroundColor: c.border, marginVertical: 9 },
   radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: c.radioBorder },
@@ -279,7 +279,7 @@ export function IconBtn({ name, onPress, teal, testID, dark, dot }: { name: IonN
   const { colors } = useTheme();
   return (
     <Pressable testID={testID} onPress={onPress} hitSlop={6} style={({ pressed }) => [s.ic, teal && s.icTeal, dark && { backgroundColor: colors.deep }, pressed && { opacity: 0.7 }]}>
-      <Ionicons name={name} size={16} color={teal || dark ? colors.onSurfaceInverse : colors.deep} />
+      <Ionicons name={name} size={18} color={teal || dark ? colors.onSurfaceInverse : colors.deep} />
       {dot ? <View style={{ position: "absolute", top: 4, right: 5, width: 6, height: 6, borderRadius: 3, backgroundColor: colors.brandPrimary }} /> : null}
     </Pressable>
   );

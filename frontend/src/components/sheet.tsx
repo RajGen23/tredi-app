@@ -2,7 +2,7 @@
 // sheet radius 20 top, grab handle; toast deep teal with green accent.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View, Platform } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
@@ -10,25 +10,36 @@ import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
   scrim: { flex: 1, backgroundColor: c.scrim, justifyContent: "flex-end" },
-  sheet: { backgroundColor: c.surfaceSecondary, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 10, paddingHorizontal: 16, maxHeight: "92%" },
+  sheet: { backgroundColor: c.surfaceSecondary, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 10, paddingHorizontal: 16, maxHeight: "88%" },
   grab: { width: 34, height: 4, borderRadius: 9, backgroundColor: c.switchOff, alignSelf: "center", marginBottom: 12 },
   toast: { position: "absolute", left: 14, right: 14, backgroundColor: c.deep, borderRadius: 12, paddingVertical: 11, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 8 },
   toastText: { fontFamily: fonts.medium, fontSize: 12, color: c.onSurfaceInverse, flex: 1 },
 }));
 
 export function Sheet({ visible, onClose, children, testID, scroll = true }: { visible: boolean; onClose: () => void; children: React.ReactNode; testID?: string; scroll?: boolean }) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+      {/* Nested provider: a full-screen Modal on Android has its own window, so it
+          needs to measure its own insets or the action button hides behind the
+          system navigation bar. */}
+      <SafeAreaProvider>
+        <SheetBody onClose={onClose} testID={testID} scroll={scroll}>{children}</SheetBody>
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+
+function SheetBody({ onClose, children, testID, scroll }: { onClose: () => void; children: React.ReactNode; testID?: string; scroll: boolean }) {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <Pressable style={s.scrim} onPress={onClose} testID="sheet-scrim" />
-        <View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]} testID={testID}>
-          <View style={s.grab} />
-          {scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>{children}</ScrollView> : children}
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+      <Pressable style={s.scrim} onPress={onClose} testID="sheet-scrim" />
+      <View style={[s.sheet, { paddingBottom: insets.bottom + 16 }]} testID={testID}>
+        <View style={s.grab} />
+        {scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>{children}</ScrollView> : children}
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
