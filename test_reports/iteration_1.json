@@ -1,0 +1,37 @@
+{
+  "summary": "TREDI MVP tested end-to-end (backend + frontend). Backend: 24/24 pytest passed (auth incl. duplicate email 409, wrong pw 401; business/seed idempotent; customers list/create/ledger/persistence; items list/get/adjust set/add/remove with movements; invoice preview & create with correct VAT math AFTER line+invoice discounts, percent discount, 'final' back-calculation, draft number = 'Draft', issued+cash → paid + stock decremented; quick sale cash change; accounts balances; payment reduces invoice due and DELETE payment restores it; expenses periods month/last_month/week/all + create). Frontend (390x844 mobile viewport): Onboarding (Skip visible), Sign in (owner@tredi.app/tredi1234), Home shows Total sales ₦567,600 / Received ₦356,700 / Owed ₦274,500 with cash flow bars & KPIs, Shortcuts row present. Bottom tab bar Home/Sales/FAB/Stock/More works. FAB opens action sheet with all 6 actions (fab-new-invoice, fab-quick-sale, fab-payment-in, fab-expense, fab-add-stock, fab-new-customer). Sales tab lists invoices with status chips (All/Overdue/Unpaid/Paid/Draft) and overdue card; INV-1003 detail shows amount-due hero, items, View PDF → PDF viewer renders a full paper preview with Download/Share. Payment-in screen with customer picker sheet works. Quick-sale shows product tiles with category chips, cash/transfer/card/credit methods and Take payment CTA. Stock tab shows chips (All/Low/Out/Services/Expiring), stock value card and item rows with quantities/status. Expenses screen shows donut, period chips, and TEST_expense I created via API is visible. More tab shows profile card and all links + Sign out. No deprecated Expo packages (expo-av/barcode-scanner/background-fetch) present. No red-screen errors; only a benign RNW warning: 'shadow* style props are deprecated. Use boxShadow.'",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RNW styles", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' emitted by react-native-web. Not a blocker but should be migrated to boxShadow/elevation. Reference: styles across /app/frontend/src/components/ui.tsx and screens."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_tredi_api.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Migrate shadow* style props to boxShadow/elevation to remove RNW deprecation warning.",
+    "(Optional) The 'note' field on the Payment model is not persisted to DB in create_payment when data.note is empty — verify: currently note defaults to 'Payment in'; harmless."
+  ],
+  "critical_code_review_comments": [
+    "server.py is a single 793-line file; consider splitting into routers (auth, invoices, items, payments, expenses) once >900 lines.",
+    "customer_balance & list_customers do N+1 async queries per customer/invoice; fine at demo scale but should aggregate for larger data.",
+    "biz_filter returns business_id as string; ObjectId equality is done consistently — OK. All Mongo _id are properly stripped via clean()."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py (created)",
+    "/app/backend/tests/test_tredi_api.py (created)",
+    "/app/test_reports/iteration_1.json (created)"
+  ],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "Owner is already seeded (Tredi Ventures with demo data). Tests additionally created a few TEST_-prefixed customers/items/expenses on the owner business and one fresh registered user (tester_*@tredicheck.co) with its own seeded business. Fresh users were not deleted (no delete-user endpoint) but they do not pollute owner data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend URL is https://ui-flow-accurate.preview.emergentagent.com (from EXPO_PUBLIC_BACKEND_URL). Owner login via POST /api/auth/login with x-www-form-urlencoded username/password. Sign-in screen testIDs are sign-in-email/sign-in-password/sign-in-submit (NOT signin-*). Frontend testIDs: onboarding-*, tab-home/sales/fab/stock/more, home-*, shortcut-*, invoices-*, invoice-row-<number>, invoice-detail-screen, invoice-view-pdf, stock-*, stock-row-<itemid>, quick-sale-*, payment-in-*, expenses-*, more-*, sheet-scrim, fab-sheet. Pydantic email validator rejects .test TLD; use .co/.com in test emails.",
+  "rca_of_issue": "No production bugs found. Only test-side gotcha encountered: pydantic-email rejects the .test reserved TLD (RFC 2606). Fixed by using .co domain in test fixtures."
+}

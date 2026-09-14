@@ -1,0 +1,181 @@
+{
+  "app_name": "TREDI",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A highly structured, fast, and clear bookkeeping utility tailored for Nigerian shop owners, using precise color-coding and native iOS card layers to minimize cognitive load.",
+  "color": {
+    "surface": "#F3F7F5",
+    "onSurface": "#06241F",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#06241F",
+    "surfaceTertiary": "#EAF0EE",
+    "onSurfaceTertiary": "#06241F",
+    "surfaceInverse": "#014747",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#00C98D",
+    "onBrand": "#04312A",
+    "brandPrimary": "#00C98D",
+    "onBrandPrimary": "#04312A",
+    "brandSecondary": "#00B37D",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#E9FBF4",
+    "onBrandTertiary": "#014747",
+    "success": "#00C98D",
+    "onSuccess": "#04312A",
+    "warning": "#FDF3DC",
+    "onWarning": "#B7791F",
+    "error": "#FDECEC",
+    "onError": "#D93F45",
+    "info": "#E9F1FD",
+    "onInfo": "#2C6ECB",
+    "border": "#E5EEEB",
+    "borderStrong": "#00C98D",
+    "divider": "#E5EEEB",
+    "muted": "#5C7570",
+    "ink40": "#93A9A4",
+    "deep900": "#012422",
+    "deep700": "#023B39"
+  },
+  "typography": {
+    "displayFontFamily": "Manrope",
+    "textFontFamily": "Manrope",
+    "monoFontFamily": "IBM Plex Mono",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room for dashboards, tighter lists for fast scanning. Maintain clear whitespace for cards.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 11,
+    "lg": 14,
+    "xl": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [],
+    "dont's": [
+      "No blur on utility app screens, focus on solid colors and 1px borders as per explicit brief."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Splash & Onboarding",
+      "purpose": "Introduce the app to shop owners with vibrant Nigerian retail context imagery and a clear CTA.",
+      "states": {
+        "loading": "Centered spinner using brand green.",
+        "empty": "N/A",
+        "error": "N/A"
+      },
+      "layout": "Full-bleed imagery with a bottom gradient scrim, large Manrope headline, and a sticky green button at the bottom."
+    },
+    {
+      "name": "Auth & Business Setup",
+      "purpose": "Collect user credentials and shop details smoothly.",
+      "states": {
+        "loading": "Button shows loading state.",
+        "empty": "N/A",
+        "error": "Inline red text or coral toast."
+      },
+      "layout": "Teal-top header (#014747). White surface below. Form fields with 11px radius, 1px border. Bottom sticky green button."
+    },
+    {
+      "name": "Home Dashboard",
+      "purpose": "Provide a high-level overview of sales, cash flow, and quick actions.",
+      "states": {
+        "loading": "Skeleton cards.",
+        "empty": "Welcome message with prompt to record first sale.",
+        "error": "Toast with retry option."
+      },
+      "layout": "Teal header fading to canvas. Total sales card (white, 14px radius). 4x2 shortcuts grid. KPI tiles and vertical bar charts. Green floating action button (FAB) in the center of the bottom tab bar."
+    },
+    {
+      "name": "Customers List & Profile",
+      "purpose": "Manage debtors and customer ledger.",
+      "states": {
+        "loading": "List skeleton.",
+        "empty": "Empty box illustration with 'No customers yet'.",
+        "error": "Centered retry button."
+      },
+      "layout": "Segmented control (bg #EAF0EE, radius 10) for filtering. List of white cards for customers. Profile features a teal-top header and tabular ledger using IBM Plex Mono for all currency values."
+    },
+    {
+      "name": "Invoices",
+      "purpose": "Track issued invoices, status chips, and overdue amounts.",
+      "states": {
+        "loading": "List skeleton.",
+        "empty": "Empty box illustration.",
+        "error": "Centered retry button."
+      },
+      "layout": "List with status chips (pill radius 99) in amber (pending) or coral (overdue). New invoice flow is a 3-step wizard with sticky footer."
+    },
+    {
+      "name": "Quick Sale Register",
+      "purpose": "High-speed POS interface for rapid checkout.",
+      "states": {
+        "loading": "Spinner over grid.",
+        "empty": "No items added.",
+        "error": "Toast alert."
+      },
+      "layout": "Central product grid with images/colors, side or bottom cart panel, sticky green checkout/tender button. Automatically increment quantities."
+    },
+    {
+      "name": "Stock",
+      "purpose": "Manage inventory, pricing, and stock levels.",
+      "states": {
+        "loading": "Skeleton rows.",
+        "empty": "Empty box illustration.",
+        "error": "Centered retry button."
+      },
+      "layout": "List layout. Amber chips for low stock. Item detail uses teal-top header. Bottom sheet (radius 20) for adjust stock action."
+    }
+  ],
+  "images": {
+    "onboarding_shop_owner": {
+      "url": "https://images.unsplash.com/photo-1761370571806-886404629697?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwxfHxuaWdlcmlhbiUyMHNob3AlMjBvd25lciUyMHJldGFpbCUyMHN0b3JlJTIwY2hlY2tvdXR8ZW58MHx8fHwxNzg5MzczNDMzfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Nigerian shop owner in retail store"
+    },
+    "empty_box_illustration": {
+      "url": "https://images.unsplash.com/photo-1573376670774-4427757f7963?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzF8MHwxfHNlYXJjaHwyfHxlbXB0eSUyMGJveCUyMGlsbHVzdHJhdGlvbnxlbnwwfHx8fDE3ODkzNzM0MzJ8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Empty box illustration for empty states"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the specific colors provided: Brand Green #00C98D for the single primary action per screen. Deep Teal #014747 for headers.",
+    "Use Manrope (weight <= 500) for all UI text, and MUST use IBM Plex Mono for all money figures, invoice numbers, dates, and tabular data.",
+    "Cards must be white (surfaceSecondary) with exactly 1px #E5EEEB border and 14px radius.",
+    "Input fields get 11px radius. Buttons get 12px radius. Bottom sheets get 20px top radius. Chips get 99px pill radius.",
+    "The bottom tab bar must have Home, Sales, a center green FAB (+), Stock, and More. The active tab color is green-700 (#019068).",
+    "Implement 'Teal-Top' screens for Home, Customer Profile, Invoice Detail, and Item Detail. This involves a #014747 header background that gradients or stops at 132px into the canvas #F3F7F5.",
+    "Do not use blur/glassmorphism; adhere to the solid clean layout requested. Light theme only.",
+    "Limit font weight to 500 max. Ensure text colors meet contrast constraints using onSurface (ink), onBrandPrimary (dark green), etc."
+  ]
+}
