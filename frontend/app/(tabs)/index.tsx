@@ -40,8 +40,8 @@ export default function Home() {
 
   return (
     <View style={s.root} testID="home-screen">
-      <View style={[s.teal, { height: insets.top + 138 }]} />
-      <View style={{ paddingTop: insets.top, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12 }}>
+      <View style={[s.teal, { height: insets.top + 146 }]} />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingTop: insets.top + 14, paddingBottom: 12 }}>
         <IconBtn teal name="settings-outline" testID="home-settings" onPress={() => router.push("/(tabs)/more")} />
         <Pressable style={{ flex: 1, alignItems: "center", paddingHorizontal: 4 }} testID="home-business-switcher"
           onPress={() => router.push("/shops")} onLongPress={() => router.push("/businesses")}>
