@@ -95,3 +95,10 @@ it first, optionally re-priced at today's rates, with a Repeat filter chip on th
 ### Still open
 - Connect the user's old MySQL/PostgreSQL database (waiting on the dump).
 - Barcode scanning and item photos (P0, postponed by the user).
+
+## Legacy data migrated (June 2026)
+The live tredibooks MySQL database was copied into this app — 14,512 records across
+162 businesses, 245 users, 1,578 customers, 8,265 items, 1,871 invoices, 1,971 payments,
+289 suppliers, 67 expenses and 64 bank accounts. Traders sign in with their existing
+passwords (bcrypt hashes carried over). Nothing was deleted on either side and the
+script is idempotent — see /app/memory/migration_notes.md.

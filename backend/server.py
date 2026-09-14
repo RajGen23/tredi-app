@@ -505,7 +505,11 @@ async def dashboard(user: Annotated[dict, Depends(current_user)]):
     far = now() + timedelta(days=1)
     total_sales = await sales_between(month_start, far)
     prev_sales = await sales_between(prev_start, month_start)
-    received = round(sum([p["amount"] async for p in db.payments.find({**f, "created_at": {"$gte": month_start}})]), 2)
+    month_payments = [p["amount"] async for p in db.payments.find({**f, "created_at": {"$gte": month_start}})]
+    # refunds are stored as negative payments — keep them out of "received" so the
+    # headline stays money actually taken in
+    received = round(sum(a for a in month_payments if a > 0), 2)
+    refunded = round(-sum(a for a in month_payments if a < 0), 2)
     owed = 0.0
     async for inv in db.invoices.find({**f, "status": {"$ne": "draft"}}):
         owed += invoice_status(inv, await invoice_paid(f["business_id"], str(inv["_id"])))["due"]
@@ -526,7 +530,7 @@ async def dashboard(user: Annotated[dict, Depends(current_user)]):
             if it.get("quantity", 0) <= it.get("alert_below", 0):
                 low += 1
     change_pct = round((total_sales - prev_sales) / prev_sales * 100) if prev_sales else None
-    return {"month": today.strftime("%B %Y"), "total_sales": total_sales, "change_pct": change_pct, "received": received, "owed": round(owed, 2),
+    return {"month": today.strftime("%B %Y"), "total_sales": total_sales, "change_pct": change_pct, "received": received, "refunded": refunded, "owed": round(owed, 2),
             "expenses": round(sum(e["amount"] for e in expenses), 2), "expense_count": len(expenses), "purchases": round(stock_value, 2), "low_stock": low,
             "cashflow": days, "net_week": round(sum(d["in"] - d["out"] for d in days), 2), "user_name": user.get("name", "")}
 

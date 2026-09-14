@@ -171,7 +171,7 @@ async def shops_overview(user: CurrentUser, period: str = "month"):
 async def list_businesses(user: CurrentUser):
     a, b, _ = period_range("month")
     out = []
-    async for biz in db.businesses.find({"owner_id": str(user["_id"])}).sort("created_at", 1):
+    async for biz in db.businesses.find({"owner_id": str(user["_id"]), "deleted_at": None, "archived": {"$ne": True}}).sort("created_at", 1):
         bid = str(biz["_id"])
         f = {"business_id": bid, "deleted_at": None}
         sales = 0.0
