@@ -56,3 +56,42 @@ Attachment: `tredi-app-screens-rev5.html` — 81 screens / 14 flows, colours #00
 1. Old-DB migration script once dump is provided.
 2. Barcode scanning + item photos.
 3. Reports & Summary rails.
+
+## Pass 2 — P1 + P2 backlog shipped (June 2026)
+
+Reports rail (Summary, Cash flow, Product performance, Reports hub, Sales summary, Returns,
+Receivables & payables, Stock valuation, Profit & loss with print), one shared date range
+applied across every report.
+
+Suppliers, supplier profiles, Record purchase (raises stock and payable in one entry),
+supplier payments, sales returns with credit notes.
+
+Stock transfers between shops: create → approve/reject → receive, with a shortfall reason
+required and a Discrepancy state.
+
+Invoice extras: quotations (nothing leaves stock until converted), send-reminder with a
+pre-written message, invoice settings (numbering, VAT, conditions of sale, print format),
+named terms-of-payment sets.
+
+Shops & businesses: shop switcher, all-shops comparison, warehouses (a shop with sales off),
+multiple businesses with isolated books, addresses & phone numbers.
+
+Offline & data: sync queue endpoint, backup settings with sizes in MB, CSV/Excel import with
+row-level validation (blocked / merge / fix) before anything is written.
+
+Users: team list with the one restriction that matters per row, permission editor
+(abilities + own/shop/all visibility), build-a-role, "see what they see" preview, handover
+when a rep leaves, app lock with PIN.
+
+Documents & tools: Bills & receipts with photo capture via Emergent object storage and an
+unlinked queue, waybill, calculators (margin, discount, VAT, instalments), business card.
+
+Home extras: editable shortcuts, global search, notifications inbox, activity trail and
+per-record history.
+
+Duplicate invoice: repeat a basket for a returning customer — issue it straight away or edit
+it first, optionally re-priced at today's rates, with a Repeat filter chip on the Sales tab.
+
+### Still open
+- Connect the user's old MySQL/PostgreSQL database (waiting on the dump).
+- Barcode scanning and item photos (P0, postponed by the user).

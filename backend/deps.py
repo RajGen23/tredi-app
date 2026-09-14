@@ -1,0 +1,244 @@
+"""Shared database handle, auth and money helpers used by every router."""
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
+from dotenv import load_dotenv
+from motor.motor_asyncio import AsyncIOMotorClient
+from passlib.context import CryptContext
+from pydantic import BaseModel, Field, EmailStr, BeforeValidator
+from typing import List, Optional, Annotated, Literal
+from datetime import datetime, timedelta, timezone, date
+from bson import ObjectId
+from pathlib import Path
+import jwt
+import os
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / ".env")
+
+client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+db = client[os.environ["DB_NAME"]]
+
+JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_ALG = os.environ.get("JWT_ALGORITHM", "HS256")
+TOKEN_MINUTES = int(os.environ.get("ACCESS_TOKEN_MINUTES", "43200"))
+VAT_RATE = 7.5
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+DUMMY_HASH = pwd_context.hash("dummy-password-used-only-for-timing")
+
+PyObjectId = Annotated[str, BeforeValidator(lambda v: str(v) if isinstance(v, ObjectId) else v)]
+
+
+def now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def oid(v: str) -> ObjectId:
+    if not ObjectId.is_valid(v):
+        raise HTTPException(404, "Not found")
+    return ObjectId(v)
+
+
+def clean(doc: dict) -> dict:
+    doc = dict(doc)
+    doc["id"] = str(doc.pop("_id"))
+    for k, v in list(doc.items()):
+        if isinstance(v, ObjectId):
+            doc[k] = str(v)
+        if isinstance(v, datetime):
+            doc[k] = v.isoformat()
+    return doc
+
+
+def hash_password(p: str) -> str:
+    return pwd_context.hash(p)
+
+
+def verify_password(p: str, h: str) -> bool:
+    return pwd_context.verify(p, h)
+
+
+def create_access_token(user_id: str) -> str:
+    n = now()
+    return jwt.encode({"sub": user_id, "iat": n, "exp": n + timedelta(minutes=TOKEN_MINUTES)}, JWT_SECRET, algorithm=JWT_ALG)
+
+
+async def current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> dict:
+    unauthorized = HTTPException(401, "Could not validate credentials", headers={"WWW-Authenticate": "Bearer"})
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        uid = payload.get("sub")
+        if not uid or not ObjectId.is_valid(uid):
+            raise unauthorized
+    except (jwt.InvalidTokenError, TypeError, ValueError):
+        raise unauthorized
+    user = await db.users.find_one({"_id": ObjectId(uid)})
+    if not user:
+        raise unauthorized
+    return user
+
+
+CurrentUser = Annotated[dict, Depends(current_user)]
+
+
+def public_user(u: dict) -> dict:
+    return {"id": str(u["_id"]), "name": u.get("name", ""), "email": u["email"],
+            "business_id": str(u["business_id"]) if u.get("business_id") else None,
+            "role": u.get("role", "owner"), "scope": u.get("scope", "all"), "shop": u.get("shop", "")}
+
+
+def biz_filter(user: dict) -> dict:
+    if not user.get("business_id"):
+        raise HTTPException(400, "Set up your business first")
+    return {"business_id": str(user["business_id"]), "deleted_at": None}
+
+
+# ---------------------------------------------------------------- money math
+class LineIn(BaseModel):
+    item_id: Optional[str] = None
+    name: str
+    quantity: float = 1
+    unit_price: float
+    discount_type: Literal["amount", "percent"] = "amount"
+    discount_value: float = 0
+    note: str = ""
+    quick_add: bool = False
+    unit: str = ""
+
+
+def line_totals(l: LineIn) -> dict:
+    gross = round(l.quantity * l.unit_price, 2)
+    disc = round(gross * l.discount_value / 100, 2) if l.discount_type == "percent" else round(min(l.discount_value, gross), 2)
+    return {**l.model_dump(), "gross": gross, "discount": disc, "total": round(gross - disc, 2)}
+
+
+def invoice_totals(lines: List[dict], dtype: str, dvalue: float, vat_rate: float) -> dict:
+    gross = round(sum(x["gross"] for x in lines), 2)
+    line_disc = round(sum(x["discount"] for x in lines), 2)
+    after_lines = gross - line_disc
+    if dtype == "percent":
+        inv_disc = round(after_lines * dvalue / 100, 2)
+    elif dtype == "final":
+        taxable_target = dvalue / (1 + vat_rate / 100) if dvalue > 0 else after_lines
+        inv_disc = round(max(0.0, after_lines - taxable_target), 2)
+    else:
+        inv_disc = round(min(dvalue, after_lines), 2)
+    taxable = round(after_lines - inv_disc, 2)
+    vat = round(taxable * vat_rate / 100, 2)
+    return {"gross": gross, "line_discount": line_disc, "invoice_discount": inv_disc, "taxable": taxable, "vat": vat, "total": round(taxable + vat, 2)}
+
+
+async def next_number(business_id: str, key: str, prefix: str, start: int) -> str:
+    doc = await db.counters.find_one_and_update({"business_id": business_id, "key": key}, {"$inc": {"seq": 1}}, upsert=True, return_document=True)
+    return f"{prefix}-{start + doc['seq']}"
+
+
+async def apply_stock(business_id: str, item_id: Optional[str], qty_delta: float, kind: str, ref: str, user: dict, note: str = "", shop: str = ""):
+    if not item_id or not ObjectId.is_valid(item_id):
+        return
+    item = await db.items.find_one({"_id": ObjectId(item_id), "business_id": business_id})
+    if not item or not item.get("track_stock", True):
+        return
+    new_qty = round(item.get("quantity", 0) + qty_delta, 3)
+    await db.items.update_one({"_id": item["_id"]}, {"$set": {"quantity": new_qty, "updated_at": now()}})
+    await db.movements.insert_one({"business_id": business_id, "item_id": item_id, "kind": kind, "delta": qty_delta, "balance": new_qty, "ref": ref, "note": note,
+                                   "shop": shop, "by": user.get("name", ""), "created_at": now(), "deleted_at": None})
+
+
+async def customer_balance(business_id: str, customer_id: str) -> float:
+    """Positive = customer owes us; negative = unused credit."""
+    c = await db.customers.find_one({"_id": oid(customer_id)})
+    bal = c.get("opening_balance", 0) * (1 if c.get("opening_type") == "owes_me" else -1)
+    async for inv in db.invoices.find({"business_id": business_id, "customer_id": customer_id, "deleted_at": None, "status": {"$ne": "draft"}}):
+        bal += inv["totals"]["total"]
+    async for p in db.payments.find({"business_id": business_id, "customer_id": customer_id, "deleted_at": None}):
+        bal -= p["amount"]
+    return round(bal, 2)
+
+
+async def invoice_paid(business_id: str, invoice_id: str) -> float:
+    total = 0.0
+    async for p in db.payments.find({"business_id": business_id, "deleted_at": None, "allocations.invoice_id": invoice_id}):
+        total += sum(a["amount"] for a in p.get("allocations", []) if a["invoice_id"] == invoice_id)
+    return round(total, 2)
+
+
+def invoice_status(inv: dict, paid: float) -> dict:
+    due = round(inv["totals"]["total"] - paid, 2)
+    status = inv.get("status", "issued")
+    days_overdue = 0
+    if status not in ("draft", "quote"):
+        if due <= 0:
+            status = "paid"
+        else:
+            status = "part_paid" if paid > 0 else "unpaid"
+            if inv.get("due_date"):
+                try:
+                    dd = date.fromisoformat(inv["due_date"][:10])
+                    days_overdue = (date.today() - dd).days
+                    if days_overdue > 0:
+                        status = "overdue"
+                    else:
+                        days_overdue = 0
+                except ValueError:
+                    pass
+    return {"paid": paid, "due": max(due, 0), "status": status, "days_overdue": days_overdue}
+
+
+async def decorate_invoice(inv: dict) -> dict:
+    out = clean(inv)
+    paid = await invoice_paid(inv["business_id"], out["id"])
+    out.update(invoice_status(inv, paid))
+    if inv.get("customer_id"):
+        c = await db.customers.find_one({"_id": ObjectId(inv["customer_id"])})
+        out["customer_name"] = c["name"] if c else "Cash sale"
+        out["customer_phone"] = c.get("phone", "") if c else ""
+    else:
+        out["customer_name"] = "Cash sale"
+        out["customer_phone"] = ""
+    return out
+
+
+# ---------------------------------------------------------------- periods
+def period_range(period: str, start: Optional[str] = None, end: Optional[str] = None) -> tuple[Optional[datetime], datetime, str]:
+    """Return (from, to, label). `to` is exclusive."""
+    today = date.today()
+    def dt(d: date) -> datetime:
+        return datetime.combine(d, datetime.min.time(), tzinfo=timezone.utc)
+    if period == "custom" and start and end:
+        a, b = date.fromisoformat(start[:10]), date.fromisoformat(end[:10])
+        return dt(a), dt(b) + timedelta(days=1), f"{a.strftime('%d %b')} – {b.strftime('%d %b %Y')}"
+    if period == "today":
+        return dt(today), dt(today) + timedelta(days=1), today.strftime("Today · %d %b")
+    if period == "yesterday":
+        y = today - timedelta(days=1)
+        return dt(y), dt(today), y.strftime("Yesterday · %d %b")
+    if period == "week":
+        a = today - timedelta(days=today.weekday())
+        return dt(a), dt(today) + timedelta(days=1), f"This week · {a.strftime('%d')}–{today.strftime('%d %b')}"
+    if period == "last_month":
+        first = today.replace(day=1)
+        a = (first - timedelta(days=1)).replace(day=1)
+        return dt(a), dt(first), a.strftime("Last month · %B %Y")
+    if period == "year":
+        a = today.replace(month=1, day=1)
+        return dt(a), dt(today) + timedelta(days=1), today.strftime("This year · %Y")
+    if period == "all":
+        return None, dt(today) + timedelta(days=1), "All time"
+    first = today.replace(day=1)
+    return dt(first), dt(today) + timedelta(days=1), f"This month · {first.strftime('%d')}–{today.strftime('%d %b')}"
+
+
+def date_query(f: dict, a: Optional[datetime], b: datetime, field: str = "created_at") -> dict:
+    q = dict(f)
+    q[field] = {"$lt": b} if a is None else {"$gte": a, "$lt": b}
+    return q
+
+
+async def log_activity(business_id: str, user: dict, kind: str, title: str, sub: str = "", amount: float = 0.0,
+                       ref_id: str = "", shop: str = "", reason: str = ""):
+    """Audit trail behind Activity (01.5) and Record history (01.6)."""
+    await db.activity.insert_one({"business_id": business_id, "kind": kind, "title": title, "sub": sub, "amount": amount,
+                                  "ref_id": ref_id, "shop": shop, "reason": reason, "by": user.get("name", ""),
+                                  "by_id": str(user["_id"]), "created_at": now(), "deleted_at": None})

@@ -1,113 +1,21 @@
 from fastapi import FastAPI, APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from dotenv import load_dotenv
+from fastapi.security import OAuth2PasswordRequestForm
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-from passlib.context import CryptContext
-from pydantic import BaseModel, Field, EmailStr, BeforeValidator
+from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Annotated, Literal
 from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
-from pathlib import Path
-import jwt
-import os
 import logging
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")
-
-client = AsyncIOMotorClient(os.environ["MONGO_URL"])
-db = client[os.environ["DB_NAME"]]
-
-JWT_SECRET = os.environ["JWT_SECRET"]
-JWT_ALG = os.environ.get("JWT_ALGORITHM", "HS256")
-TOKEN_MINUTES = int(os.environ.get("ACCESS_TOKEN_MINUTES", "43200"))
-VAT_RATE = 7.5
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-DUMMY_HASH = pwd_context.hash("dummy-password-used-only-for-timing")
+from deps import (VAT_RATE, DUMMY_HASH, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
+                  db, decorate_invoice, hash_password, invoice_paid, invoice_status, invoice_totals, line_totals, log_activity, next_number, now, oid,
+                  public_user, verify_password)
+from routes import activity, documents, invoicing, offline, purchases, reports, shops, storage, users_roles
 
 app = FastAPI(title="TREDI API")
 api = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tredi")
-
-# ---------------------------------------------------------------- helpers
-PyObjectId = Annotated[str, BeforeValidator(lambda v: str(v) if isinstance(v, ObjectId) else v)]
-
-
-def now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def oid(v: str) -> ObjectId:
-    if not ObjectId.is_valid(v):
-        raise HTTPException(404, "Not found")
-    return ObjectId(v)
-
-
-class BaseDocument(BaseModel):
-    id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    model_config = {"populate_by_name": True}
-
-    def to_mongo(self) -> dict:
-        d = self.model_dump(by_alias=True, exclude_none=True)
-        d.pop("_id", None)
-        return d
-
-    @classmethod
-    def from_mongo(cls, doc: dict):
-        return cls(**doc)
-
-
-def clean(doc: dict) -> dict:
-    doc = dict(doc)
-    doc["id"] = str(doc.pop("_id"))
-    for k, v in list(doc.items()):
-        if isinstance(v, ObjectId):
-            doc[k] = str(v)
-        if isinstance(v, datetime):
-            doc[k] = v.isoformat()
-    return doc
-
-
-def hash_password(p: str) -> str:
-    return pwd_context.hash(p)
-
-
-def verify_password(p: str, h: str) -> bool:
-    return pwd_context.verify(p, h)
-
-
-def create_access_token(user_id: str) -> str:
-    n = now()
-    return jwt.encode({"sub": user_id, "iat": n, "exp": n + timedelta(minutes=TOKEN_MINUTES)}, JWT_SECRET, algorithm=JWT_ALG)
-
-
-async def current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> dict:
-    unauthorized = HTTPException(401, "Could not validate credentials", headers={"WWW-Authenticate": "Bearer"})
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
-        uid = payload.get("sub")
-        if not uid or not ObjectId.is_valid(uid):
-            raise unauthorized
-    except (jwt.InvalidTokenError, TypeError, ValueError):
-        raise unauthorized
-    user = await db.users.find_one({"_id": ObjectId(uid)})
-    if not user:
-        raise unauthorized
-    return user
-
-
-def public_user(u: dict) -> dict:
-    return {"id": str(u["_id"]), "name": u.get("name", ""), "email": u["email"], "business_id": str(u["business_id"]) if u.get("business_id") else None}
-
-
-def biz_filter(user: dict) -> dict:
-    if not user.get("business_id"):
-        raise HTTPException(400, "Set up your business first")
-    return {"business_id": str(user["business_id"]), "deleted_at": None}
 
 
 # ---------------------------------------------------------------- schemas
@@ -164,18 +72,6 @@ class AdjustIn(BaseModel):
     note: str = ""
 
 
-class LineIn(BaseModel):
-    item_id: Optional[str] = None
-    name: str
-    quantity: float = 1
-    unit_price: float
-    discount_type: Literal["amount", "percent"] = "amount"
-    discount_value: float = 0
-    note: str = ""
-    quick_add: bool = False
-    unit: str = ""
-
-
 class InvoiceIn(BaseModel):
     customer_id: Optional[str] = None
     lines: List[LineIn]
@@ -187,6 +83,8 @@ class InvoiceIn(BaseModel):
     account_id: Optional[str] = None
     status: Literal["draft", "issued"] = "issued"
     note: str = ""
+    shop: str = ""
+    terms_id: Optional[str] = None
 
 
 class SaleIn(BaseModel):
@@ -195,6 +93,7 @@ class SaleIn(BaseModel):
     tendered: float = 0
     customer_id: Optional[str] = None
     account_id: Optional[str] = None
+    shop: str = ""
 
 
 class PaymentIn(BaseModel):
@@ -221,101 +120,6 @@ class AccountIn(BaseModel):
     kind: Literal["cash", "bank", "mobile"] = "cash"
     detail: str = ""
     opening_balance: float = 0
-
-
-# ---------------------------------------------------------------- math
-def line_totals(l: LineIn) -> dict:
-    gross = round(l.quantity * l.unit_price, 2)
-    disc = round(gross * l.discount_value / 100, 2) if l.discount_type == "percent" else round(min(l.discount_value, gross), 2)
-    return {**l.model_dump(), "gross": gross, "discount": disc, "total": round(gross - disc, 2)}
-
-
-def invoice_totals(lines: List[dict], dtype: str, dvalue: float, vat_rate: float) -> dict:
-    gross = round(sum(x["gross"] for x in lines), 2)
-    line_disc = round(sum(x["discount"] for x in lines), 2)
-    after_lines = gross - line_disc
-    if dtype == "percent":
-        inv_disc = round(after_lines * dvalue / 100, 2)
-    elif dtype == "final":
-        # back-calculate so that taxable*(1+vat) == final
-        taxable_target = dvalue / (1 + vat_rate / 100) if dvalue > 0 else after_lines
-        inv_disc = round(max(0.0, after_lines - taxable_target), 2)
-    else:
-        inv_disc = round(min(dvalue, after_lines), 2)
-    taxable = round(after_lines - inv_disc, 2)
-    vat = round(taxable * vat_rate / 100, 2)
-    return {"gross": gross, "line_discount": line_disc, "invoice_discount": inv_disc, "taxable": taxable, "vat": vat, "total": round(taxable + vat, 2)}
-
-
-async def next_number(business_id: str, key: str, prefix: str, start: int) -> str:
-    doc = await db.counters.find_one_and_update({"business_id": business_id, "key": key}, {"$inc": {"seq": 1}}, upsert=True, return_document=True)
-    return f"{prefix}-{start + doc['seq']}"
-
-
-async def apply_stock(business_id: str, item_id: Optional[str], qty_delta: float, kind: str, ref: str, user: dict, note: str = ""):
-    if not item_id or not ObjectId.is_valid(item_id):
-        return
-    item = await db.items.find_one({"_id": ObjectId(item_id), "business_id": business_id})
-    if not item or not item.get("track_stock", True):
-        return
-    new_qty = round(item.get("quantity", 0) + qty_delta, 3)
-    await db.items.update_one({"_id": item["_id"]}, {"$set": {"quantity": new_qty, "updated_at": now()}})
-    await db.movements.insert_one({"business_id": business_id, "item_id": item_id, "kind": kind, "delta": qty_delta, "balance": new_qty, "ref": ref, "note": note,
-                                   "by": user.get("name", ""), "created_at": now(), "deleted_at": None})
-
-
-async def customer_balance(business_id: str, customer_id: str) -> float:
-    """Positive = customer owes us; negative = unused credit."""
-    c = await db.customers.find_one({"_id": oid(customer_id)})
-    bal = c.get("opening_balance", 0) * (1 if c.get("opening_type") == "owes_me" else -1)
-    async for inv in db.invoices.find({"business_id": business_id, "customer_id": customer_id, "deleted_at": None, "status": {"$ne": "draft"}}):
-        bal += inv["totals"]["total"]
-    async for p in db.payments.find({"business_id": business_id, "customer_id": customer_id, "deleted_at": None}):
-        bal -= p["amount"]
-    return round(bal, 2)
-
-
-async def invoice_paid(business_id: str, invoice_id: str) -> float:
-    total = 0.0
-    async for p in db.payments.find({"business_id": business_id, "deleted_at": None, "allocations.invoice_id": invoice_id}):
-        total += sum(a["amount"] for a in p.get("allocations", []) if a["invoice_id"] == invoice_id)
-    return round(total, 2)
-
-
-def invoice_status(inv: dict, paid: float) -> dict:
-    due = round(inv["totals"]["total"] - paid, 2)
-    status = inv.get("status", "issued")
-    days_overdue = 0
-    if status != "draft":
-        if due <= 0:
-            status = "paid"
-        else:
-            status = "part_paid" if paid > 0 else "unpaid"
-            if inv.get("due_date"):
-                try:
-                    dd = date.fromisoformat(inv["due_date"][:10])
-                    days_overdue = (date.today() - dd).days
-                    if days_overdue > 0:
-                        status = "overdue"
-                    else:
-                        days_overdue = 0
-                except ValueError:
-                    pass
-    return {"paid": paid, "due": max(due, 0), "status": status, "days_overdue": days_overdue}
-
-
-async def decorate_invoice(inv: dict) -> dict:
-    out = clean(inv)
-    paid = await invoice_paid(inv["business_id"], out["id"])
-    out.update(invoice_status(inv, paid))
-    if inv.get("customer_id"):
-        c = await db.customers.find_one({"_id": ObjectId(inv["customer_id"])})
-        out["customer_name"] = c["name"] if c else "Cash sale"
-        out["customer_phone"] = c.get("phone", "") if c else ""
-    else:
-        out["customer_name"] = "Cash sale"
-        out["customer_phone"] = ""
-    return out
 
 
 # ---------------------------------------------------------------- auth
@@ -494,7 +298,8 @@ async def adjust_item(iid: str, data: AdjustIn, user: Annotated[dict, Depends(cu
         raise HTTPException(404, "Item not found")
     cur = i.get("quantity", 0)
     delta = data.quantity - cur if data.mode == "set" else (data.quantity if data.mode == "add" else -data.quantity)
-    await apply_stock(f["business_id"], iid, delta, "adjustment", data.reason, user, data.note)
+    await apply_stock(f["business_id"], iid, delta, "adjustment", data.reason, user, data.note, user.get("shop", ""))
+    await log_activity(f["business_id"], user, "stock", f"Stock adjusted — {i['name']} {delta:+g}", data.note, 0, iid, user.get("shop", ""), data.reason)
     return clean(await db.items.find_one({"_id": oid(iid)}))
 
 
@@ -528,6 +333,10 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
         if data.payment_mode != "credit":
             await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": totals["total"], "account_id": data.account_id, "method": data.payment_mode,
                                           "allocations": [{"invoice_id": inv_id, "amount": totals["total"]}], "note": f"Paid at sale · {number}", "created_by": user.get("name", ""), "created_at": now()})
+    if data.status == "issued":
+        await log_activity(f["business_id"], user, "invoice", f"{number} created", "", totals["total"], inv_id, data.shop)
+        if totals["invoice_discount"]:
+            await log_activity(f["business_id"], user, "discount", f"Discount added to {number}", "", -totals["invoice_discount"], inv_id, data.shop)
     return await decorate_invoice(await db.invoices.find_one({"_id": res.inserted_id}))
 
 
@@ -556,6 +365,7 @@ async def create_sale(data: SaleIn, user: Annotated[dict, Depends(current_user)]
     doc = {**f, "number": number, "lines": lines, "totals": totals, "method": data.method, "tendered": data.tendered, "change": change, "customer_id": data.customer_id,
            "account_id": data.account_id, "created_by": user.get("name", ""), "created_at": now(), "synced": True}
     res = await db.sales.insert_one(doc)
+    await log_activity(f["business_id"], user, "sale", f"{number} · quick sale", data.method, totals["total"], str(res.inserted_id), data.shop)
     for l in lines:
         await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", number, user)
     if data.method != "credit":
@@ -619,6 +429,8 @@ async def create_payment(data: PaymentIn, user: Annotated[dict, Depends(current_
     doc = {**f, "customer_id": data.customer_id, "amount": data.amount, "account_id": data.account_id, "method": "payment_in", "allocations": allocations, "note": data.note or "Payment in",
            "created_by": user.get("name", ""), "created_at": datetime.fromisoformat(data.date) if data.date else now()}
     res = await db.payments.insert_one(doc)
+    cust = await db.customers.find_one({"_id": oid(data.customer_id)})
+    await log_activity(f["business_id"], user, "payment", f"Payment received — {(cust or {}).get('name', '')}", data.note, data.amount, str(res.inserted_id), user.get("shop", ""))
     return clean(await db.payments.find_one({"_id": res.inserted_id}))
 
 
@@ -628,6 +440,7 @@ async def delete_payment(pid: str, reason: str, user: Annotated[dict, Depends(cu
     r = await db.payments.update_one({"_id": oid(pid), **f}, {"$set": {"deleted_at": now(), "deleted_reason": reason, "deleted_by": user.get("name", "")}})
     if not r.matched_count:
         raise HTTPException(404, "Payment not found")
+    await log_activity(f["business_id"], user, "payment", "Payment deleted", "", 0, pid, user.get("shop", ""), reason)
     return {"ok": True}
 
 
@@ -779,12 +592,25 @@ async def seed_demo(user: Annotated[dict, Depends(current_user)]):
 
 
 app.include_router(api)
+app.include_router(reports.router)
+app.include_router(purchases.router)
+app.include_router(shops.router)
+app.include_router(users_roles.router)
+app.include_router(offline.router)
+app.include_router(documents.router)
+app.include_router(invoicing.router)
+app.include_router(activity.router)
+app.include_router(storage.router)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
+    try:
+        storage.init_storage()
+    except Exception as exc:
+        logger.warning("Object storage not ready: %s", exc)
 
 
 @app.on_event("shutdown")

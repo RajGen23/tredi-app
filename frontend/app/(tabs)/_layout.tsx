@@ -31,7 +31,7 @@ const useStyles = makeStyles((c) => ({
   tab: { alignItems: "center", justifyContent: "center", minWidth: 56, height: 49 },
   label: { fontFamily: fonts.semibold, fontSize: 10, color: c.ink40, marginTop: 2 },
   labelOn: { color: c.green700 },
-  fab: { width: 46, height: 46, borderRadius: 15, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center", marginTop: -16, shadowColor: c.brandPrimary, shadowOpacity: 0.8, shadowRadius: 8, shadowOffset: { width: 0, height: 8 }, elevation: 6 },
+  fab: { width: 46, height: 46, borderRadius: 15, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center", marginTop: -16, boxShadow: "0 8px 18px rgba(0,201,141,0.45)", elevation: 6 },
 }));
 
 function TabBar({ state, navigation }: BottomTabBarProps) {

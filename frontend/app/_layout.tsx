@@ -11,6 +11,7 @@ import { ErrorBoundary } from "@/src/components/error-boundary";
 import { queryClient } from "@/src/query-client";
 import { AuthProvider } from "@/src/auth";
 import { ToastProvider } from "@/src/components/sheet";
+import { PeriodProvider } from "@/src/period";
 
 // Disable logbox errors etc so that users can see the app
 // and agent works as expected.
@@ -39,6 +40,7 @@ export default function RootLayout() {
           <KeyboardProvider>
             <QueryClientProvider client={queryClient}>
               <AuthProvider>
+                <PeriodProvider>
                 <ToastProvider>
                   <StatusBar style="dark" />
                   <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#F3F7F5" } }}>
@@ -50,8 +52,20 @@ export default function RootLayout() {
                     <Stack.Screen name="stock/new" options={{ presentation: "modal" }} />
                     <Stack.Screen name="expenses/new" options={{ presentation: "modal" }} />
                     <Stack.Screen name="payments/new" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="suppliers/new" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="purchases/new" options={{ presentation: "fullScreenModal" }} />
+                    <Stack.Screen name="transfers/new" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="quotes/new" options={{ presentation: "fullScreenModal" }} />
+                    <Stack.Screen name="shops/new" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="businesses/new" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="team/invite" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="team/role-new" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="search" options={{ presentation: "modal", animation: "fade" }} />
+                    <Stack.Screen name="shortcuts" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="lock" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
                   </Stack>
                 </ToastProvider>
+                </PeriodProvider>
               </AuthProvider>
             </QueryClientProvider>
           </KeyboardProvider>

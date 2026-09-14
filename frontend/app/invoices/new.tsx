@@ -1,6 +1,6 @@
 // 04.3 → 04.4 → 04.5 New invoice, with 04.12 Add item, 04.13 Line item,
 // 04.14 Quick add and 04.20 Discount on whole invoice.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -59,13 +59,15 @@ export default function NewInvoice() {
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
-  const params = useLocalSearchParams<{ customer_id?: string }>();
+  const params = useLocalSearchParams<{ customer_id?: string; from?: string }>();
 
   const customersQ = useQuery({ queryKey: ["customers"], queryFn: () => api<any[]>("/customers") });
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => api<any[]>("/items") });
   const accountsQ = useQuery({ queryKey: ["accounts"], queryFn: () => api("/accounts") });
 
-  const [step, setStep] = useState<0 | 1 | 2>(params.customer_id ? 1 : 0);
+  // A repeat purchase starts from an existing invoice instead of an empty basket.
+  const repeatQ = useQuery({ queryKey: ["duplicate", params.from], queryFn: () => api(`/invoices/${params.from}/duplicate`), enabled: !!params.from });
+  const [step, setStep] = useState<0 | 1 | 2>(params.customer_id || params.from ? 1 : 0);
   const [customerId, setCustomerId] = useState<string | null>(params.customer_id ?? null);
   const [search, setSearch] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
@@ -81,6 +83,21 @@ export default function NewInvoice() {
   const [payMode, setPayMode] = useState<"credit" | "cash" | "transfer" | "card">("credit");
   const [dueDays, setDueDays] = useState(14);
   const [accountId, setAccountId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const r = repeatQ.data;
+    if (!r || lines.length) return;
+    setCustomerId(r.customer_id ?? null);
+    setDiscMode(r.invoice_discount_type as DiscMode);
+    setDiscValue(r.invoice_discount_value);
+    setVatOn(!!r.vat_rate);
+    setLines(r.lines.map((l: any, i: number) => ({
+      key: `${l.item_id ?? l.name}-${i}`, item_id: l.item_id ?? undefined, name: l.name, quantity: l.quantity, unit_price: l.unit_price,
+      discount_type: l.discount_type ?? "amount", discount_value: l.discount_value ?? 0, note: l.note ?? "", quick_add: !!l.quick_add,
+      unit: l.unit ?? "", stock: l.stock ?? undefined, track: l.track ?? true,
+    })));
+    if (r.repriced?.length) toast.show(`${r.repriced.length} price${r.repriced.length === 1 ? "" : "s"} updated to today's rates`, "Repeat");
+  }, [repeatQ.data]);
 
   const customer = customersQ.data?.find((c) => c.id === customerId);
   const wholesale = customer?.price_list === "Wholesale";

@@ -1,0 +1,206 @@
+"""Rail 06 — Suppliers, supplier profile, record purchase, and sales returns."""
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import List, Optional, Literal
+from bson import ObjectId
+
+from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, line_totals, log_activity, next_number, now, oid)
+
+router = APIRouter(prefix="/api")
+
+
+class SupplierIn(BaseModel):
+    name: str
+    phone: str = ""
+    email: str = ""
+    address: str = ""
+    category: str = "General"
+    opening_balance: float = 0
+    note: str = ""
+
+
+class PurchaseLine(BaseModel):
+    item_id: Optional[str] = None
+    name: str
+    quantity: float = 1
+    unit_cost: float = 0
+    unit: str = ""
+
+
+class PurchaseIn(BaseModel):
+    supplier_id: str
+    lines: List[PurchaseLine]
+    paid: float = 0
+    account_id: Optional[str] = None
+    method: Literal["cash", "transfer", "credit", "card"] = "credit"
+    date: Optional[str] = None
+    due_date: Optional[str] = None
+    shop: str = ""
+    note: str = ""
+    update_cost: bool = True
+
+
+class SupplierPaymentIn(BaseModel):
+    supplier_id: str
+    amount: float
+    account_id: Optional[str] = None
+    note: str = ""
+
+
+class ReturnLine(BaseModel):
+    item_id: Optional[str] = None
+    name: str
+    quantity: float = 1
+    unit_price: float = 0
+
+
+class ReturnIn(BaseModel):
+    invoice_id: Optional[str] = None
+    customer_id: Optional[str] = None
+    lines: List[ReturnLine]
+    reason: str
+    restock: bool = True
+
+
+async def supplier_owed(f: dict, sid: str) -> float:
+    owed = 0.0
+    s = await db.suppliers.find_one({"_id": oid(sid)})
+    owed += (s or {}).get("opening_balance", 0)
+    async for p in db.purchases.find({**f, "supplier_id": sid}):
+        owed += (p.get("total") or 0) - (p.get("paid") or 0)
+    async for p in db.supplier_payments.find({**f, "supplier_id": sid}):
+        # purchases.paid already carries the allocated part, so only the
+        # unallocated remainder still reduces what we owe
+        owed -= p["amount"] - p.get("allocated", p["amount"])
+    return round(owed, 2)
+
+
+@router.get("/suppliers")
+async def list_suppliers(user: CurrentUser):
+    f = biz_filter(user)
+    out = []
+    async for s in db.suppliers.find(f).sort("name", 1):
+        d = clean(s)
+        d["owed"] = await supplier_owed(f, d["id"])
+        d["purchases"] = await db.purchases.count_documents({**f, "supplier_id": d["id"]})
+        last = await db.purchases.find_one({**f, "supplier_id": d["id"]}, sort=[("created_at", -1)])
+        d["last_purchase"] = last["created_at"].isoformat() if last else None
+        out.append(d)
+    total = round(sum(x["owed"] for x in out), 2)
+    return {"suppliers": out, "owed": total, "count": len(out)}
+
+
+@router.post("/suppliers", status_code=201)
+async def create_supplier(data: SupplierIn, user: CurrentUser):
+    f = biz_filter(user)
+    res = await db.suppliers.insert_one({**data.model_dump(), **f, "created_by": user.get("name", ""), "created_at": now()})
+    await log_activity(f["business_id"], user, "supplier", f"Supplier {data.name} added")
+    return clean(await db.suppliers.find_one({"_id": res.inserted_id}))
+
+
+@router.get("/suppliers/{sid}")
+async def get_supplier(sid: str, user: CurrentUser):
+    f = biz_filter(user)
+    s = await db.suppliers.find_one({"_id": oid(sid), **f})
+    if not s:
+        raise HTTPException(404, "Supplier not found")
+    d = clean(s)
+    d["owed"] = await supplier_owed(f, sid)
+    purchases = [clean(p) async for p in db.purchases.find({**f, "supplier_id": sid}).sort("created_at", -1)]
+    for p in purchases:
+        p["due"] = round((p.get("total") or 0) - (p.get("paid") or 0), 2)
+    d["purchases"] = purchases
+    d["payments"] = [clean(p) async for p in db.supplier_payments.find({**f, "supplier_id": sid}).sort("created_at", -1)]
+    d["total_purchased"] = round(sum(p.get("total") or 0 for p in purchases), 2)
+    d["items"] = [clean(i) async for i in db.items.find({**f, "supplier": s["name"]}).limit(20)]
+    return d
+
+
+@router.post("/purchases", status_code=201)
+async def create_purchase(data: PurchaseIn, user: CurrentUser):
+    f = biz_filter(user)
+    if not data.lines:
+        raise HTTPException(400, "Add at least one item")
+    sup = await db.suppliers.find_one({"_id": oid(data.supplier_id), **f})
+    if not sup:
+        raise HTTPException(404, "Supplier not found")
+    lines = [{**l.model_dump(), "total": round(l.quantity * l.unit_cost, 2)} for l in data.lines]
+    total = round(sum(l["total"] for l in lines), 2)
+    number = await next_number(f["business_id"], "purchase", "PO", 400)
+    created = now()
+    doc = {**f, "supplier_id": data.supplier_id, "supplier_name": sup["name"], "number": number, "lines": lines, "total": total,
+           "paid": min(data.paid, total), "account_id": data.account_id, "method": data.method, "due_date": data.due_date,
+           "shop": data.shop, "note": data.note, "created_by": user.get("name", ""), "created_at": created}
+    res = await db.purchases.insert_one(doc)
+    for l in lines:
+        await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "purchase", number, user, sup["name"], data.shop)
+        if data.update_cost and l.get("item_id") and ObjectId.is_valid(l["item_id"]) and l["unit_cost"]:
+            await db.items.update_one({"_id": ObjectId(l["item_id"]), **f}, {"$set": {"cost_price": l["unit_cost"], "updated_at": now()}})
+    await log_activity(f["business_id"], user, "purchase", f"Purchase {number}", sup["name"], total, str(res.inserted_id), data.shop)
+    return clean(await db.purchases.find_one({"_id": res.inserted_id}))
+
+
+@router.get("/purchases")
+async def list_purchases(user: CurrentUser):
+    f = biz_filter(user)
+    out = []
+    async for p in db.purchases.find(f).sort("created_at", -1):
+        d = clean(p)
+        d["due"] = round((p.get("total") or 0) - (p.get("paid") or 0), 2)
+        out.append(d)
+    return {"purchases": out, "total": round(sum(p.get("total") or 0 for p in out), 2), "owed": round(sum(p["due"] for p in out), 2)}
+
+
+@router.post("/supplier-payments", status_code=201)
+async def pay_supplier(data: SupplierPaymentIn, user: CurrentUser):
+    f = biz_filter(user)
+    if data.amount <= 0:
+        raise HTTPException(400, "Amount must be greater than zero")
+    sup = await db.suppliers.find_one({"_id": oid(data.supplier_id), **f})
+    if not sup:
+        raise HTTPException(404, "Supplier not found")
+    remaining = data.amount
+    async for p in db.purchases.find({**f, "supplier_id": data.supplier_id}).sort("created_at", 1):
+        due = (p.get("total") or 0) - (p.get("paid") or 0)
+        if due <= 0 or remaining <= 0:
+            continue
+        take = min(due, remaining)
+        await db.purchases.update_one({"_id": p["_id"]}, {"$inc": {"paid": take}})
+        remaining -= take
+    res = await db.supplier_payments.insert_one({**f, "supplier_id": data.supplier_id, "supplier_name": sup["name"], "amount": data.amount,
+                                                 "allocated": round(data.amount - remaining, 2),
+                                                 "account_id": data.account_id, "note": data.note or "Payment out",
+                                                 "created_by": user.get("name", ""), "created_at": now()})
+    await db.expenses.insert_one({**f, "amount": data.amount, "category": "Purchases", "account_id": data.account_id,
+                                  "note": f"Paid {sup['name']}", "shop": "", "receipt_url": None, "supplier_payment_id": str(res.inserted_id),
+                                  "created_by": user.get("name", ""), "created_at": now()})
+    await log_activity(f["business_id"], user, "payment_out", f"Paid {sup['name']}", data.note, data.amount, str(res.inserted_id))
+    return clean(await db.supplier_payments.find_one({"_id": res.inserted_id}))
+
+
+@router.get("/returns")
+async def list_returns(user: CurrentUser):
+    f = biz_filter(user)
+    return [clean(r) async for r in db.returns.find(f).sort("created_at", -1)]
+
+
+@router.post("/returns", status_code=201)
+async def create_return(data: ReturnIn, user: CurrentUser):
+    f = biz_filter(user)
+    if not data.lines:
+        raise HTTPException(400, "Add at least one item")
+    lines = [line_totals(LineIn(item_id=l.item_id, name=l.name, quantity=l.quantity, unit_price=l.unit_price)) for l in data.lines]
+    total = round(sum(l["total"] for l in lines), 2)
+    number = await next_number(f["business_id"], "return", "RT", 100)
+    res = await db.returns.insert_one({**f, "number": number, "invoice_id": data.invoice_id, "customer_id": data.customer_id, "lines": lines,
+                                       "total": total, "reason": data.reason, "restock": data.restock,
+                                       "created_by": user.get("name", ""), "created_at": now()})
+    if data.restock:
+        for l in lines:
+            await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "return", number, user, data.reason)
+    if data.customer_id:
+        await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": total, "account_id": None, "method": "credit_note",
+                                      "allocations": [{"invoice_id": data.invoice_id, "amount": total}] if data.invoice_id else [],
+                                      "note": f"Credit note · {number}", "created_by": user.get("name", ""), "created_at": now()})
+    await log_activity(f["business_id"], user, "return", f"Return {number}", data.reason, total, str(res.inserted_id))
+    return clean(await db.returns.find_one({"_id": res.inserted_id}))

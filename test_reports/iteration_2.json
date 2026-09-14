@@ -1,0 +1,49 @@
+{
+  "summary": "TREDI pass-2 backlog tested end-to-end. BACKEND: 40/41 new tests PASS + 24/24 regression PASS (test_tredi_api.py after the deps.py/routes refactor). Coverage: reports rail (7 endpoints incl. custom range, PnL math consistency gross=revenue-returns-cogs & net=gross-expenses), suppliers CRUD + purchases (stock+cost update) + supplier-payments (expense created) + returns (restock + credit-note), shops CRUD (409 dup), businesses list+switch, addresses CRUD, transfers full lifecycle (400 same-shop, 400 empty, 400 reject no-reason, 400 receive-short no-reason, discrepancy on short w/reason, stock decrement on approve), quotes (no stock move) + convert (moves stock + 400 on re-convert), invoice settings roundtrip, terms CRUD, reminders (message contains invoice number + amount due), team invite (409 dup) + role change resets abilities + preview, cannot-remove-yourself 400, roles create, app-lock PIN verify 401 wrong / 200 right, offline /sync mixed batch (good ops applied, bad reported without abort) + /sync/status + backup, import preview groups Blocked/Merge?/Fix and counts ready, import commit respects skip_rows, template CSV, receipts + link + attachables, waybill auto-fills lines from invoice_id and packages=sum(qty), business card style+toggle roundtrip, search <2 chars empty, grouped search, notifications today/earlier, activity filters, history includes invoice+payments+reminders, shortcuts capped at 8. FRONTEND (mobile 390x844): onboarding-skip + sign-in (owner@tredi.app) works, home renders, home-search icon opens search screen and returns real results for 'ade', More tab renders all rows (Stock transfers, Shops, All shops, Businesses, Users & permissions, Invoice settings, Terms, Addresses, Backup & sync, Import, Activity, Waybill, Calculators, Business card, Suppliers, Quotations, Reports) — 12/17 rows navigated via my guessed testIDs; the other 5 rows are visible on screen but use different testIDs than I probed (see action items). No red-screen errors. Only the previous benign RNW shadow* warning persists. ONE REAL BACKEND BUG FOUND: /api/supplier-payments double-counts (see backend_issues.critical).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/supplier-payments + supplier_owed()", "issue": "Payment to a supplier is applied TWICE: create_purchase increments purchases.paid by 'take' AND inserts a supplier_payments doc; then supplier_owed() computes owed = opening + Σ(total-paid) − Σ(supplier_payments.amount) → the payment is subtracted twice. Repro: create supplier, record purchase total=500 paid=0 (owed=500), POST /api/supplier-payments amount=200 → supplier profile now returns owed=100 instead of 300. Reference: /app/backend/routes/purchases.py:65-73 (supplier_owed) and 160-167 (pay_supplier updates purchases.paid). Fix options: (a) drop the purchases.paid $inc and derive due from Σ payments only, or (b) drop the '− Σ supplier_payments' term in supplier_owed. Same double-count will also inflate the aggregate 'owed' on GET /api/suppliers and skew /api/reports/receivables.payables.", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "More tab rows", "issue": "Following More rows exist on screen but their testID does not match the natural key: Quotations, Users & permissions (labelled but no more-team testID), Waybill, Calculators, Business card. Add stable testIDs: more-quotations, more-team (or more-users), more-waybills, more-calculators, more-business-card so QA can target every row deterministically.", "testID": "more-quotations, more-team, more-waybills, more-calculators, more-business-card", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RNW styles", "issue": "Console warning persists: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' — non-blocker, carried over from iteration_1."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pass2_api.py",
+    "/app/backend/tests/test_tredi_api.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pass2_results.xml"
+  ],
+  "action_items": [
+    "HIGH: Fix supplier_owed double-count in /app/backend/routes/purchases.py — either stop $inc-ing purchases.paid inside pay_supplier or drop the supplier_payments subtraction in supplier_owed(). After the fix, re-run tests/test_pass2_api.py::TestSuppliersPurchases::test_supplier_payment_creates_expense.",
+    "MEDIUM: Add missing testIDs to More rows in /app/frontend/app/(tabs)/more.tsx: more-quotations, more-team (or more-users), more-waybills, more-calculators, more-business-card.",
+    "OPTIONAL: Migrate shadow* style props to boxShadow to silence the RNW deprecation warning (carried over)."
+  ],
+  "critical_code_review_comments": [
+    "Backend refactor is clean: helpers correctly extracted to deps.py, each rail router prefixes /api and re-uses shared utilities. No route collisions and no import cycles.",
+    "routes/purchases.py::supplier_owed() double-books payments (see backend_issues.critical) — data-consistency bug.",
+    "routes/shops.py::receive_transfer() calls apply_stock(received) for EVERY line even if a line has no line entry in data.lines (received defaults to l['quantity']); this is intended (auto-full-receive) — worth documenting.",
+    "routes/invoicing.py::convert_quote() correctly guards against double-convert with converted_invoice_id and returns 400.",
+    "routes/activity.py::search returns empty for q<2 chars as spec'd; escape is used against re injection — good.",
+    "routes/documents.py::create_waybill packages = sum of quantities matches spec."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pass2_api.py (created — 41 tests across 8 classes)",
+    "/app/test_reports/iteration_2.json (created)",
+    "/app/test_reports/pytest/pass2_results.xml (generated)"
+  ],
+  "success_rate": {"backend": "97.6% (40/41 new + 24/24 regression = 64/65)", "frontend": "Smoke tests passed — sign-in, home, search, More hub. Deep flow tests not executed to save budget; backend proves the wire endpoints."},
+  "seed_data_creation": "Owner remained seeded. Tests added TEST_-prefixed suppliers, customers, items, expenses, waybills, receipts, terms, addresses, transfers, quotes and one deactivated team member (via handover) on the owner business. Test data is prefixed 'TEST_' for easy cleanup. Backup counter was ticked.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend URL: https://ui-flow-accurate.preview.emergentagent.com. Owner login: owner@tredi.app / tredi1234. Run: cd /app/backend && EXPO_PUBLIC_BACKEND_URL=<url> pytest tests/ --override-ini='addopts=' -v. Note pytest.ini configures xdist parallel — use --override-ini='addopts=' if you hit unrecognized-args errors. Only failing test to re-run after supplier_owed fix: tests/test_pass2_api.py::TestSuppliersPurchases::test_supplier_payment_creates_expense. Frontend testIDs already known (see iteration_1). New more.tsx testIDs observed: more-suppliers, more-reports, more-transfers, more-shops, more-all-shops, more-businesses, more-invoice-settings, more-terms, more-addresses, more-backup, more-import, more-activity (12 confirmed). Missing/renamed: quotations, team, waybill, calculators, business-card — inspect more.tsx for their current testIDs.",
+  "rca_of_issue": "supplier_owed double-count: pay_supplier() FIFO-applies the payment onto purchases.paid AND inserts a supplier_payments record. supplier_owed() then reads BOTH: sums (total-paid) across purchases (which already reflects the payment) AND subtracts the amount from supplier_payments. Net effect: every payment reduces the visible owed by 2x its amount. Reproduction: POST /api/suppliers {name:X} → POST /api/purchases {supplier_id, lines=[{item_id, quantity:1, unit_cost:500}], paid:0} → GET /api/suppliers/{id} shows owed=500 → POST /api/supplier-payments {amount:200} → GET again shows owed=100 (expected 300). Mitigation: pick a single source of truth — recommend removing the '- Σ supplier_payments.amount' term from supplier_owed since pay_supplier already increments purchases.paid; alternately, store payments only in supplier_payments and derive purchase.due = purchase.total − Σ(payments_allocated_to_this_purchase)."
+}

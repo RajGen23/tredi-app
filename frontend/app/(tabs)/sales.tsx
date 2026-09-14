@@ -11,7 +11,7 @@ import { Sheet } from "@/src/components/sheet";
 import { initials, money, shortDate, statusLabel } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
 
-type Filter = "all" | "overdue" | "unpaid" | "paid" | "draft";
+type Filter = "all" | "overdue" | "unpaid" | "paid" | "draft" | "duplicate";
 type Sort = "overdue" | "amount" | "newest" | "az";
 
 const useStyles = makeStyles((c) => ({
@@ -36,11 +36,16 @@ export default function Sales() {
     unpaid: all.filter((i) => ["unpaid", "part_paid", "overdue"].includes(i.status)).length,
     paid: all.filter((i) => i.status === "paid").length,
     draft: all.filter((i) => i.status === "draft").length,
+    duplicate: all.filter((i) => !!i.duplicated_from).length,
   }), [all]);
   const overdueTotal = all.filter((i) => i.status === "overdue").reduce((a, i) => a + i.due, 0);
 
   const list = useMemo(() => {
-    let l = all.filter((i) => filter === "all" || (filter === "unpaid" ? ["unpaid", "part_paid", "overdue"].includes(i.status) : i.status === filter));
+    let l = all.filter((i) =>
+      filter === "all" ? true
+      : filter === "unpaid" ? ["unpaid", "part_paid", "overdue"].includes(i.status)
+      : filter === "duplicate" ? !!i.duplicated_from
+      : i.status === filter);
     l = [...l].sort((a, b) => sort === "overdue" ? b.days_overdue - a.days_overdue || b.due - a.due : sort === "amount" ? b.totals.total - a.totals.total : sort === "az" ? a.customer_name.localeCompare(b.customer_name) : b.created_at.localeCompare(a.created_at));
     return l;
   }, [all, filter, sort]);
@@ -51,11 +56,12 @@ export default function Sales() {
     { k: "unpaid", label: `Unpaid ${counts.unpaid}` },
     { k: "paid", label: "Paid" },
     { k: "draft", label: `Draft ${counts.draft}` },
+    { k: "duplicate", label: `Repeat ${counts.duplicate}` },
   ];
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="invoices-screen">
-      <AppBar title="Invoices" right={<><IconBtn name="search-outline" testID="invoices-search" /><IconBtn name="swap-vertical-outline" testID="invoices-filter" onPress={() => setSheet(true)} /></>} />
+      <AppBar title="Invoices" right={<><IconBtn name="search-outline" testID="invoices-search" onPress={() => router.push("/search")} /><IconBtn name="swap-vertical-outline" testID="invoices-filter" onPress={() => setSheet(true)} /></>} />
       <View style={{ height: 44 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 14, gap: 6, alignItems: "center" }}>
           {chips.map((c) => <Chip key={c.k} testID={`invoice-chip-${c.k}`} label={c.label} on={filter === c.k} dotColor={c.dot} onPress={() => setFilter(c.k)} />)}
@@ -87,7 +93,7 @@ export default function Sales() {
                     <Row between style={{ marginTop: 1 }}><Sub>{inv.customer_name}</Sub><Sub>{inv.status === "paid" ? `Paid ${shortDate(inv.created_at)}` : draft ? "Not sent" : `Due ${money(inv.due)}`}</Sub></Row>
                     <Row between style={{ marginTop: 4 }}>
                       <Badge tone={over ? "over" : inv.status === "paid" ? "paid" : draft ? "draft" : "due"}>{statusLabel(inv)}</Badge>
-                      <Tag>{inv.status === "part_paid" ? "part paid" : "⋯"}</Tag>
+                      <Tag>{inv.duplicated_from_number ? `repeat of ${inv.duplicated_from_number}` : inv.status === "part_paid" ? "part paid" : "⋯"}</Tag>
                     </Row>
                   </View>
                 </Li>

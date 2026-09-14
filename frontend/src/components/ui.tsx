@@ -23,7 +23,7 @@ const useStyles = makeStyles((c) => ({
   chipTextOn: { color: c.onSurfaceInverse },
   seg: { flexDirection: "row", backgroundColor: c.surfaceTertiary, borderRadius: 10, padding: 3, gap: 2 },
   segItem: { flex: 1, alignItems: "center", paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8 },
-  segItemOn: { backgroundColor: c.surfaceSecondary, shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segItemOn: { backgroundColor: c.surfaceSecondary, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", elevation: 1 },
   segText: { fontFamily: fonts.bold, fontSize: 12, color: c.ink60 },
   segTextOn: { color: c.deep },
   btn: { backgroundColor: c.brandPrimary, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14, alignItems: "center", justifyContent: "center", minHeight: 48, flexDirection: "row", gap: 8 },
@@ -34,7 +34,7 @@ const useStyles = makeStyles((c) => ({
   btnSm: { paddingVertical: 11, borderRadius: 10, minHeight: 44 },
   btnTextSm: { fontSize: 13 },
   field: { backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 9, minHeight: 50, justifyContent: "center" },
-  fieldFocus: { borderColor: c.brandPrimary, shadowColor: c.brandPrimary, shadowOpacity: 0.14, shadowRadius: 0, shadowOffset: { width: 0, height: 0 } },
+  fieldFocus: { borderColor: c.brandPrimary, boxShadow: `0 0 0 3px ${c.focusRing}` },
   fieldInput: { fontFamily: fonts.semibold, fontSize: 14, color: c.onSurface, paddingVertical: 2, marginTop: 2 },
   li: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border },
   liLast: { borderBottomWidth: 0 },
@@ -42,7 +42,7 @@ const useStyles = makeStyles((c) => ({
   avText: { fontFamily: fonts.bold, fontSize: 12, color: c.deep },
   switchTrack: { width: 34, height: 20, borderRadius: radius.pill, backgroundColor: c.switchOff, padding: 2 },
   switchOn: { backgroundColor: c.brandPrimary },
-  switchThumb: { width: 16, height: 16, borderRadius: 8, backgroundColor: c.surfaceSecondary, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+  switchThumb: { width: 16, height: 16, borderRadius: 8, backgroundColor: c.surfaceSecondary, boxShadow: "0 1px 2px rgba(0,0,0,0.2)" },
   prog: { height: 5, borderRadius: 9, backgroundColor: c.surfaceTertiary, overflow: "hidden" },
   progFill: { height: "100%", borderRadius: 9, backgroundColor: c.brandPrimary },
   appbar: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 },
@@ -285,8 +285,8 @@ export function IconBtn({ name, onPress, teal, testID, dark, dot }: { name: IonN
   );
 }
 
-export function AppBar({ title, back, close, right, teal, onBack, mono, rightText, onRightText, testID }: {
-  title: string; back?: boolean; close?: boolean; right?: React.ReactNode; teal?: boolean; onBack?: () => void; mono?: boolean; rightText?: string; onRightText?: () => void; testID?: string;
+export function AppBar({ title, back, close, right, teal, onBack, mono, rightText, onRightText, rightTextTestID, testID }: {
+  title: string; back?: boolean; close?: boolean; right?: React.ReactNode; teal?: boolean; onBack?: () => void; mono?: boolean; rightText?: string; onRightText?: () => void; rightTextTestID?: string; testID?: string;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -302,7 +302,7 @@ export function AppBar({ title, back, close, right, teal, onBack, mono, rightTex
       <Text style={[s.appbarTitle, { color: fg }, mono && { fontFamily: fonts.monoSemibold, fontSize: 15 }]} numberOfLines={1}>{title}</Text>
       {right}
       {rightText ? (
-        <Pressable testID="appbar-right-text" onPress={onRightText} hitSlop={8}>
+        <Pressable testID={rightTextTestID ?? "appbar-right-text"} onPress={onRightText} hitSlop={8}>
           <Text style={{ fontFamily: fonts.bold, fontSize: 13, color: colors.green700 }}>{rightText}</Text>
         </Pressable>
       ) : null}

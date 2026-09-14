@@ -9,14 +9,22 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.uiflowaccurate.qntnxx"
+      "bundleIdentifier": "com.emergent.uiflowaccurate.qntnxx",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Snap supplier bills to track spending",
+        "NSPhotoLibraryUsageDescription": "Attach a bill photo to an expense"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.emergent.uiflowaccurate.qntnxx"
+      "package": "com.emergent.uiflowaccurate.qntnxx",
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "bundler": "metro",

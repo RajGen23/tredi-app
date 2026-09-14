@@ -100,4 +100,118 @@
 
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
-#====================================================================================================
+#====================================================================================================user_problem_statement: "Complete the P1 and P2 backlog of the TREDI bookkeeping app (rev 05 HTML design): reports rail, suppliers & purchases, stock transfers, invoice extras (quotations, reminders, invoice settings, terms), shops & businesses, offline sync & Excel import, users/roles/permissions/app lock, documents & tools, and home extras (search, notifications, activity, history, shortcuts)."
+
+backend:
+  - task: "Reports rail: summary, cashflow, products, pnl, receivables, stock-valuation, sales-summary"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/reports.py"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New router. All 7 GETs return 200 on manual curl with seeded owner account."
+  - task: "Suppliers, purchases, supplier payments, sales returns"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/purchases.py"
+  - task: "Shops, all-shops overview, businesses switch, addresses, stock transfers (create/approve/reject/receive)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/shops.py"
+  - task: "Team, roles, permissions, preview, handover, app lock PIN"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/users_roles.py"
+  - task: "Offline sync queue, backup settings, Excel/CSV import preview+commit"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/offline.py"
+  - task: "Quotations (+convert), invoice settings, terms of payment, reminders"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/invoicing.py"
+  - task: "Receipts, waybills, business card"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/documents.py"
+  - task: "Search, notifications, activity feed, record history, home shortcuts"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/activity.py"
+  - task: "Refactor: shared helpers moved to deps.py"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/deps.py"
+
+frontend:
+  - task: "Reports screens (index, summary, cashflow, products, pnl, receivables, stock, sales, returns) + shared period sheet"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/reports/"
+  - task: "Suppliers list/profile/new + record purchase"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/suppliers/, /app/frontend/app/purchases/new.tsx"
+  - task: "Stock transfers list/new/receive"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/transfers/"
+  - task: "Quotations list/new/preview, reminder, invoice settings, terms"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/quotes/, /app/frontend/app/settings/"
+  - task: "Shops, all shops, businesses, addresses"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/shops/, /app/frontend/app/businesses/"
+  - task: "Backup & sync, import from CSV"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/settings/backup.tsx, import.tsx"
+  - task: "Team, permissions, invite, build a role, preview, remove, app lock"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/team/, /app/frontend/app/lock.tsx"
+  - task: "Waybill, calculators, business card"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/documents/, /app/frontend/app/tools/"
+  - task: "Home extras: dynamic shortcuts, search, notifications, activity, history, More hub routes"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(tabs)/index.tsx, search.tsx, notifications.tsx, activity.tsx, history/[id].tsx, shortcuts.tsx"
+
+metadata:
+  created_by: "main_agent"
+  version: "2.0"
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "All new backend routers"
+    - "Reports rail frontend"
+    - "Suppliers + purchase flow"
+    - "Transfers approve/receive flow"
+    - "Quotation convert flow"
+    - "Team/permissions flow"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Pass 2 complete: all P1/P2 screens built. 13.1 Bills & receipts photo capture intentionally deferred (needs object storage confirmation from user). Owner login owner@tredi.app / tredi1234 has seeded demo data plus one supplier, one shop 'Surulere', one transfer and one team member (amina@tredi.app / tredi1234) created during manual smoke tests."
+
+  - task: "Duplicate invoice (repeat purchase)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/invoicing.py, /app/frontend/app/invoices/[id].tsx, /app/frontend/app/invoices/new.tsx, /app/frontend/app/(tabs)/sales.tsx"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "GET /api/invoices/{id}/duplicate returns the repeat preview (re-priced lines, short-stock warnings); POST issues it straight away or saves a draft. Invoice detail gets a copy icon + 'Duplicate this invoice' row opening a sheet with a 'Use today's prices' switch, 'Issue it now' and 'Edit before saving' (opens /invoices/new?from=<id> prefilled). Sales tab gains a 'Repeat' filter chip and rows show 'repeat of INV-xxxx'. Verified by curl: preview 200, duplicate 201 (INV-1015 -> INV-1016)."
+
+agent_communication:
+  - agent: "main"
+    message: "Pass 4: added the duplicate-invoice feature the user asked for, plus iteration_3's two LOW fixes (card-save testID alias, shortcuts router.canGoBack guard). Needs frontend verification of the duplicate flow only."
