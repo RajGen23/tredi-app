@@ -1,0 +1,43 @@
+{
+  "summary": "First test pass for the Super Admin panel (SA.1–SA.18). BACKEND: 47/47 admin panel tests pass (test_admin_panel.py) — login OK (correct creds return access_token, wrong password 401), every /api/admin/* endpoint 401s without a Bearer token (auth/context is the intentional exception), overview returns metrics/attention/series/recent, businesses list works with all tabs/filters/counts, detail + structure endpoints work, all five business actions work — suspend/unsuspend/force_sync/schedule_deletion/cancel_deletion each write an admin_audit row and 'suspend' + 'schedule_deletion' correctly 400 when reason is < 4 chars; subscriptions returns 7d/30d/lapsed tabs, extend actually moves plan_expires forward (verified via GET after PUT), reminders batch works; users tab filters work and unlock on locked user 'Musa Bello' flips status active; roles returns templates/matrix, security policy PATCH persists, audit log tabs + search all 200; analytics/sync/system all OK, sync replay works with ids and with empty ids (falls back to all stuck), sync notify works; configuration PUT persists (due_terms_days change survives GET); backup snapshot/test-restore/restore all OK; migration commit correctly 400s when step<3, a full mapping→dry-run→commit flow creates a pre_migration snapshot; support broadcast validates title/message length, sent broadcast appears in Recent broadcasts, request also validates reason length. Mobile regression: pytest test_tredi_api.py 24/24 still pass, owner login + /api/dashboard 200. FRONTEND (1440x900): /admin correctly redirects to /admin/login; superadmin@tredi.app / tredi1234 signs in and lands on /admin/overview which renders 5 metric cards, 5 Needs Attention tiles, Platform activity chart, and Recently Joined table. All 15 admin screens load without a blank page or a red screen — visited overview, analytics, businesses, subscriptions, subscriptions/plans, users, roles, security, security/audit, support, sync, system, backup, migration, configuration; each returned >500 chars of body text and no 'Something went wrong' overlay. End-to-end suspend flow verified: clicked a business row, opened the detail, clicked act-suspend, confirmed WITHOUT a reason first (backend returned 400 and error message contained 'reason'), then filled 'Test suspension for QA' and confirmed — the detail page then shows 'Read-only' and 'Writes suspended' pills, Danger zone flipped to 'Restore writes', and Recent platform events shows the audit line with actor 'Gaurav' just now. Broadcast tab renders form with audience chips, title/message inputs, Send now / Queue buttons; the TEST broadcast sent via backend appears in Recent broadcasts. Mobile regression (390x844): home renders for owner@tredi.app — Total Sales / Received / Owed figures all fit inside the total-sales card with no overflow, cash flow 'Last 7 days' selector is reachable, bottom nav (Home/Sales/FAB/Stock/More) is present. Deprecated packages / SafeAreaView issues: none detected in the admin code. Only observation: the sidebar renders two DOM elements per label (nav-<Label>) — Playwright's visibility check picks the invisible copy, so testID-based sidebar clicks fail from strict scripts unless .first() + force=True is used; URL-based navigation works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminShell sidebar", "issue": "Every sidebar link renders twice in the DOM under the same data-testid (one visible desktop copy + one hidden mobile-drawer copy), so a strict Playwright `page.click('[data-testid=\"nav-Businesses\"]')` hits the hidden copy and times out. Real user clicks work. Fix: give the two copies distinct testIDs (e.g. nav-Businesses-desktop / nav-Businesses-drawer), or hide the drawer copy with display:none instead of leaving it in the tree at >1000px. Reference: /app/frontend/src/admin/ui.tsx (AdminShell nav render).", "testID": "nav-<Label>", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_admin_panel.py",
+    "/app/test_reports/pytest/admin_panel_results.xml",
+    "/app/test_reports/iteration_6.json"
+  ],
+  "action_items": [
+    "OPTIONAL polish: dedupe the sidebar nav testIDs so automation/scripts can click nav-<Label> without .first(). Give the mobile-drawer copy of each nav item a suffix (e.g. `nav-Businesses-drawer`) or omit it from the DOM entirely at desktop widths."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routes/admin.py:239 — business_action calls audit(category='deletion' if 'delet' in action else 'admin'). Correct today, but a future action name containing 'delet' would be misclassified. Consider a small dict lookup {suspend: 'admin', schedule_deletion: 'deletion', cancel_deletion: 'deletion', ...} instead of substring test.",
+    "/app/backend/routes/admin.py:275-284 — extend() blindly upgrades a lapsed/trial tenant to 'basic'. That is a business-rules assumption; a Pro-tier lapse becomes 'basic' after extend which loses the Pro entitlement. Consider storing the last paid tier so extend restores the correct plan.",
+    "/app/backend/routes/admin.py:487-498 — sync/replay does NOT validate whether the provided ids are stuck; a caller can wipe any queue (conflict/rejected too). Not a security bug (admin only), but the tenant audit event says 'Sync queue replayed' regardless of state. Minor.",
+    "/app/backend/routes/admin.py:594-601 — restore() has hard-coded lost=1204 and no dry-run; the review only asked that it toast + audit, and it does, but this is sample-only behavior worth noting.",
+    "/app/backend/admin_seed.py — file is 350 lines and keeps growing. All sample dictionaries (NAMED, TOWNS, error rows, snapshot rows, migration rows, signals) could live in /app/backend/admin_seed_data.py while seed_admin() stays in admin_seed.py. Not urgent.",
+    "/app/frontend/src/admin/ui.tsx — did not open in this run (only referenced), but the duplicated testIDs described above are the only automation-hostile pattern I noticed; every other testID (act-suspend, action-reason, action-confirm, extend-modal, extend-confirm, broadcast-send, config-save, admin-email/password/login-submit) is unique and clean."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_admin_panel.py (new — 47 tests grouped into TestAdminAuth, TestOverview, TestBusinesses, TestSubscriptions, TestUsers, TestRolesSecurity, TestAnalyticsSync, TestSystemConfig, TestBackup, TestMigration, TestSupport, TestMobileRegression)"
+  ],
+  "success_rate": {
+    "backend": "100% (47/47 admin panel tests + 24/24 pre-existing mobile-api regression tests all pass over the public URL)",
+    "frontend": "100% (all 15 admin screens load, suspend flow end-to-end with reason validation + pill visibility confirmed, broadcast tab renders + previously-sent broadcast visible in Recent broadcasts, mobile owner login + home screen still render fine with figures fitting inside the total-sales card)"
+  },
+  "seed_data_creation": "None. The seed_admin() lazy-seed on the first /api/admin/* call created ~240 sample tenants automatically. Tests reused the seeded data and left it alone; the suspend/unsuspend flow put Tredi Ventures back to healthy at the end. One `TEST <timestamp>` broadcast row was added by test_broadcast_ok and is now in admin_broadcasts — harmless.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Super Admin panel: web-only route at /admin, uses secure-store key `tredi_admin_token` (separate from mobile app). Admin JWT expires 30 min — re-login if long runs. Every admin sidebar link renders twice; use URL-based navigation (page.goto('/admin/<route>')) or .first() + force=True. Suspend flow testIDs: act-suspend → action-reason → action-confirm. Extend: extend-<id> → extend-modal → extend-days → extend-confirm. Broadcast: type Broadcast tab, then broadcast-send. Users unlock testID needed if adding tests: currently unlock is exercised via API only in test_admin_panel.py. Mobile regression: bottom nav is Home/Sales/(FAB)/Stock/More; total-sales card fits ₦6.5M cleanly at 390x844. Backend URL EXPO_PUBLIC_BACKEND_URL=https://ui-flow-accurate.preview.emergentagent.com. Mobile credentials: owner@tredi.app / tredi1234, admin superadmin@tredi.app / tredi1234.",
+  "rca_of_issue": "N/A — no bugs found this iteration. The one minor UX-for-tests observation (duplicated sidebar testIDs) is documented as an OPTIONAL fix; it does not affect end users."
+}

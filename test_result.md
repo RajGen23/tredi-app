@@ -236,3 +236,16 @@ agent_communication:
 agent_communication:
   - agent: "main"
     message: "Migration complete and verified. Source cluster is named 'may-21-backup' — the owner still needs to confirm whether that is production or a snapshot; the script is idempotent so re-running against the live cluster is safe."
+
+  - task: "Super Admin web panel SA.1–SA.18 (cross-tenant)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/routes/admin.py, /app/backend/admin_seed.py, /app/frontend/src/admin/*, /app/frontend/app/admin/*"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Built the whole Super Admin panel from the supplied HTML flow map as a desktop web section at /admin (own session, own token key tredi_admin_token, 30-min JWT). Backend: /api/admin/* with login, overview, businesses list/detail/structure/actions (suspend, unsuspend, force sync, schedule/cancel deletion — reason required, all audited), subscriptions + extend + reminder batch, plans/feature gates, users + unlock, roles matrix, security policy + audit log, analytics, sync monitor + replay/notify, system health, global configuration (GET/PUT), backup (snapshot, restore, test restore), migration console (mapping, dry run, commit-with-snapshot), support (request access, end session, remind, broadcast). Sample data seeds ~240 tenants, 557 users, audit/sync/snapshot/migration/support fixtures into admin_* collections. Login superadmin@tredi.app / tredi1234."
+
+agent_communication:
+  - agent: "main"
+    message: "Pass 6: Super Admin panel (18 screens) + its API. Needs both backend and frontend verification. The phone app was untouched apart from the home-hero overflow fix and the bottom-sheet safe-area fix."

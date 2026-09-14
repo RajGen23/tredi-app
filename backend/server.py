@@ -10,7 +10,7 @@ import logging
 from deps import (VAT_RATE, DUMMY_HASH, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
                   db, decorate_invoice, hash_password, invoice_paid, invoice_status, invoice_totals, line_totals, log_activity, next_number, now, oid,
                   public_user, verify_password)
-from routes import activity, documents, invoicing, offline, purchases, reports, shops, storage, users_roles
+from routes import activity, admin, documents, invoicing, offline, purchases, reports, shops, storage, users_roles
 
 app = FastAPI(title="TREDI API")
 api = APIRouter(prefix="/api")
@@ -605,6 +605,7 @@ app.include_router(documents.router)
 app.include_router(invoicing.router)
 app.include_router(activity.router)
 app.include_router(storage.router)
+app.include_router(admin.router)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 

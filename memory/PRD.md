@@ -102,3 +102,24 @@ The live tredibooks MySQL database was copied into this app — 14,512 records a
 289 suppliers, 67 expenses and 64 bank accounts. Traders sign in with their existing
 passwords (bcrypt hashes carried over). Nothing was deleted on either side and the
 script is idempotent — see /app/memory/migration_notes.md.
+
+## Pass 6 — Super Admin web panel (June 2026)
+Source: user-supplied `tredi-superadmin-webapp-flows.html` (SA.1–SA.18 + W.1–W.4 + flow map).
+User choices this pass: all 18 admin screens at once · design-accurate with **sample data** first (live wiring later) · email+password login, no 2FA · destructive actions functional and audited.
+
+**Where it lives** — desktop web section of the same Expo app at `/admin` (React Native Web). The preview environment exposes one web port, so a separate standalone deployment was not possible; the panel has its own session (`tredi_admin_token`), its own stack/layout and no phone chrome, so it can be split out later without touching the mobile client.
+
+**Screens shipped** — SA.1 Sign in, SA.2 Overview (Needs attention above the chart), SA.3 Businesses, SA.4 Business detail (+ danger zone), SA.5 Shops & users, SA.6 Subscriptions, SA.7 Plans & pricing, SA.8 Users, SA.9 Roles & permission matrix, SA.10 Security monitor, SA.11 Audit log, SA.12 Analytics (aggregate-only boundary), SA.13 Sync & offline monitor, SA.14 System health, SA.15 Global configuration, SA.16 Backup & snapshots, SA.17 Migration console, SA.18 Support access & broadcast.
+
+**Backend** — `/app/backend/routes/admin.py` (`/api/admin/*`, 30-min admin JWT, `scope: admin` claim) and `/app/backend/admin_seed.py` (lazy sample seed into `admin_tenants`, `admin_users`, `admin_audit`, `admin_sync`, `admin_snapshots`, `admin_migrations`, `admin_support`, `admin_broadcasts`, `admin_plans`, `admin_config`, `admin_services`, `admin_errors`, `admin_signals`, `admin_accounts`). Every mutating action writes an `admin_audit` row; suspend and schedule-deletion refuse to run without a reason; migration commit refuses before a dry run and always takes a pre-migration snapshot.
+
+**Login** — superadmin@tredi.app / tredi1234.
+
+**Tested** — `/app/backend/tests/test_admin_panel.py` 47/47 pass, mobile suite 24/24 still pass, frontend pass on all 15 nav destinations (iteration_6.json).
+
+**Still open from the same document (not built)**: W.1–W.4 desktop *tenant* web app (dashboard, invoice builder, quick sale, stock bulk edit), and wiring the panel to live tenant collections instead of the `admin_*` samples.
+
+## Also fixed this pass (mobile)
+- Home hero card: total-sales figure auto-shrinks, Received/Owed column constrained — no more overflow past the card edge.
+- Home top bar: icon buttons 36px, wider gaps, and `paddingTop: insets.top + 14` (a stray `paddingVertical` was overriding the status-bar inset, so the icons touched the status bar).
+- Bottom sheets: nested `SafeAreaProvider` inside the Modal + `navigationBarTranslucent`, so action buttons (e.g. "Apply to all reports") clear the Android navigation bar.
