@@ -35,6 +35,7 @@ export default function AdminLogin() {
   const ctx = useQuery({ queryKey: ["admin-context"], queryFn: () => adminApi("/auth/context"), retry: false });
   const [email, setEmail] = useState("superadmin@tredi.app");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -84,7 +85,8 @@ export default function AdminLogin() {
             <Lbl>Email</Lbl>
             <Input value={email} onChangeText={setEmail} placeholder="you@tredi.app" testID="admin-email" />
             <Lbl>Password</Lbl>
-            <Input value={password} onChangeText={setPassword} placeholder="••••••••" testID="admin-password" />
+            <Input value={password} onChangeText={setPassword} placeholder="••••••••" testID="admin-password"
+              secure showSecure={showPassword} onToggleSecure={() => setShowPassword((v) => !v)} />
           </View>
           {error ? <Note tone="bad" title="Not signed in">{error}</Note> : null}
           <Btn label="Continue" tone="primary" busy={busy} onPress={submit} testID="admin-login-submit" />

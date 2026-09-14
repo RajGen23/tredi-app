@@ -153,9 +153,10 @@ export function Btn({ label, onPress, tone = "ghost", icon, disabled, busy, test
   );
 }
 
-export function Input({ value, onChangeText, placeholder, width, icon, testID, keyboardType, multiline }: {
+export function Input({ value, onChangeText, placeholder, width, icon, testID, keyboardType, multiline, secure, onToggleSecure, showSecure }: {
   value: string; onChangeText: (v: string) => void; placeholder?: string; width?: number | string; icon?: IonName;
-  testID?: string; keyboardType?: "default" | "numeric"; multiline?: boolean;
+  testID?: string; keyboardType?: "default" | "numeric"; multiline?: boolean; secure?: boolean;
+  onToggleSecure?: () => void; showSecure?: boolean;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -170,8 +171,16 @@ export function Input({ value, onChangeText, placeholder, width, icon, testID, k
         placeholderTextColor={colors.ink40}
         keyboardType={keyboardType}
         multiline={multiline}
-        style={[s.input, icon ? { paddingLeft: 30 } : null, multiline ? { height: 76, paddingTop: 9, textAlignVertical: "top" } : null]}
+        secureTextEntry={secure && !showSecure}
+        autoCapitalize={secure ? "none" : undefined}
+        autoCorrect={secure ? false : undefined}
+        style={[s.input, icon ? { paddingLeft: 30 } : null, onToggleSecure ? { paddingRight: 38 } : null, multiline ? { height: 76, paddingTop: 9, textAlignVertical: "top" } : null]}
       />
+      {onToggleSecure ? (
+        <Pressable testID={`${testID}-toggle`} onPress={onToggleSecure} hitSlop={8} style={{ position: "absolute", right: 10, top: 9 }}>
+          <Ionicons name={showSecure ? "eye-off-outline" : "eye-outline"} size={17} color={colors.ink60} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }

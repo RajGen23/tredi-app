@@ -28,6 +28,7 @@ export default function SignIn() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -62,7 +63,13 @@ export default function SignIn() {
         <View style={{ gap: 10, marginTop: 18 }}>
           {mode === "up" ? <Field testID="sign-up-name" label="Your name" value={name} onChangeText={setName} placeholder="Adaeze Okafor" autoCapitalize="words" /> : null}
           <Field testID="sign-in-email" label="Email" value={email} onChangeText={setEmail} placeholder="you@shop.ng" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
-          <Field testID="sign-in-password" label="Password" value={password} onChangeText={setPassword} placeholder="••••••••" secureTextEntry onSubmitEditing={submit} returnKeyType="go" />
+          <Field testID="sign-in-password" label="Password" value={password} onChangeText={setPassword} placeholder="••••••••"
+            secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} onSubmitEditing={submit} returnKeyType="go"
+            right={
+              <Pressable testID="sign-in-password-toggle" hitSlop={10} onPress={() => setShowPassword((v) => !v)}>
+                <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={19} color={colors.ink60} />
+              </Pressable>
+            } />
         </View>
         {err ? <Text style={s.err} testID="sign-in-error">{err}</Text> : null}
         <Card style={s.restore}>
