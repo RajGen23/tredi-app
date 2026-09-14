@@ -1,29 +1,18 @@
-// 00.1 Splash — green field, the tredi mark, then route by auth state.
+// 00.1 Splash — green field, the tredi logo, then route by auth state.
 import { useEffect } from "react";
-import { Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import Svg, { Path, Circle } from "react-native-svg";
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import { StatusBar } from "expo-status-bar";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 
 import { useAuth } from "@/src/auth";
 import { fonts, makeStyles } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
-  word: { fontFamily: fonts.extrabold, fontSize: 40, color: c.onSurfaceInverse, letterSpacing: -1.6, marginTop: 14 },
+  logo: { width: 236, height: 87 },
   tagline: { position: "absolute", bottom: 40, fontFamily: fonts.medium, fontSize: 13, color: c.onDeepSoft },
 }));
-
-export function TrediMark({ size = 62, color = "#014747" }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M6 3v13.2c0 1.4 1.7 2.1 2.7 1.1L18 8" stroke={color} strokeWidth={4.6} strokeLinecap="round" />
-      <Path d="M12.6 15.4 17 19.8" stroke={color} strokeWidth={4.6} strokeLinecap="round" />
-      <Circle cx="12.4" cy="8.6" r="2.5" fill="#FFFFFF" />
-    </Svg>
-  );
-}
 
 export default function Splash() {
   const s = useStyles();
@@ -53,8 +42,7 @@ export default function Splash() {
     <View style={s.root} testID="splash-screen">
       <StatusBar style="light" />
       <Animated.View style={[{ alignItems: "center" }, anim]}>
-        <TrediMark />
-        <Text style={s.word}>tredi</Text>
+        <Image source={require("../assets/images/tredi-logo-green.png")} style={s.logo} resizeMode="contain" testID="splash-logo" />
       </Animated.View>
       <Text style={s.tagline}>Sales, stock and debtors — one book</Text>
     </View>
