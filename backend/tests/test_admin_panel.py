@@ -193,12 +193,14 @@ class TestUsers:
             assert r.status_code == 200
 
     def test_unlock_musa(self, h):
-        r = requests.get(f"{BASE_URL}/api/admin/users?tab=locked&q=Musa", headers=h)
+        # The seed ships Musa locked, but an earlier run may already have
+        # unlocked him — unlocking must work (and stay idempotent) either way.
+        r = requests.get(f"{BASE_URL}/api/admin/users?q=Musa", headers=h)
         assert r.status_code == 200
         rows = r.json()["rows"]
         musa = next((u for u in rows if "Musa" in u["name"]), None)
-        assert musa is not None, "Musa Bello (locked) not found"
-        assert musa["status"] == "locked"
+        assert musa is not None, "Musa Bello not found in the sample data"
+        assert musa["status"] in ("locked", "active")
         r2 = requests.post(f"{BASE_URL}/api/admin/users/{musa['id']}/unlock", headers=h)
         assert r2.status_code == 200
         # Verify
@@ -342,6 +344,13 @@ class TestMigration:
         m = next((m for m in r.json()["rows"] if not m["committed"] and m["step"] >= 3), None)
         if not m:
             m = next((m for m in r.json()["rows"] if not m["committed"]), None)
+        if not m:
+            # Every sample ingest is already committed (an earlier run did it) —
+            # then a second commit must be refused instead of importing twice.
+            done = r.json()["rows"][0]
+            again = requests.post(f"{BASE_URL}/api/admin/migration/{done['id']}/commit", headers=h)
+            assert again.status_code == 400
+            return
         mid = m["id"]
 
         # Get detail

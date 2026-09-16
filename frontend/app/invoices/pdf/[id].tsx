@@ -1,5 +1,6 @@
 // 04.7 PDF viewer — paper on a dark board, Download / Share pinned.
-import { ScrollView, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Image, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +11,8 @@ import { api } from "@/src/api";
 import { AppBar, Btn, Divider, H4, IconBtn, Lbl, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { longDate, money } from "@/src/format";
+import { buildInvoiceHtml, DEFAULT_BRAND } from "@/src/invoice-templates";
+import { photoUrl } from "@/src/uploads";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -23,25 +26,6 @@ const useStyles = makeStyles((c) => ({
   bar: { flexDirection: "row", gap: 8, paddingHorizontal: 14, paddingTop: 10 },
 }));
 
-export function buildInvoiceHtml(inv: any): string {
-  const b = inv.business ?? {};
-  const hasDisc = inv.lines.some((l: any) => l.discount > 0);
-  const rows = inv.lines.map((l: any) => `<tr><td>${l.name}${l.note ? `<div style="color:#93A9A4;font-size:10px">${l.note}</div>` : ""}</td><td class="r">${l.quantity}</td><td class="r">${money(l.unit_price, { symbol: false })}</td>${hasDisc ? `<td class="r">${l.discount ? money(l.discount, { symbol: false }) : "—"}</td>` : ""}<td class="r">${money(l.total, { symbol: false })}</td></tr>`).join("");
-  return `<html><head><meta charset="utf-8"><style>body{font-family:-apple-system,Helvetica,Arial;color:#06241F;padding:28px;font-size:12px}.r{text-align:right}table{width:100%;border-collapse:collapse;margin-top:14px}th{color:#93A9A4;font-size:10px;text-align:left;padding:6px 0}td{padding:7px 0;border-top:1px solid #E5EEEB;font-variant-numeric:tabular-nums}.row{display:flex;justify-content:space-between;margin-top:4px}.lbl{font-size:9px;letter-spacing:.09em;color:#93A9A4;text-transform:uppercase;font-weight:700}</style></head><body>
-<div class="row"><div><div style="font-size:18px;font-weight:800;color:#014747">${b.name ?? ""}</div><div style="color:#93A9A4">${b.address ?? ""}</div><div style="color:#93A9A4">${b.tin ? `TIN ${b.tin}` : ""} ${b.phone ? `· ${b.phone}` : ""}</div></div><div style="text-align:right"><div class="lbl">Invoice</div><div style="font-weight:700">${inv.number}</div><div style="color:#93A9A4">${longDate(inv.created_at)}</div>${inv.due_date ? `<div style="color:#93A9A4">Due ${longDate(inv.due_date)}</div>` : ""}</div></div>
-<hr style="border:0;border-top:1px solid #E5EEEB;margin:14px 0"/><div class="lbl">Bill to</div><div style="font-weight:700">${inv.customer_name}</div><div style="color:#93A9A4">${inv.customer_phone ?? ""}</div>
-<table><tr><th>ITEM</th><th class="r">QTY</th><th class="r">RATE</th>${hasDisc ? '<th class="r">DISCOUNT</th>' : ""}<th class="r">AMOUNT</th></tr>${rows}</table>
-<hr style="border:0;border-top:1px solid #E5EEEB;margin:12px 0"/>
-<div class="row"><span>Gross</span><span>${money(inv.totals.gross, { symbol: false })}</span></div>
-${inv.totals.line_discount ? `<div class="row"><span>Line discounts</span><span>(${money(inv.totals.line_discount, { symbol: false })})</span></div>` : ""}
-${inv.totals.invoice_discount ? `<div class="row"><span>Less discount</span><span>(${money(inv.totals.invoice_discount, { symbol: false })})</span></div>` : ""}
-${inv.totals.vat ? `<div class="row"><span>VAT ${inv.vat_rate}%</span><span>${money(inv.totals.vat, { symbol: false })}</span></div>` : ""}
-<div class="row"><span>Paid to date</span><span>${money(inv.paid, { symbol: false })}</span></div>
-<div class="row" style="background:#E9FBF4;padding:9px 10px;border-radius:6px;margin-top:8px;font-weight:700"><span>Balance due</span><span>${money(inv.due)}</span></div>
-<p style="color:#93A9A4;font-size:10px;margin-top:18px">${inv.note || "Goods sold are not returnable after 7 days. Thank you for your business."}</p>
-<div class="row" style="border-top:1px solid #E5EEEB;padding-top:8px;color:#93A9A4;font-size:10px"><span>Thank you for your business</span><span style="color:#014747;font-weight:700">■ Made with tredi</span></div></body></html>`;
-}
-
 export default function PdfViewer() {
   const s = useStyles();
   const { colors } = useTheme();
@@ -49,13 +33,22 @@ export default function PdfViewer() {
   const toast = useToast();
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useQuery({ queryKey: ["invoice", id], queryFn: () => api(`/invoices/${id}`) });
+  const settings = useQuery({ queryKey: ["invoice-settings"], queryFn: () => api("/settings/invoice") });
+  const [logo, setLogo] = useState("");
   const inv = q.data;
+  const brand = { ...DEFAULT_BRAND, ...(settings.data ?? {}), logo_url: logo };
+
+  useEffect(() => {
+    const url = settings.data?.logo_url;
+    if (!url) return setLogo("");
+    photoUrl(url).then(setLogo);
+  }, [settings.data?.logo_url]);
   const hasDisc = inv?.lines.some((l: any) => l.discount > 0);
 
   const share = async (print?: boolean) => {
     if (!inv) return;
     try {
-      const html = buildInvoiceHtml(inv);
+      const html = buildInvoiceHtml(inv, brand);
       if (print) return await Print.printAsync({ html });
       const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: `${inv.number}.pdf` });
@@ -72,7 +65,9 @@ export default function PdfViewer() {
         <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }}>
           <View style={s.paper} testID="pdf-paper">
             <Row between style={{ alignItems: "flex-start" }}>
-              <View><Text style={s.biz}>{inv.business?.name}</Text><Tag>{inv.business?.address}</Tag>{inv.business?.tin ? <Tag>TIN {inv.business.tin}</Tag> : null}</View>
+              <View style={{ flex: 1 }}>
+                {logo ? <Image source={{ uri: logo }} style={{ width: brand.logo_size * 1.6, height: brand.logo_size * 0.5, marginBottom: 6 }} resizeMode="contain" testID="pdf-logo" /> : null}
+                <Text style={[s.biz, { color: brand.brand_color }]}>{inv.business?.name}</Text><Tag>{inv.business?.address}</Tag>{inv.business?.tin ? <Tag>TIN {inv.business.tin}</Tag> : null}</View>
               <View style={{ alignItems: "flex-end" }}><Lbl>Invoice</Lbl><Money size={12}>{inv.number}</Money><Tag>{longDate(inv.created_at)}</Tag></View>
             </Row>
             <Divider />
@@ -91,10 +86,13 @@ export default function PdfViewer() {
             {inv.totals.invoice_discount ? <Row between style={{ marginTop: 3 }}><Sub>Less discount</Sub><Money size={10.5} tone="pos">({money(inv.totals.invoice_discount, { symbol: false })})</Money></Row> : null}
             {inv.totals.vat ? <Row between style={{ marginTop: 3 }}><Sub>VAT {inv.vat_rate}%</Sub><Money size={10.5}>{money(inv.totals.vat, { symbol: false })}</Money></Row> : null}
             <Row between style={{ marginTop: 3 }}><Sub>Paid to date</Sub><Money size={10.5}>{money(inv.paid, { symbol: false })}</Money></Row>
-            <Row between style={s.mint}><H4>Balance due</H4><Money size={13}>{money(inv.due)}</Money></Row>
+            <Row between style={[s.mint, { backgroundColor: brand.brand_color }]}>
+              <H4 style={{ color: "#FFFFFF" }}>Balance due</H4>
+              <Money size={13} style={{ color: "#FFFFFF" }}>{money(inv.due)}</Money>
+            </Row>
             <Tag style={{ marginTop: 9, lineHeight: 15 }}>{inv.note || "Goods sold are not returnable after 7 days. Thank you for your business."}</Tag>
             <Row between style={{ marginTop: 9, paddingTop: 7, borderTopWidth: 1, borderTopColor: colors.border }}>
-              <Tag>Thank you for your business</Tag>
+              <Tag>{brand.footer || "Thank you for your business"}</Tag>
               <Row style={{ gap: 4 }}><View style={s.mark} /><Tag style={{ fontFamily: fonts.bold, color: colors.deep }}>Made with tredi</Tag></Row>
             </Row>
           </View>

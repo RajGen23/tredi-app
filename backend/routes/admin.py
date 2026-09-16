@@ -655,6 +655,8 @@ async def commit(mid: str, admin: Admin):
     m = await db.admin_migrations.find_one({"_id": oid(mid)})
     if not m:
         raise HTTPException(404, "Migration not found")
+    if m["committed"]:
+        raise HTTPException(400, "This import has already been committed")
     if m["step"] < 3:
         raise HTTPException(400, "Run the dry run before committing")
     await db.admin_snapshots.insert_one({"taken": now(), "type": "pre_migration", "scope": m["tenant"], "size_gb": 1.2, "verified": True})

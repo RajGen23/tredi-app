@@ -112,6 +112,12 @@ export default function InvoiceSettings() {
         <Seg testID="settings-print-format" value={f.print_format} onChange={(v) => setF({ ...f, print_format: v })}
           options={[{ key: "a4", label: "A4 PDF" }, { key: "80mm", label: "80mm" }, { key: "58mm", label: "58mm" }]} />
 
+        <Li last testID="settings-templates" style={{ marginTop: 14 }} onPress={() => router.push("/settings/invoice-template")}>
+          <Av icon="color-palette-outline" tone="green" />
+          <View style={{ flex: 1 }}><H4>Invoice templates</H4><Sub>Logo, brand colour and the six layouts</Sub></View>
+          <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
+        </Li>
+
         <Li last testID="settings-terms" style={{ marginTop: 14 }} onPress={() => router.push("/settings/terms")}>
           <Av icon="document-text-outline" tone="sq" />
           <View style={{ flex: 1 }}><H4>Terms of payment</H4><Sub>{f.terms_sets} saved set{f.terms_sets === 1 ? "" : "s"}</Sub></View>

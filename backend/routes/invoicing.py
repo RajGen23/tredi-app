@@ -30,6 +30,11 @@ class InvoiceSettingsIn(BaseModel):
     default_bank_account_id: Optional[str] = None
     attach_terms: bool = True
     footer: str = "Thank you for your business"
+    # 04.10b invoice templates — how the document looks
+    template: Literal["t1", "t2", "t3", "t4", "t5", "t6"] = "t3"
+    brand_color: str = "#014747"
+    logo_url: str = ""
+    logo_size: int = 90
 
 
 class TermsIn(BaseModel):
@@ -76,7 +81,12 @@ async def get_invoice_settings(user: CurrentUser):
 @router.put("/settings/invoice")
 async def put_invoice_settings(data: InvoiceSettingsIn, user: CurrentUser):
     f = biz_filter(user)
-    await db.businesses.update_one({"_id": ObjectId(f["business_id"])}, {"$set": {"settings.invoice": data.model_dump()}})
+    biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})
+    current = (biz.get("settings") or {}).get("invoice") or {}
+    # Merge, so a screen that only sends the fields it owns (numbering, or the
+    # template) never resets the rest to model defaults.
+    merged = {**InvoiceSettingsIn().model_dump(), **current, **data.model_dump(exclude_unset=True)}
+    await db.businesses.update_one({"_id": ObjectId(f["business_id"])}, {"$set": {"settings.invoice": merged}})
     return await get_invoice_settings(user)
 
 

@@ -123,3 +123,10 @@ User choices this pass: all 18 admin screens at once · design-accurate with **s
 - Home hero card: total-sales figure auto-shrinks, Received/Owed column constrained — no more overflow past the card edge.
 - Home top bar: icon buttons 36px, wider gaps, and `paddingTop: insets.top + 14` (a stray `paddingVertical` was overriding the status-bar inset, so the icons touched the status bar).
 - Bottom sheets: nested `SafeAreaProvider` inside the Modal + `navigationBarTranslucent`, so action buttons (e.g. "Apply to all reports") clear the Android navigation bar.
+
+## Pass 7 — Invoice templates (04.10b, from the WhatsApp walkthrough video)
+The reference app's "Manage business → Invoice Templates" screen was missing. Built it:
+- `/settings/invoice-template` — logo upload (Emergent object storage, contextual photo permission with an Open Settings fallback), brand colour swatches + hex field, logo size Small 60 / Medium 90 / Large 120 + custom px, "Show product image on invoice" switch, and six template thumbnails drawn as live mini-layouts tinted with the chosen brand colour.
+- Linked from More → Business → "Invoice templates" and from the Invoice settings screen.
+- Backend: `InvoiceSettingsIn` gained `template` (t1–t6), `brand_color`, `logo_url`, `logo_size`; persisted under `businesses.settings.invoice`.
+- `src/invoice-templates.ts` holds the six document layouts (Classic, Banner, Minimal, Accent, Bold, Compact) and the print HTML; `invoices/pdf/[id].tsx` now renders the chosen template, the logo and the brand colour, and the on-screen paper preview is tinted to match.
