@@ -122,7 +122,7 @@ function professionalHtml(inv: any, brand: Brand): string {
     <td class="r">${money(l.total, { symbol: false })}</td></tr>`).join("");
 
   return `<html><head><meta charset="utf-8"><style>
-  body{font-family:-apple-system,Helvetica,Arial;color:#0B0B0B;padding:30px 28px;font-size:11.5px}
+  body{font-family:-apple-system,Helvetica,Arial;color:#0B0B0B;padding:30px 28px 62px;font-size:11.5px}
   .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${head};padding-bottom:14px}
   .title{font-size:26px;font-weight:800;letter-spacing:-0.5px;text-align:right}
   .num{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#555;text-align:right}
@@ -148,7 +148,7 @@ function professionalHtml(inv: any, brand: Brand): string {
   .tgroup{margin-bottom:8px}
   .tbody{font-size:10.5px;line-height:16px;margin-top:2px}
   .kv{display:flex;justify-content:space-between;font-size:10.5px;padding:2px 0}
-  .foot{display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #EDEDED;margin-top:24px;padding-top:9px;color:#8A8A8A;font-size:10px}
+  .foot{position:fixed;left:28px;right:28px;bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #EDEDED;padding-top:9px;color:#8A8A8A;font-size:10px}
   </style></head><body>
   <div class="top">
     <div>${logoTag(brand)}<div class="val" style="font-size:15px">${esc(b.name)}</div></div>
@@ -228,15 +228,15 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
          .band .mut,.band .lbl{color:${onHead};opacity:.75}.band .biz{color:${onHead}}`,
     t3: `.center{text-align:center;padding-bottom:12px}.center img{margin:0 auto 8px;display:block}
          .big{font-size:22px}.rule{border-top:1px solid #E5EEEB;border-bottom:1px solid #E5EEEB;padding:10px 0;margin-top:10px}`,
-    t4: `.accent{position:fixed;left:0;top:0;bottom:0;width:10px;background:${head}}body{padding-left:38px}`,
+    t4: `.accent{position:fixed;left:0;top:0;bottom:0;width:10px;background:${head}}body{padding-left:38px}.foot{left:38px}`,
     t5: `.dark{background:${head};color:${onHead};padding:20px;border-radius:12px;display:flex;justify-content:space-between}
          .inv{color:${onHead}}.dark .mut,.dark .lbl{color:${onHead};opacity:.7}
          table th{background:#F7FAF9}tr.z td{background:#FAFCFB}`,
-    t6: `body{font-size:11px;padding:20px}.compact .biz{font-size:14px}td,th{padding:5px 0}`,
+    t6: `body{font-size:11px;padding:20px 20px 56px}.compact .biz{font-size:14px}td,th{padding:5px 0}.foot{left:20px;right:20px}`,
   };
 
   return `<html><head><meta charset="utf-8"><style>
-  body{font-family:-apple-system,Helvetica,Arial;color:#06241F;padding:28px;font-size:12px}
+  body{font-family:-apple-system,Helvetica,Arial;color:#06241F;padding:28px 28px 60px;font-size:12px}
   .row{display:flex;justify-content:space-between;align-items:flex-start}
   .right{text-align:right}.r{text-align:right}.mt{margin-top:14px}
   .biz{font-size:18px;font-weight:800;color:${c}}
@@ -256,7 +256,7 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   .btitle{font-weight:800;font-size:12px;color:${c};margin-bottom:5px}
   .tgroup{margin-bottom:7px}.tbody{font-size:10.5px;line-height:16px;color:#3B4A47}
   .kv{display:flex;justify-content:space-between;font-size:10.5px;padding:2px 0}
-  .foot{display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #E5EEEB;padding-top:9px;margin-top:20px;color:#93A9A4;font-size:10px}
+  .foot{position:fixed;left:28px;right:28px;bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #E5EEEB;padding-top:9px;color:#93A9A4;font-size:10px}
   ${perTemplate[brand.template] ?? ""}
   </style></head><body>
   ${headers[brand.template] ?? headers.t1}
