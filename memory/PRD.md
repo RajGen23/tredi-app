@@ -151,3 +151,7 @@ The attached professional invoice carries a product image per line, so photos ar
 - `ItemIn.photo_url` and `LineIn.photo_url`; `decorate_invoice` back-fills a line's photo from its item, so invoices raised before photos existed still print them.
 - Upload from **New item** (photo card) and from **Item detail** (tap the box on any existing item) via `pickAndUploadPhoto()` in `src/uploads.ts` — one contextual permission flow with an Open Settings fallback, used by the templates screen too.
 - The invoice's own "Show item photos" switch overrides the global default; the PDF screen resolves each photo to a tokenised URL so images appear in the printed HTML (IMAGE column on Professional, thumbnail beside the item name on the others).
+
+## Pass 8c — Invoice footer branding + wording
+- The "■ Crafted with tredi" square is gone: the footer now carries the real tredi wordmark (dark logo, transparent background) inlined as a base64 PNG in `src/invoice-templates.ts` (`TREDI_MARK`) so a printed invoice never depends on the network. Small by design: 42×13. The in-app PDF preview uses the same art from `assets/images/tredi-wordmark.png`.
+- Professional template wording: the FROM block is now labelled **BRANCH**, and the rep line reads **Rep:** instead of "Shop Rep:".

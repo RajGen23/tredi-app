@@ -139,7 +139,10 @@ export default function PdfViewer() {
             <Tag style={{ marginTop: 9, lineHeight: 15 }}>{inv.note || "Goods sold are not returnable after 7 days. Thank you for your business."}</Tag>
             <Row between style={{ marginTop: 9, paddingTop: 7, borderTopWidth: 1, borderTopColor: colors.border }}>
               <Tag>{brand.footer || "Thank you for your business"}</Tag>
-              <Row style={{ gap: 4 }}><View style={s.mark} /><Tag style={{ fontFamily: fonts.bold, color: colors.deep }}>Made with tredi</Tag></Row>
+              <Row style={{ gap: 5 }}>
+                <Tag style={{ fontFamily: fonts.bold, color: colors.deep }}>{format === "professional" ? "Crafted with" : "Made with"}</Tag>
+                <Image source={require("../../../assets/images/tredi-wordmark.png")} style={{ width: 42, height: 13 }} resizeMode="contain" testID="pdf-tredi-mark" />
+              </Row>
             </Row>
           </View>
         </ScrollView>
