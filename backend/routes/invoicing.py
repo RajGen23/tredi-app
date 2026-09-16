@@ -31,10 +31,12 @@ class InvoiceSettingsIn(BaseModel):
     attach_terms: bool = True
     footer: str = "Thank you for your business"
     # 04.10b invoice templates — how the document looks
-    template: Literal["t1", "t2", "t3", "t4", "t5", "t6"] = "t3"
+    template: Literal["t1", "t2", "t3", "t4", "t5", "t6", "t7"] = "t3"
     brand_color: str = "#014747"
+    header_color: str = ""
     logo_url: str = ""
     logo_size: int = 90
+    export_format: Literal["simple", "professional"] = "professional"
 
 
 class TermsIn(BaseModel):
@@ -43,6 +45,7 @@ class TermsIn(BaseModel):
     delivery_condition: str = ""
     additional_notes: str = ""
     is_default: bool = False
+    shop: str = ""  # each set belongs to a shop/location, so it can be reused there
 
 
 class QuoteIn(BaseModel):

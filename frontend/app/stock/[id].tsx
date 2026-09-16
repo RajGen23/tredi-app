@@ -1,6 +1,6 @@
 // 05.4 Item detail + 05.5 Adjust stock sheet (reason required, priced live).
-import { useState } from "react";
-import { ScrollView, Text, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import dayjs from "dayjs";
 
 import { api } from "@/src/api";
+import { photoSource, pickAndUploadPhoto } from "@/src/uploads";
 import { useAuth } from "@/src/auth";
 import { AppBar, Av, Btn, Card, Divider, Field, H4, IconBtn, Li, Lbl, Loading, Money, Radio, Row, Seg, Sub, Tag } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
@@ -35,6 +36,35 @@ export default function ItemDetail() {
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useQuery({ queryKey: ["item", id], queryFn: () => api(`/items/${id}`) });
+  const [photoUri, setPhotoUri] = useState("");
+  const [uploading, setUploading] = useState(false);
+  useEffect(() => {
+    const url = q.data?.photo_url;
+    if (!url) return setPhotoUri("");
+    photoSource(url).then((src) => setPhotoUri(src.uri));
+  }, [q.data?.photo_url]);
+
+  const setPhoto = async () => {
+    setUploading(true);
+    try {
+      const url = await pickAndUploadPhoto();
+      if (!url) return;
+      const it = q.data;
+      await api(`/items/${id}`, { method: "PUT", json: {
+        name: it.name, kind: it.kind, category: it.category, unit: it.unit, barcode: it.barcode ?? "",
+        supplier: it.supplier ?? "", location: it.location ?? "", photo_url: url, cost_price: it.cost_price,
+        selling_price: it.selling_price, wholesale_price: it.wholesale_price ?? null, track_stock: it.track_stock,
+        alert_below: it.alert_below ?? 0, expiry: it.expiry ?? null,
+      } });
+      qc.invalidateQueries({ queryKey: ["item", id] });
+      qc.invalidateQueries({ queryKey: ["items"] });
+      toast.show("Photo saved — it prints beside this item on invoices");
+    } catch (e: any) {
+      toast.show(e.message ?? "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
   const it = q.data;
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"set" | "add" | "remove">("set");
@@ -62,8 +92,12 @@ export default function ItemDetail() {
         <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
           <Card>
             <Row>
-              <Av icon={it.kind === "service" ? "construct-outline" : "cube-outline"} tone="sq" size={40} />
-              <View style={{ flex: 1 }}><H4 style={{ fontSize: 15 }} testID="item-name">{it.name}</H4><Sub>{it.category} · {it.unit.toLowerCase()}{it.barcode ? <Text style={{ fontFamily: fonts.mono }}> · {it.barcode}</Text> : null}</Sub></View>
+              <Pressable testID="item-photo" onPress={setPhoto} disabled={uploading}>
+                {photoUri
+                  ? <Image source={{ uri: photoUri }} style={{ width: 40, height: 40, borderRadius: 11 }} testID="item-photo-image" />
+                  : <Av icon={uploading ? "cloud-upload-outline" : it.kind === "service" ? "construct-outline" : "cube-outline"} tone="sq" size={40} />}
+              </Pressable>
+              <View style={{ flex: 1 }}><H4 style={{ fontSize: 15 }} testID="item-name">{it.name}</H4><Sub>{photoUri ? "" : uploading ? "Uploading photo… " : "Tap the box to add a photo · "}{it.category} · {it.unit.toLowerCase()}{it.barcode ? <Text style={{ fontFamily: fonts.mono }}> · {it.barcode}</Text> : null}</Sub></View>
             </Row>
             <Divider />
             <View style={{ flexDirection: "row" }}>

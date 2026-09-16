@@ -29,9 +29,13 @@ class BusinessIn(BaseModel):
     name: str
     type: str = "Retail"
     currency: str = "NGN"
+    country: str = "NG"
     tin: str = ""
     address: str = ""
     phone: str = ""
+    email: str = ""
+    phones: List[str] = []   # extra numbers that print on the invoice
+    emails: List[str] = []   # extra addresses, e.g. accounts@
     track_stock: bool = True
     shop_name: str = "Main branch"
 
@@ -49,6 +53,7 @@ class CustomerIn(BaseModel):
 
 class ItemIn(BaseModel):
     name: str
+    photo_url: str = ""
     kind: Literal["product", "service"] = "product"
     category: str = "General"
     unit: str = "Piece"
@@ -85,6 +90,11 @@ class InvoiceIn(BaseModel):
     note: str = ""
     shop: str = ""
     terms_id: Optional[str] = None
+    # 04.5 review-screen options
+    shipping_fee: float = 0
+    bank_account_ids: List[str] = []
+    credit_applied: float = 0
+    show_photos: Optional[bool] = None
 
 
 class SaleIn(BaseModel):
@@ -174,7 +184,9 @@ async def get_business(user: Annotated[dict, Depends(current_user)]):
 
 @api.put("/business")
 async def update_business(data: BusinessIn, user: Annotated[dict, Depends(current_user)]):
-    await db.businesses.update_one({"_id": ObjectId(user["business_id"])}, {"$set": data.model_dump(exclude={"shop_name"})})
+    # Merge: a screen that only edits the profile must not reset the rest.
+    patch = data.model_dump(exclude={"shop_name"}, exclude_unset=True) or data.model_dump(exclude={"shop_name"})
+    await db.businesses.update_one({"_id": ObjectId(user["business_id"])}, {"$set": patch})
     return clean(await db.businesses.find_one({"_id": ObjectId(user["business_id"])}))
 
 
@@ -313,7 +325,7 @@ async def list_invoices(user: Annotated[dict, Depends(current_user)]):
 @api.post("/invoices/preview")
 async def preview_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_user)]):
     lines = [line_totals(l) for l in data.lines]
-    return {"lines": lines, "totals": invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate)}
+    return {"lines": lines, "totals": invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)}
 
 
 @api.post("/invoices", status_code=201)
@@ -322,7 +334,7 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
     if not data.lines:
         raise HTTPException(400, "Add at least one item")
     lines = [line_totals(l) for l in data.lines]
-    totals = invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate)
+    totals = invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)
     number = await next_number(f["business_id"], "invoice", "INV", 1000) if data.status == "issued" else "Draft"
     doc = {**data.model_dump(exclude={"lines"}), "lines": lines, "totals": totals, "number": number, **f, "created_by": user.get("name", ""), "created_at": now()}
     res = await db.invoices.insert_one(doc)
@@ -333,6 +345,13 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
         if data.payment_mode != "credit":
             await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": totals["total"], "account_id": data.account_id, "method": data.payment_mode,
                                           "allocations": [{"invoice_id": inv_id, "amount": totals["total"]}], "note": f"Paid at sale · {number}", "created_by": user.get("name", ""), "created_at": now()})
+        # Unused credit the customer already paid in: applied as a payment so the
+        # balance due drops and the ledger still balances.
+        credit = round(min(data.credit_applied, totals["total"]), 2)
+        if credit > 0 and data.customer_id:
+            await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": credit, "account_id": None, "method": "credit",
+                                          "allocations": [{"invoice_id": inv_id, "amount": credit}], "note": f"Unused credit applied · {number}",
+                                          "created_by": user.get("name", ""), "created_at": now(), "deleted_at": None})
     if data.status == "issued":
         await log_activity(f["business_id"], user, "invoice", f"{number} created", "", totals["total"], inv_id, data.shop)
         if totals["invoice_discount"]:

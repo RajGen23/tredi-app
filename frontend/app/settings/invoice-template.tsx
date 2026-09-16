@@ -81,6 +81,23 @@ function Thumb({ tpl, color }: { tpl: TemplateKey; color: string }) {
       </View>
     );
   }
+  if (tpl === "t7") {
+    return (
+      <View style={s.thumb}>
+        <Row style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+          <View style={{ gap: 2 }}>{line(22, 5, color)}{line(16, 2)}</View>
+          <View style={{ gap: 2, alignItems: "flex-end" }}>{line(24, 5, colors.onSurface)}{line(14, 2)}</View>
+        </Row>
+        <Row style={{ gap: 3, marginTop: 3 }}>{[0, 1, 2, 3].map((i) => <View key={i} style={{ flex: 1, gap: 2 }}>{line("80%", 2)}{line("60%", 2)}</View>)}</Row>
+        <View style={{ height: 6, borderRadius: 2, backgroundColor: colors.onSurface, marginTop: 3 }} />
+        {table}
+        <Row style={{ gap: 3, marginTop: 3 }}>
+          <View style={{ flex: 1, gap: 2 }}>{line("70%", 2)}{line("50%", 2)}</View>
+          <View style={{ flex: 1, gap: 2, alignItems: "flex-end" }}>{line("60%", 2)}<View style={{ height: 6, width: "80%", borderRadius: 2, backgroundColor: color }} /></View>
+        </Row>
+      </View>
+    );
+  }
   if (tpl === "t6") {
     return (
       <View style={s.thumb}>
@@ -125,7 +142,7 @@ export default function InvoiceTemplates() {
       json: {
         ...q.data,
         prefix: f.prefix, next_number: parseNum(String(f.next_number)), vat_rate: parseNum(String(f.vat_rate)),
-        template: f.template, brand_color: f.brand_color, logo_url: f.logo_url,
+        template: f.template, brand_color: f.brand_color, header_color: f.header_color ?? "", logo_url: f.logo_url, export_format: f.export_format ?? "professional",
         logo_size: Math.min(240, Math.max(30, parseNum(String(f.logo_size)) || 90)), show_photos: f.show_photos,
       },
     }),
@@ -206,6 +223,23 @@ export default function InvoiceTemplates() {
             right={<View style={[s.swatch, { backgroundColor: /^#[0-9A-F]{6}$/i.test(f.brand_color ?? "") ? f.brand_color : colors.surfaceTertiary, width: 26, height: 26 }]} />} />
         </Card>
 
+        <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Header background</Lbl>
+        <Card>
+          <Sub>Used behind the header block on Templates 2, 5 and Professional. Leave it on “Match brand” to follow the colour above.</Sub>
+          <Row style={{ gap: 8, flexWrap: "wrap", marginTop: 9 }}>
+            <Pressable testID="templates-header-match" onPress={() => setF({ ...f, header_color: "" })}
+              style={[s.size, { flexGrow: 0, paddingHorizontal: 12 }, !f.header_color && s.sizeOn]}>
+              <Text style={s.sizeText}>Match brand</Text>
+            </Pressable>
+            {["#0B0B0B", "#06241F", "#FFFFFF", "#2C6ECB", "#7A4BD0"].map((hex) => (
+              <Pressable key={hex} testID={`templates-header-${hex.replace("#", "")}`} onPress={() => setF({ ...f, header_color: hex })}
+                style={[s.swatch, { backgroundColor: hex }, f.header_color?.toUpperCase() === hex && s.swatchOn]}>
+                {f.header_color?.toUpperCase() === hex ? <Ionicons name="checkmark" size={15} color={hex === "#FFFFFF" ? colors.onSurface : "#FFFFFF"} /> : null}
+              </Pressable>
+            ))}
+          </Row>
+        </Card>
+
         <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Logo size</Lbl>
         <Card>
           <Row style={{ gap: 8 }}>
@@ -226,6 +260,20 @@ export default function InvoiceTemplates() {
             <View style={{ flex: 1 }}><H4>Show product image on invoice</H4><Sub>Item photos print beside each line</Sub></View>
             <Switch on={!!f.show_photos} onChange={(v) => setF({ ...f, show_photos: v })} testID="templates-show-photos" />
           </Row>
+        </Card>
+
+        <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Default export format</Lbl>
+        <Card>
+          <Row style={{ gap: 8 }}>
+            {[{ k: "simple", t: "Simple", n: "One-page summary" }, { k: "professional", t: "Professional", n: "Full quotation" }].map((o) => (
+              <Pressable key={o.k} testID={`templates-format-${o.k}`} onPress={() => setF({ ...f, export_format: o.k })}
+                style={[s.size, (f.export_format ?? "professional") === o.k && s.sizeOn]}>
+                <Text style={s.sizeText}>{o.t}</Text>
+                <Sub style={{ fontSize: 10 }}>{o.n}</Sub>
+              </Pressable>
+            ))}
+          </Row>
+          <Sub style={{ marginTop: 8 }}>You can still switch format on any invoice before you share it.</Sub>
         </Card>
 
         <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Choose template</Lbl>

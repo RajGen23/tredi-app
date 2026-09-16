@@ -105,6 +105,7 @@ class LineIn(BaseModel):
     note: str = ""
     quick_add: bool = False
     unit: str = ""
+    photo_url: str = ""
 
 
 def line_totals(l: LineIn) -> dict:
@@ -113,7 +114,7 @@ def line_totals(l: LineIn) -> dict:
     return {**l.model_dump(), "gross": gross, "discount": disc, "total": round(gross - disc, 2)}
 
 
-def invoice_totals(lines: List[dict], dtype: str, dvalue: float, vat_rate: float) -> dict:
+def invoice_totals(lines: List[dict], dtype: str, dvalue: float, vat_rate: float, shipping: float = 0) -> dict:
     gross = round(sum(x["gross"] for x in lines), 2)
     line_disc = round(sum(x["discount"] for x in lines), 2)
     after_lines = gross - line_disc
@@ -126,7 +127,11 @@ def invoice_totals(lines: List[dict], dtype: str, dvalue: float, vat_rate: float
         inv_disc = round(min(dvalue, after_lines), 2)
     taxable = round(after_lines - inv_disc, 2)
     vat = round(taxable * vat_rate / 100, 2)
-    return {"gross": gross, "line_discount": line_disc, "invoice_discount": inv_disc, "taxable": taxable, "vat": vat, "total": round(taxable + vat, 2)}
+    # Delivery is a service the customer pays for, not goods sold: it sits after
+    # VAT and is never part of the taxable amount.
+    ship = round(max(0.0, shipping), 2)
+    return {"gross": gross, "line_discount": line_disc, "invoice_discount": inv_disc, "discount_total": round(line_disc + inv_disc, 2),
+            "taxable": taxable, "vat": vat, "shipping": ship, "total": round(taxable + vat + ship, 2)}
 
 
 async def next_number(business_id: str, key: str, prefix: str, start: int) -> str:
@@ -190,13 +195,38 @@ async def decorate_invoice(inv: dict) -> dict:
     out = clean(inv)
     paid = await invoice_paid(inv["business_id"], out["id"])
     out.update(invoice_status(inv, paid))
+    out["totals"].setdefault("shipping", 0)
+    out["totals"].setdefault("discount_total", round(out["totals"].get("line_discount", 0) + out["totals"].get("invoice_discount", 0), 2))
+    # Which bank accounts print on this document, and the terms set behind it.
+    ids = [i for i in (inv.get("bank_account_ids") or []) if ObjectId.is_valid(i)]
+    out["bank_accounts"] = [{"id": str(a["_id"]), "name": a.get("name", ""), "bank": a.get("bank", ""),
+                             "number": a.get("number", ""), "holder": a.get("holder", "")}
+                            async for a in db.accounts.find({"_id": {"$in": [ObjectId(i) for i in ids]}})] if ids else []
+    terms = await db.terms.find_one({"_id": ObjectId(inv["terms_id"])}) if ObjectId.is_valid(inv.get("terms_id") or "") else None
+    out["terms"] = {"name": terms.get("name", ""), "payment_structure": terms.get("payment_structure", ""),
+                    "delivery_condition": terms.get("delivery_condition", ""), "additional_notes": terms.get("additional_notes", ""),
+                    "shop": terms.get("shop", "")} if terms else None
+    # Item photos: taken from the line snapshot, or from the item if the line was
+    # raised before photos existed.
+    missing = [ObjectId(l["item_id"]) for l in out.get("lines", [])
+               if not l.get("photo_url") and ObjectId.is_valid(l.get("item_id") or "")]
+    if missing:
+        photos = {str(i["_id"]): i.get("photo_url", "") async for i in db.items.find({"_id": {"$in": missing}})}
+        for l in out["lines"]:
+            if not l.get("photo_url"):
+                l["photo_url"] = photos.get(l.get("item_id") or "", "")
+    out["payments"] = [{"method": p.get("method", "cash"), "amount": sum(a["amount"] for a in p.get("allocations", []) if a["invoice_id"] == out["id"]),
+                        "date": p["created_at"].isoformat() if hasattr(p.get("created_at"), "isoformat") else ""}
+                       async for p in db.payments.find({"business_id": inv["business_id"], "deleted_at": None, "allocations.invoice_id": out["id"]}).sort("created_at", 1)]
     if inv.get("customer_id"):
         c = await db.customers.find_one({"_id": ObjectId(inv["customer_id"])})
         out["customer_name"] = c["name"] if c else "Cash sale"
         out["customer_phone"] = c.get("phone", "") if c else ""
+        out["customer_address"] = c.get("address", "") if c else ""
     else:
         out["customer_name"] = "Cash sale"
         out["customer_phone"] = ""
+        out["customer_address"] = ""
     return out
 
 

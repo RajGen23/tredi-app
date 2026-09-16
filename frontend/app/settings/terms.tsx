@@ -9,7 +9,7 @@ import { AppBar, Badge, Btn, Card, Empty, Field, H4, IconBtn, Lbl, Loading, Row,
 import { Sheet, useToast } from "@/src/components/sheet";
 import { makeStyles } from "@/src/theme";
 
-const blank = { id: "", name: "", payment_structure: "", delivery_condition: "", additional_notes: "", is_default: false };
+const blank = { id: "", name: "", payment_structure: "", delivery_condition: "", additional_notes: "", is_default: false, shop: "" };
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
@@ -20,10 +20,12 @@ export default function Terms() {
   const qc = useQueryClient();
   const [edit, setEdit] = useState<typeof blank | null>(null);
   const q = useQuery({ queryKey: ["terms"], queryFn: () => api("/terms") });
+  const shopsQ = useQuery({ queryKey: ["shops"], queryFn: () => api<any>("/shops") });
+  const shops: string[] = ["", ...((shopsQ.data?.shops ?? []).map((x: any) => x.name ?? x))];
 
   const save = useMutation({
     mutationFn: () => {
-      const body = { name: edit!.name, payment_structure: edit!.payment_structure, delivery_condition: edit!.delivery_condition, additional_notes: edit!.additional_notes, is_default: edit!.is_default };
+      const body = { name: edit!.name, payment_structure: edit!.payment_structure, delivery_condition: edit!.delivery_condition, additional_notes: edit!.additional_notes, is_default: edit!.is_default, shop: edit!.shop ?? "" };
       return edit!.id ? api(`/terms/${edit!.id}`, { method: "PUT", json: body }) : api("/terms", { method: "POST", json: body });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["terms"] }); setEdit(null); toast.show("Terms saved"); },
@@ -46,7 +48,7 @@ export default function Terms() {
         ) : q.data.map((t: any) => (
           <Card key={t.id} style={{ marginBottom: 9 }} testID={`terms-${t.id}`}>
             <Row between>
-              <View style={{ flex: 1 }}><H4>{t.name}</H4><Sub>{t.sections} section{t.sections === 1 ? "" : "s"}</Sub></View>
+              <View style={{ flex: 1 }}><H4>{t.name}</H4><Sub>{t.shop ? `${t.shop} · ` : "All shops · "}{t.sections} section{t.sections === 1 ? "" : "s"}</Sub></View>
               {t.is_default ? <Badge tone="paid">Attached by default</Badge> : null}
             </Row>
             {t.payment_structure ? <><Lbl style={{ marginTop: 10 }}>Payment structure</Lbl><Sub>{t.payment_structure}</Sub></> : null}
@@ -71,6 +73,13 @@ export default function Terms() {
               onChangeText={(v) => setEdit({ ...edit, delivery_condition: v })} testID="terms-delivery" style={{ marginTop: 8 }} />
             <Field label="Additional notes" multiline placeholder="Payment is confirmed only after it reflects in the bank." value={edit.additional_notes}
               onChangeText={(v) => setEdit({ ...edit, additional_notes: v })} testID="terms-notes" style={{ marginTop: 8 }} />
+            <Field label="Shop or location" value={edit.shop || "All shops"} style={{ marginTop: 8 }} testID="terms-shop"
+              right={<Sub>⌄</Sub>}
+              onPress={() => {
+                const i = shops.indexOf(edit.shop ?? "");
+                setEdit({ ...edit, shop: shops[(i + 1) % Math.max(1, shops.length)] ?? "" });
+              }} />
+            <Sub style={{ marginTop: 4 }}>{"Sets tied to a shop only come up on that shop's invoices."}</Sub>
             <Row between style={{ marginTop: 12 }}>
               <View style={{ flex: 1 }}><H4>Attach by default</H4><Sub>On invoices and quotations</Sub></View>
               <Switch on={edit.is_default} onChange={(v) => setEdit({ ...edit, is_default: v })} testID="terms-default" />

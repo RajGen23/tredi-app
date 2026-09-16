@@ -1,6 +1,6 @@
 // 05.2 New item · details → 05.3 Pricing & stock.
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
+import { photoSource, pickAndUploadPhoto } from "@/src/uploads";
 import { AppBar, Av, Btn, Card, Divider, Field, H4, Lbl, Money, Seg, Sub, Switch, Tag } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { money, parseNum, slashDate } from "@/src/format";
@@ -33,6 +34,9 @@ export default function NewItem() {
   const qc = useQueryClient();
   const toast = useToast();
   const [step, setStep] = useState<0 | 1>(0);
+  const [photo, setPhoto] = useState("");
+  const [photoUri, setPhotoUri] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [kind, setKind] = useState<"product" | "service">("product");
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Grains");
@@ -52,7 +56,7 @@ export default function NewItem() {
   const marginPct = parseNum(sell) ? (margin / parseNum(sell)) * 100 : 0;
 
   const m = useMutation({
-    mutationFn: () => api("/items", { method: "POST", json: { name, kind, category, unit, barcode, supplier, location, cost_price: parseNum(cost), selling_price: parseNum(sell), wholesale_price: wholesale ? parseNum(wholesale) : null, track_stock: kind === "product" && track, quantity: parseNum(qty), alert_below: parseNum(alert), expiry: expiryOn ? expiry : null } }),
+    mutationFn: () => api("/items", { method: "POST", json: { name, kind, category, unit, barcode, supplier, location, photo_url: photo, cost_price: parseNum(cost), selling_price: parseNum(sell), wholesale_price: wholesale ? parseNum(wholesale) : null, track_stock: kind === "product" && track, quantity: parseNum(qty), alert_below: parseNum(alert), expiry: expiryOn ? expiry : null } }),
     onSuccess: (it: any) => { ["items", "dashboard"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast.show(`${it.name} added to stock`, "Saved."); router.replace(`/stock/${it.id}`); },
   });
 
@@ -66,10 +70,32 @@ export default function NewItem() {
               <Av icon="business-outline" tone="sq" size={24} />
               <View style={{ flex: 1 }}><Field value={supplier} onChangeText={setSupplier} placeholder="Supplier — optional" style={{ borderWidth: 0, paddingHorizontal: 0, minHeight: 34, backgroundColor: "transparent" }} testID="item-supplier" /></View>
             </Card>
-            <Card style={{ marginTop: 9, padding: 9, flexDirection: "row", gap: 7, alignItems: "center" }}>
-              <View style={s.photo}><Ionicons name="add" size={16} color={colors.ink40} /></View>
-              <View style={{ flex: 1 }}><H4>Photos</H4><Sub>Compressed to about 80 KB each — uploads on slow data</Sub></View>
-            </Card>
+            <Pressable testID="item-photo-add" disabled={uploading} onPress={async () => {
+              setUploading(true);
+              try {
+                const url = await pickAndUploadPhoto();
+                if (url) {
+                  setPhoto(url);
+                  setPhotoUri((await photoSource(url)).uri);
+                  toast.show("Photo added — it can print on invoices");
+                }
+              } catch (e: any) {
+                toast.show(e.message ?? "Upload failed");
+              } finally {
+                setUploading(false);
+              }
+            }}>
+              <Card style={{ marginTop: 9, padding: 9, flexDirection: "row", gap: 7, alignItems: "center" }}>
+                {photoUri
+                  ? <Image source={{ uri: photoUri }} style={{ width: 44, height: 44, borderRadius: 10 }} testID="item-photo-preview" />
+                  : <View style={s.photo}><Ionicons name={uploading ? "cloud-upload-outline" : "add"} size={16} color={colors.ink40} /></View>}
+                <View style={{ flex: 1 }}>
+                  <H4>Photo</H4>
+                  <Sub>{uploading ? "Uploading…" : photoUri ? "Tap to replace · prints beside the item on invoices" : "Compressed for slow data · prints beside the item on invoices"}</Sub>
+                </View>
+                <Ionicons name="chevron-forward" size={15} color={colors.ink40} />
+              </Card>
+            </Pressable>
             <View style={{ marginTop: 9 }}><Seg testID="item-kind" value={kind} onChange={(k) => { setKind(k); if (k === "service") setUnit("Service"); }} options={[{ key: "product", label: "Product" }, { key: "service", label: "Service" }]} /></View>
             <View style={{ gap: 10, marginTop: 10 }}>
               <Field testID="item-name" label="Item name" value={name} onChangeText={setName} placeholder="Adeba Rice 50kg" autoFocus />

@@ -265,3 +265,15 @@ agent_communication:
 agent_communication:
   - agent: "main"
     message: "Pass 7 complete: invoice templates shipped and the settings-overwrite bug fixed. Two pre-existing state-dependent tests (admin unlock, legacy migration idempotence) were made state-tolerant rather than left red — the migration one now asserts determinism plus 'existing rows are recognised', because the legacy MySQL source keeps growing upstream."
+
+  - task: "Invoice money model — per-item discount, shipping fee (untaxed), new totals order, bank/terms/credit options, Professional template"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/deps.py, /app/backend/server.py, /app/backend/routes/invoicing.py, /app/frontend/app/invoices/new.tsx, /app/frontend/app/invoices/pdf/[id].tsx, /app/frontend/src/invoice-templates.ts, /app/frontend/app/settings/business.tsx, /app/frontend/app/settings/terms.tsx, /app/frontend/app/settings/invoice-template.tsx"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "From the user's video walkthrough + attached professional invoice PDF. Backend: invoice_totals gains untaxed shipping + discount_total; InvoiceIn gains shipping_fee, bank_account_ids, credit_applied, show_photos; credit_applied posts a payment so balance due drops; decorate_invoice now returns shipping, bank_accounts, terms, payments, customer_address; TermsIn gains shop; BusinessIn gains country/email/phones/emails and PUT /business merges. Frontend: per-item DISC box with ₦/% toggle in the item card, shipping field on review, totals reordered to Gross Total/Total Discount/Subtotal/VAT/Shipping Fee/Grand Total + Amount Received/Balance Due, bank-account multi-select sheet, terms sheet filtered by shop, unused-credit switch, item photos switch, Simple↔Professional export switch, new /settings/business screen, terms get a shop, templates screen gains header colour + default export format. Verified by hand: preview API maths (113,000 gross, 5% line disc, VAT 8,051.25, +20,000 shipping = 135,401.25), browser run of the item discount box and review totals, and all 7 print templates rendered through node (professional layout screenshotted against the supplied PDF). 157 backend tests pass."
+      - working: true
+        agent: "main"
+        comment: "Follow-up from the user: the attached professional invoice shows product images. Added item photos end to end — ItemIn/LineIn photo_url, decorate_invoice back-fills from the item, upload on New item and Item detail, tokenised URLs for print, per-invoice photo switch overriding the global default. Verified: uploaded a photo to Adeba Rice via /api/upload + PUT /api/items/{id}, raised an invoice with show_photos, and the PDF screen rendered the thumbnail with correct maths (124,000 gross − 6,200 discount, VAT 8,835, +15,000 shipping = 141,635). Test business profile/footer values left by the testing agent were restored."

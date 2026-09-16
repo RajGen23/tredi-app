@@ -130,3 +130,24 @@ The reference app's "Manage business → Invoice Templates" screen was missing. 
 - Linked from More → Business → "Invoice templates" and from the Invoice settings screen.
 - Backend: `InvoiceSettingsIn` gained `template` (t1–t6), `brand_color`, `logo_url`, `logo_size`; persisted under `businesses.settings.invoice`.
 - `src/invoice-templates.ts` holds the six document layouts (Classic, Banner, Minimal, Accent, Bold, Compact) and the print HTML; `invoices/pdf/[id].tsx` now renders the chosen template, the logo and the brand colour, and the on-screen paper preview is tinted to match.
+
+## Pass 8 — Invoice money model (from the WhatsApp walkthrough + the Wichflow professional PDF)
+Decisions taken with the user: one invoice, two output formats (simple in-app, choose Simple/Professional on export); shipping fee is a single field on review, added after VAT and never taxed; the whole-invoice discount **stays** alongside the new per-item discounts and "Total Discount" is the sum of both; terms-of-payment sets stay tied to a shop; users pick from the 7 supplied templates and customise colour/logo/photos (saving their own named template is still open).
+
+Built:
+- **Per-item discount** box inside each item card on the Items step (type a value, tap ₦/% to switch). Backend already carried `discount_type`/`discount_value` per line.
+- **Shipping fee** on review: `invoice_totals(..., shipping)` adds it after VAT, `totals.shipping` is never in `taxable`.
+- **Totals in his wording and order** everywhere (review, PDF preview, all 7 print templates): Gross Total → Total Discount → Subtotal → VAT → Shipping Fee → Grand Total, then Amount Received → Balance Due when a payment exists. `totals.discount_total` added.
+- **Invoice bottom options**: tick which bank accounts print (`bank_account_ids`), terms-of-payment switch + set picker filtered by shop, apply the customer's unused credit (`credit_applied`, written as a payment so the ledger balances), item photos switch.
+- **Discount column** in the item table on every template (Qty | Rate | Discount | Amount), showing the percentage when that is how it was given.
+- **Template 7 "Professional"** in `src/invoice-templates.ts`: logo + INVOICE/number header, four-column meta (Issue/Due, Customer, Business, From + TIN), IMAGE column when photos are on, totals block, Terms of payment + Bank Details, payment-method breakdown, "Crafted with tredi" footer. Verified against the supplied PDF.
+- **Export format switch** on the PDF screen (Simple ↔ Professional) with a saved default in invoice settings (`export_format`).
+- **Templates screen** gained a separate Header background colour and the default export format.
+- **Business profile** screen (`/settings/business`, linked from More): name, TIN, country, main phone/email, extra phone numbers and emails, registered address, plus links to Shops, Addresses and Team. `PUT /api/business` now merges instead of overwriting.
+- **Terms sets** gained a Shop/location field (`shop`), and the invoice only offers sets for that shop.
+
+## Pass 8b — Item photos on the invoice
+The attached professional invoice carries a product image per line, so photos are now real data rather than a switch with nothing behind it:
+- `ItemIn.photo_url` and `LineIn.photo_url`; `decorate_invoice` back-fills a line's photo from its item, so invoices raised before photos existed still print them.
+- Upload from **New item** (photo card) and from **Item detail** (tap the box on any existing item) via `pickAndUploadPhoto()` in `src/uploads.ts` — one contextual permission flow with an Open Settings fallback, used by the templates screen too.
+- The invoice's own "Show item photos" switch overrides the global default; the PDF screen resolves each photo to a tokenised URL so images appear in the printed HTML (IMAGE column on Professional, thumbnail beside the item name on the others).

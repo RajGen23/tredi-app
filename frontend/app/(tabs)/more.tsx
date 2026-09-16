@@ -25,6 +25,7 @@ const GROUPS: { title: string; items: { label: string; sub: string; icon: IonNam
   ] },
   { title: "Business", items: [
     { label: "Users & permissions", sub: "Roles, scope, app lock", icon: "shield-checkmark-outline", route: "/team", testID: "more-users" },
+    { label: "Business profile", sub: "Name, TIN, country, phones and emails", icon: "briefcase-outline", route: "/settings/business", testID: "more-business-profile" },
     { label: "Invoice settings", sub: "Numbering, VAT, conditions of sale", icon: "options-outline", route: "/settings/invoice", testID: "more-invoice-settings" },
     { label: "Invoice templates", sub: "Logo, brand colour, six layouts", icon: "color-palette-outline", route: "/settings/invoice-template", testID: "more-invoice-templates" },
     { label: "Terms of payment", sub: "Named sets reused on documents", icon: "reader-outline", route: "/settings/terms", testID: "more-terms" },
