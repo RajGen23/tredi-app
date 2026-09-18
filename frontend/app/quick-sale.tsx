@@ -1,6 +1,6 @@
 // 04.17 Quick sale + 04.18 Sale saved.
-import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { money, parseNum } from "@/src/format";
+import { photoSource } from "@/src/uploads";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Method = "cash" | "transfer" | "card" | "credit";
@@ -21,7 +22,7 @@ const useStyles = makeStyles((c) => ({
   input: { flex: 1, fontFamily: fonts.medium, fontSize: 13, color: c.onSurface, paddingVertical: 8 },
   tile: { width: "31.5%", backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderRadius: 14, overflow: "hidden" },
   tileOn: { borderColor: c.brandPrimary },
-  tileImg: { height: 48 },
+  tileImg: { width: "100%", height: 48, backgroundColor: c.surfaceTertiary },
   tileName: { fontFamily: fonts.bold, fontSize: 11, color: c.onSurface },
   tilePrice: { fontFamily: fonts.monoSemibold, fontSize: 10.5, color: c.onSurface },
   count: { position: "absolute", top: 6, right: 6, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
@@ -30,6 +31,21 @@ const useStyles = makeStyles((c) => ({
   bigInput: { fontFamily: fonts.monoSemibold, fontSize: 28, color: c.onSurface, textAlign: "center", paddingVertical: 4 },
   amber: { backgroundColor: c.warning, borderColor: "#F3E2BE", paddingVertical: 9 },
 }));
+
+/** The item's own photo fills the tile; a shop that has not added one yet keeps
+ *  the pastel block so the grid never looks broken. */
+function TileImage({ url, fallback, style }: { url?: string; fallback: string; style: any }) {
+  const [src, setSrc] = useState<any>(null);
+  useEffect(() => {
+    if (!url) return setSrc(null);
+    let live = true;
+    photoSource(url).then((s) => live && setSrc(s));
+    return () => { live = false; };
+  }, [url]);
+  return src
+    ? <Image source={src} style={style} resizeMode="cover" />
+    : <View style={[style, { backgroundColor: fallback }]} />;
+}
 
 export default function QuickSale() {
   const s = useStyles();
@@ -78,7 +94,7 @@ export default function QuickSale() {
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {grid.map((it, i) => (
               <Pressable key={it.id} testID={`quick-sale-tile-${it.id}`} onPress={() => setCart((c) => ({ ...c, [it.id]: (c[it.id] ?? 0) + 1 }))} style={({ pressed }) => [s.tile, cart[it.id] ? s.tileOn : null, pressed && { opacity: 0.8 }]}>
-                <View style={[s.tileImg, { backgroundColor: TILE_COLORS[i % TILE_COLORS.length] }]} />
+                <TileImage url={it.photo_url} fallback={TILE_COLORS[i % TILE_COLORS.length]} style={s.tileImg} />
                 <View style={{ padding: 7 }}><Text style={s.tileName} numberOfLines={1}>{it.name}</Text><Text style={s.tilePrice}>{money(it.selling_price, { symbol: false })}</Text></View>
                 {cart[it.id] ? <View style={s.count}><Text style={s.countText}>{cart[it.id]}</Text></View> : null}
               </Pressable>
