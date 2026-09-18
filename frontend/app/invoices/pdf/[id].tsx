@@ -12,7 +12,7 @@ import { AppBar, Btn, Divider, H4, IconBtn, Lbl, Loading, Money, Row, Seg, Sub, 
 import { useToast } from "@/src/components/sheet";
 import { longDate, money } from "@/src/format";
 import { buildInvoiceHtml, DEFAULT_BRAND } from "@/src/invoice-templates";
-import { photoUrl } from "@/src/uploads";
+import { photoDataUri } from "@/src/uploads";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -48,11 +48,13 @@ export default function PdfViewer() {
     if (chosen.export_format) setFormat(chosen.export_format);
   }, [chosen.export_format]);
 
-  // Item photos need the token in the URL: the generated HTML cannot send headers.
+  // Item photos and the logo are embedded as data URIs, not network URLs — the
+  // PDF engine can rasterise the page before an authenticated network image
+  // finishes loading, silently printing without it.
   useEffect(() => {
     const urls: string[] = (q.data?.lines ?? []).map((l: any) => l.photo_url).filter(Boolean);
-    if (!urls.length) return;
-    Promise.all(urls.map(async (u) => [u, await photoUrl(u)] as const)).then((pairs) => setLinePhotos(Object.fromEntries(pairs)));
+    if (!urls.length) return setLinePhotos({});
+    Promise.all(urls.map(async (u) => [u, await photoDataUri(u)] as const)).then((pairs) => setLinePhotos(Object.fromEntries(pairs)));
   }, [q.data]);
 
   const printable = inv ? { ...inv, lines: inv.lines.map((l: any) => ({ ...l, photo_url: linePhotos[l.photo_url] ?? "" })) } : null;
@@ -60,7 +62,7 @@ export default function PdfViewer() {
   useEffect(() => {
     const url = settings.data?.logo_url;
     if (!url) return setLogo("");
-    photoUrl(url).then(setLogo);
+    photoDataUri(url).then(setLogo);
   }, [settings.data?.logo_url]);
   const discCell = (l: any) => (!l.discount ? "0.00%" : l.discount_type === "percent" ? `${Number(l.discount_value).toFixed(2)}%` : money(l.discount, { symbol: false }));
 

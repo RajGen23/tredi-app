@@ -77,7 +77,7 @@ export default function Import() {
         const r = await fetch(asset.uri);
         text = await r.text();
       } else {
-        text = await FileSystem.readAsStringAsync(asset.uri);
+        text = await new FileSystem.File(asset.uri).text();
       }
       load(asset.name, text);
     } catch {

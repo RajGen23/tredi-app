@@ -155,3 +155,9 @@ The attached professional invoice carries a product image per line, so photos ar
 ## Pass 8c — Invoice footer branding + wording
 - The "■ Crafted with tredi" square is gone: the footer now carries the real tredi wordmark (dark logo, transparent background) inlined as a base64 PNG in `src/invoice-templates.ts` (`TREDI_MARK`) so a printed invoice never depends on the network. Small by design: 42×13. The in-app PDF preview uses the same art from `assets/images/tredi-wordmark.png`.
 - Professional template wording: the FROM block is now labelled **BRANCH**, and the rep line reads **Rep:** instead of "Shop Rep:".
+
+## Pass 8d — Layout fix + photos that actually print
+User report: "tall empty boxes" on the invoice Review & Send screen, and product pictures missing from the generated PDF.
+- `Field` (`src/components/ui.tsx`): when a field is pressable, the caller's layout `style` (flex/width/margin) now lands on the outer `Pressable` instead of the inner box, so `flex: 1` fields in a row no longer balloon into tall empty boxes. Verified: Due date 43px, Payment mode 39px on a 390×844 viewport.
+- `photoDataUri()` (`src/uploads.ts`): item photos and the logo are embedded in the print HTML as base64 data URIs — `expo-print` can rasterise the page before an authenticated network image loads, which is why photos silently vanished. Migrated off the expo-file-system **legacy** API (`downloadAsync`/`readAsStringAsync`/`cacheDirectory` throw at runtime in expo-file-system 57) to `File.downloadFileAsync(...)` + `file.base64()`. `settings/import.tsx` moved to `new File(uri).text()` for the same reason.
+- Verified: PDF paper renders `src="data:image/png;base64,..."` thumbnails in both Simple and Professional layouts; no expo-file-system runtime errors.

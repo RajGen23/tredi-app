@@ -38,6 +38,36 @@ export async function photoSource(url: string) {
   return `${absolute}${absolute.includes("?") ? "&" : "?"}token=${token ?? ""}`;
 }
 
+/** Data URI for printing: the PDF engine can rasterise the page before a
+ *  remote, authenticated <img> finishes loading, silently dropping it. Embed
+ *  the bytes so a logo or item photo never depends on a live network call. */
+export async function photoDataUri(url: string): Promise<string> {
+  if (!url) return "";
+  try {
+    const resolved = await photoUrl(url);
+    if (Platform.OS === "web") {
+      const res = await fetch(resolved);
+      if (!res.ok) return "";
+      const blob = await res.blob();
+      return await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : "");
+        reader.onerror = () => resolve("");
+        reader.readAsDataURL(blob);
+      });
+    }
+    const { File, Paths } = await import("expo-file-system");
+    const dest = new File(Paths.cache, `print-${Date.now()}-${Math.random().toString(36).slice(2)}.img`);
+    const file = await File.downloadFileAsync(resolved, dest, { idempotent: true });
+    const base64 = await file.base64();
+    const mime = file.type || "image/jpeg";
+    try { file.delete(); } catch {}
+    return `data:${mime};base64,${base64}`;
+  } catch {
+    return "";
+  }
+}
+
 /** Ask for photos once, contextually, then upload. Returns "" if the user says no.
  *  Callers get a plain url they can store; display goes through photoSource(). */
 export async function pickAndUploadPhoto(opts?: { camera?: boolean }): Promise<string> {

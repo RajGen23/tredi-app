@@ -40,7 +40,7 @@ class TestInvoiceSettingsTemplate:
         assert "logo_url" in data
         assert "logo_size" in data
         # Defaults (may already be persisted from a previous run — assert types/valid values)
-        assert data["template"] in {"t1", "t2", "t3", "t4", "t5", "t6"}
+        assert data["template"] in {"t1", "t2", "t3", "t4", "t5", "t6", "t7"}
         assert isinstance(data["brand_color"], str) and data["brand_color"].startswith("#")
         assert isinstance(data["logo_url"], str)
         assert isinstance(data["logo_size"], int)

@@ -191,7 +191,11 @@ export function Field({ label, value, onChangeText, placeholder, mono, right, on
       </View>
     </View>
   );
-  return onPress ? <Pressable onPress={onPress}>{inner}</Pressable> : inner;
+  // The Pressable — not the inner box — is the child that actually sits inside
+  // the caller's row, so any layout style (flex, width, margin) must land here
+  // too, or a flex:1 box collapses/balloons unpredictably (seen as tall empty
+  // fields on Android).
+  return onPress ? <Pressable onPress={onPress} style={style}>{inner}</Pressable> : inner;
 }
 
 export function Li({ children, last, onPress, testID, style }: { children: React.ReactNode; last?: boolean; onPress?: () => void; testID?: string; style?: StyleProp<ViewStyle> }) {
