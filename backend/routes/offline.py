@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Any, Dict, List, Literal, Optional
 
 from deps import (CurrentUser, LineIn, biz_filter, clean, db, invoice_totals, line_totals, log_activity, next_number, now)
+from dummy_photos import pick_dummy_photo
 
 router = APIRouter(prefix="/api")
 
@@ -198,7 +199,7 @@ async def import_commit(data: ImportCommitIn, user: CurrentUser):
         await db.items.insert_many([{**f, "name": r["name"], "kind": "product", "category": r["category"], "unit": r["unit"], "barcode": r["barcode"],
                                      "supplier": "", "location": "", "cost_price": r["cost_price"], "selling_price": r["selling_price"],
                                      "wholesale_price": None, "track_stock": True, "quantity": r["quantity"], "alert_below": 0, "expiry": None,
-                                     "photo_url": r.get("photo_url") or None, "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()} for r in rows])
+                                     "photo_url": r.get("photo_url") or pick_dummy_photo(r["name"], r["category"]), "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()} for r in rows])
     await log_activity(f["business_id"], user, "import", f"Imported {len(rows)} {data.target}", data.filename)
     return {"imported": len(rows), "target": data.target}
 

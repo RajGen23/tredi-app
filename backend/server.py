@@ -11,6 +11,7 @@ from deps import (VAT_RATE, DUMMY_HASH, LineIn, apply_stock, biz_filter, clean, 
                   db, decorate_invoice, hash_password, invoice_paid, invoice_status, invoice_totals, line_totals, log_activity, next_number, now, oid,
                   public_user, verify_password)
 from routes import activity, admin, documents, invoicing, offline, purchases, reports, shops, storage, users_roles
+from dummy_photos import pick_dummy_photo
 
 app = FastAPI(title="TREDI API")
 api = APIRouter(prefix="/api")
@@ -279,6 +280,8 @@ async def create_item(data: ItemIn, user: Annotated[dict, Depends(current_user)]
     doc = {**data.model_dump(), **f, "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()}
     if doc["kind"] == "service":
         doc["track_stock"] = False
+    if not doc.get("photo_url"):
+        doc["photo_url"] = pick_dummy_photo(doc["name"], doc["category"])
     res = await db.items.insert_one(doc)
     if doc["track_stock"] and doc["quantity"]:
         await db.movements.insert_one({"business_id": f["business_id"], "item_id": str(res.inserted_id), "kind": "opening", "delta": doc["quantity"], "balance": doc["quantity"],
@@ -583,11 +586,11 @@ async def seed_demo(user: Annotated[dict, Depends(current_user)]):
     item_ids = {}
     for n, cat, unit, cost, sell, whole, qty, alert, loc, bc in items_src:
         r = await db.items.insert_one({**f, "name": n, "kind": "product", "category": cat, "unit": unit, "barcode": bc, "supplier": "Ade Foods Ltd", "location": loc, "cost_price": cost,
-                                       "selling_price": sell, "wholesale_price": whole, "track_stock": True, "quantity": qty, "alert_below": alert, "expiry": None, "photo_url": None,
+                                       "selling_price": sell, "wholesale_price": whole, "track_stock": True, "quantity": qty, "alert_below": alert, "expiry": None, "photo_url": pick_dummy_photo(n, cat),
                                        "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()})
         item_ids[n] = str(r.inserted_id)
     await db.items.insert_one({**f, "name": "Delivery within Lagos", "kind": "service", "category": "Services", "unit": "Service", "barcode": "", "supplier": "", "location": "", "cost_price": 0,
-                               "selling_price": 5000, "wholesale_price": None, "track_stock": False, "quantity": 0, "alert_below": 0, "expiry": None, "photo_url": None,
+                               "selling_price": 5000, "wholesale_price": None, "track_stock": False, "quantity": 0, "alert_below": 0, "expiry": None, "photo_url": pick_dummy_photo("Delivery within Lagos", "Services"),
                                "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()})
     custs = [("Blessing Adeyemi", "+234 803 442 1180", "Retail"), ("Kunle Stores", "+234 706 118 9002", "Wholesale"), ("Adeola Stores", "+234 812 555 0192", "Wholesale"),
              ("Grace Mwangi", "+234 815 220 7741", "Retail"), ("Ibrahim Okonkwo", "+234 909 331 4410", "Retail")]

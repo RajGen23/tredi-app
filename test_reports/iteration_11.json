@@ -1,0 +1,39 @@
+{
+  "summary": "Tested TREDI's dummy-photo backfill feature (backend content/logic change, no new UI). Login/splash works fine (main agent's reported splash hang did NOT reproduce - app loaded onboarding screen normally within 5s). Backend pick_dummy_photo() logic verified fully correct via API + curl: GET /api/items returns photo_url populated for all 7 demo items with valid, resolving (HTTP 200) Wikimedia image URLs correctly mapped to category (rice->Sack_Reis.jpg, oil->Peanut_oil_bottle.jpg, sugar->sugar sacks, cement->Portland_Cement_Bags.jpg, detergent->Laundry_detergent_pods.jpg, semovita->wheat_flour.jpg). Created a new item 'TEST Rice 25kg' via POST /api/items with no photo_url - backend auto-attached the rice dummy photo correctly (verified via GET and also visually on Item Detail screen). Quick Sale screen (/quick-sale) renders all 7 tiles with real, fully-loaded images (all naturalWidth/naturalHeight > 0, no broken/grey tiles). Bulk photo upload screen (stock/photos.tsx) correctly reports '8 of 8 items have a photo' (was previously showing missing counts) - confirms backend backfill worked end-to-end. Excel import screen still loads fine. HOWEVER: found one real UI bug - the main Stock list screen ((tabs)/stock.tsx) does NOT render the dummy/real photos at all; each row always shows a generic Ionicons avatar (cube-outline/construct-outline) regardless of photo_url (confirmed 0 <img> tags rendered on that screen, and via code review: line 76 of stock.tsx hardcodes <Av icon=...> instead of using the shared <Photo> component). This directly contradicts explicit test requirement #3 ('Stock list screen also shows these same dummy photos next to each item') and is inconsistent with quick-sale.tsx, stock/photos.tsx and stock/[id].tsx which all correctly use <Photo>/<Image> with photo_url.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "app/(tabs)/stock.tsx",
+        "issue": "Stock list rows always render a generic Ionicons Av (cube-outline / construct-outline) instead of the item's actual photo_url. All other screens (quick-sale.tsx, stock/[id].tsx, stock/photos.tsx) correctly show the real/dummy photo via the shared <Photo> component, but the main stock list (line 76) never does. Confirmed 0 <img> elements rendered on /( tabs)/stock even though all 7 items have valid photo_url.",
+        "testID": "stock-row-{id}",
+        "priority": "HIGH - explicitly required by this iteration's test scope"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "In app/(tabs)/stock.tsx line ~76, replace the hardcoded <Av icon=...> with the shared <Photo url={it.photo_url} .../> component (same pattern used in quick-sale.tsx) so the stock list shows the actual/dummy item photo instead of a generic icon.",
+    "Test item 'TEST Rice 25kg' (id 6aad0e5f65eb7fe21a53785e) was created during API testing to verify the auto-dummy-photo-on-create logic; there is no DELETE /api/items/{id} endpoint so it could not be cleaned up automatically - main agent may want to remove it manually from the DB if it should not remain as demo data (it is harmless, prefixed 'TEST')."
+  ],
+  "critical_code_review_comments": [
+    "dummy_photos.py is well structured, ordered buckets with specific-before-broad keyword matching, regex support, and a safe FALLBACK - no bugs found.",
+    "server.py create_item() (line 283-284) and seed_demo() (line 589,593) correctly call pick_dummy_photo() only when photo_url is missing - no double-write or overwrite of real photos.",
+    "routes/offline.py Excel import commit (line 202) correctly falls back to pick_dummy_photo() per-row when no photo_url column value is given.",
+    "photo.tsx + uploads.ts correctly resolve both internal /api/files paths and external https:// Wikimedia URLs (web platform appends a harmless ?token= query param to the external URL, which Wikimedia ignores without error).",
+    "Real inconsistency: stock.tsx (main list) does not use the Photo component at all, unlike every other screen that displays items - this looks like an oversight rather than intentional design."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "90%"},
+  "seed_data_creation": "Created 1 test item 'TEST Rice 25kg' via POST /api/items for testing auto-dummy-photo-on-create (id: 6aad0e5f65eb7fe21a53785e). No DELETE endpoint exists for items, so it remains in DB.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend dummy-photo logic (pick_dummy_photo, create_item, seed_demo, offline import) is fully correct and verified via curl + UI screenshots on quick-sale, item-detail, and stock/photos screens. Only remaining gap is app/(tabs)/stock.tsx not rendering photo_url in its list rows (uses generic Av icon instead). Once fixed, only need to re-screenshot the Stock tab to confirm <img> tags with real Wikimedia URLs appear. Splash-hang issue reported by main agent did not reproduce for me across 4 separate test runs - app loaded onboarding/login within 3-5s every time on mobile viewport (375x667); likely was a one-off tool issue on the main agent's side, not a real regression.",
+  "rca_of_issue": "Stock list bug RCA: app/(tabs)/stock.tsx line 76 hardcodes `<Av icon={it.kind === 'service' ? 'construct-outline' : 'cube-outline'} .../>` for every row instead of conditionally rendering the shared `<Photo url={it.photo_url} fallback=... />` component (as done in quick-sale.tsx's item tiles). This was likely never updated when quick-sale.tsx's photo-first UI was introduced in a prior iteration, and this current iteration's backfill script only changed backend data (photo_url values), not this pre-existing frontend gap - so the dummy-photo backfill data is correct, but the stock list screen simply doesn't consume it."
+}

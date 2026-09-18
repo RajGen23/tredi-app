@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, Empty, H4, IconBtn, Li, Lbl, Loading, Money, Prog, Row, Seg, Sub, Tag } from "@/src/components/ui";
+import { Photo } from "@/src/components/photo";
 import { money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -15,6 +16,7 @@ type Chipk = "all" | "low" | "out" | "services";
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   deepCard: { backgroundColor: c.deep, borderColor: c.deep, paddingVertical: 10 },
+  rowPhoto: { width: 40, height: 40, borderRadius: 10, backgroundColor: c.sqAv },
 }));
 
 export default function Stock() {
@@ -73,7 +75,9 @@ export default function Stock() {
                   const pct = it.alert_below ? Math.min(100, (it.quantity / (it.alert_below * 4)) * 100) : it.quantity > 0 ? 82 : 0;
                   return (
                     <Li key={it.id} testID={`stock-row-${it.id}`} last={i === list.length - 1} onPress={() => router.push(`/stock/${it.id}`)}>
-                      <Av icon={it.kind === "service" ? "construct-outline" : "cube-outline"} tone={isOut ? "coral" : it.kind === "service" ? "blue" : "sq"} />
+                      {it.photo_url
+                        ? <Photo url={it.photo_url} style={s.rowPhoto} testID={`stock-photo-${it.id}`} />
+                        : <Av icon={it.kind === "service" ? "construct-outline" : "cube-outline"} tone={isOut ? "coral" : it.kind === "service" ? "blue" : "sq"} />}
                       <View style={{ flex: 1 }}>
                         <Row between><H4>{it.name}</H4><Money>{money(it.selling_price)}</Money></Row>
                         <Row between style={{ marginTop: 2 }}>
