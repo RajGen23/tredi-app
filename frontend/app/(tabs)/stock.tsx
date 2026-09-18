@@ -29,11 +29,12 @@ export default function Stock() {
   const value = items.reduce((a, i) => a + (i.track_stock ? i.quantity * i.cost_price : 0), 0);
   const low = items.filter((i) => i.track_stock && i.quantity > 0 && i.quantity <= i.alert_below).length;
   const out = items.filter((i) => i.track_stock && i.quantity <= 0).length;
+  const noPhoto = items.filter((i) => !i.photo_url).length;
   const list = useMemo(() => items.filter((i) => chip === "all" || (chip === "low" ? i.track_stock && i.quantity > 0 && i.quantity <= i.alert_below : chip === "out" ? i.track_stock && i.quantity <= 0 : i.kind === "service")), [items, chip]);
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="stock-screen">
-      <AppBar title="Stock" right={<><IconBtn name="search-outline" testID="stock-search" /><IconBtn name="list-outline" testID="stock-list-view" /><IconBtn dark name="grid-outline" testID="stock-grid-view" /></>} />
+      <AppBar title="Stock" right={<><IconBtn name="search-outline" testID="stock-search" /><IconBtn name="images-outline" testID="stock-photos" onPress={() => router.push("/stock/photos")} /><IconBtn dark name="grid-outline" testID="stock-grid-view" /></>} />
       <View style={{ paddingHorizontal: 14 }}>
         <Seg testID="stock-seg" value={seg} onChange={setSeg} options={[{ key: "items", label: "Items" }, { key: "transfers", label: "Transfers" }, { key: "adjustments", label: "Adjustments" }]} />
       </View>
@@ -46,6 +47,13 @@ export default function Stock() {
         </Card>
         {seg === "items" ? (
           <>
+            {noPhoto ? (
+              <Card style={{ marginTop: 9, flexDirection: "row", alignItems: "center", gap: 10 }} testID="stock-photos-nudge">
+                <Av icon="images-outline" tone="mint" />
+                <View style={{ flex: 1 }}><H4>{noPhoto} items have no photo</H4><Sub>Add them in one go — photos print on invoices.</Sub></View>
+                <Btn small label="Add photos" testID="stock-photos-cta" onPress={() => router.push("/stock/photos")} />
+              </Card>
+            ) : null}
             <View style={{ height: 44, marginTop: 5 }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, alignItems: "center" }}>
                 <Chip testID="stock-chip-all" label="All" on={chip === "all"} onPress={() => setChip("all")} />

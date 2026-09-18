@@ -11,7 +11,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.uiflowaccurate.qntnxx",
       "infoPlist": {
-        "NSCameraUsageDescription": "Snap supplier bills to track spending",
+        "NSCameraUsageDescription": "Scan bar codes and snap supplier bills",
         "NSPhotoLibraryUsageDescription": "Attach a bill photo to an expense"
       }
     },
@@ -43,6 +43,12 @@
         }
       ],
       "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan bar codes and snap supplier bills"
+        }
+      ],
       "expo-image",
       "expo-secure-store",
       "expo-web-browser",

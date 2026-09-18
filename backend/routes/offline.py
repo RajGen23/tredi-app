@@ -112,7 +112,7 @@ async def backup_now(user: CurrentUser):
 
 # ---------------------------------------------------------------- 11.3 import
 CUSTOMER_COLS = ["name", "phone", "email", "address", "opening_balance"]
-ITEM_COLS = ["name", "category", "unit", "cost_price", "selling_price", "quantity", "barcode"]
+ITEM_COLS = ["name", "category", "unit", "cost_price", "selling_price", "quantity", "barcode", "photo_url"]
 
 
 def _num(v: Any) -> Optional[float]:
@@ -158,7 +158,8 @@ async def validate_rows(f: dict, data: ImportIn) -> dict:
                 issues.append({"rows": [r.row], "title": f"Row {r.row} · bad number", "detail": "Cost, price or quantity is not a number.", "action": "Fix", "kind": "bad_number"})
                 continue
             ready.append({"row": r.row, "name": name, "category": v.get("category") or "General", "unit": v.get("unit") or "Piece",
-                          "cost_price": cost, "selling_price": sell, "quantity": qty, "barcode": v.get("barcode", "")})
+                          "cost_price": cost, "selling_price": sell, "quantity": qty, "barcode": v.get("barcode", ""),
+                          "photo_url": v.get("photo_url", "")})
     # group identical issue kinds the way the design shows them
     grouped: dict = {}
     for i in issues:
@@ -197,7 +198,7 @@ async def import_commit(data: ImportCommitIn, user: CurrentUser):
         await db.items.insert_many([{**f, "name": r["name"], "kind": "product", "category": r["category"], "unit": r["unit"], "barcode": r["barcode"],
                                      "supplier": "", "location": "", "cost_price": r["cost_price"], "selling_price": r["selling_price"],
                                      "wholesale_price": None, "track_stock": True, "quantity": r["quantity"], "alert_below": 0, "expiry": None,
-                                     "photo_url": None, "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()} for r in rows])
+                                     "photo_url": r.get("photo_url") or None, "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()} for r in rows])
     await log_activity(f["business_id"], user, "import", f"Imported {len(rows)} {data.target}", data.filename)
     return {"imported": len(rows), "target": data.target}
 
@@ -207,6 +208,6 @@ async def import_template(target: str = "customers"):
     cols = CUSTOMER_COLS if target == "customers" else ITEM_COLS
     sample = ({"name": "Grace Mwangi", "phone": "+234 815 220 7741", "email": "", "address": "Surulere", "opening_balance": "0"}
               if target == "customers" else
-              {"name": "Adeba Rice 50kg", "category": "Grains", "unit": "Bag", "cost_price": "52400", "selling_price": "62000", "quantity": "8", "barcode": ""})
+              {"name": "Adeba Rice 50kg", "category": "Grains", "unit": "Bag", "cost_price": "52400", "selling_price": "62000", "quantity": "8", "barcode": "", "photo_url": ""})
     csv = ",".join(cols) + "\n" + ",".join(str(sample[c]) for c in cols) + "\n"
     return {"columns": cols, "csv": csv, "filename": f"tredi_{target}_template.csv"}

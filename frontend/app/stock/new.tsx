@@ -1,7 +1,7 @@
 // 05.2 New item · details → 05.3 Pricing & stock.
 import { useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
 import { photoSource, pickAndUploadPhoto } from "@/src/uploads";
 import { AppBar, Av, Btn, Card, Divider, Field, H4, Lbl, Money, Seg, Sub, Switch, Tag } from "@/src/components/ui";
+import { Scanner } from "@/src/components/scanner";
 import { useToast } from "@/src/components/sheet";
 import { money, parseNum, slashDate } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
@@ -31,6 +32,8 @@ export default function NewItem() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // Arrives from a Quick sale scan that found nothing — the code is already known.
+  const params = useLocalSearchParams<{ barcode?: string }>();
   const qc = useQueryClient();
   const toast = useToast();
   const [step, setStep] = useState<0 | 1>(0);
@@ -45,7 +48,8 @@ export default function NewItem() {
   const [expiryOn, setExpiryOn] = useState(false);
   const [expiry, setExpiry] = useState("");
   const [qty, setQty] = useState("");
-  const [barcode, setBarcode] = useState("");
+  const [barcode, setBarcode] = useState(params.barcode ?? "");
+  const [scan, setScan] = useState(false);
   const [location, setLocation] = useState("Warehouse");
   const [cost, setCost] = useState("");
   const [sell, setSell] = useState("");
@@ -111,7 +115,7 @@ export default function NewItem() {
                   </View>
                   <View style={{ flexDirection: "row", gap: 8 }}>
                     <Field testID="item-qty" label="Quantity supplied" value={qty} onChangeText={setQty} keyboardType="decimal-pad" mono placeholder="0" style={{ flex: 1 }} />
-                    <Field testID="item-barcode" label="Barcode" value={barcode} onChangeText={setBarcode} placeholder="Scan" mono style={{ flex: 1 }} right={<Ionicons name="barcode-outline" size={18} color={colors.green700} />} />
+                    <Field testID="item-barcode" label="Barcode" value={barcode} onChangeText={setBarcode} placeholder="Scan" mono style={{ flex: 1 }} right={<Pressable onPress={() => setScan(true)} hitSlop={8} testID="item-barcode-scan"><Ionicons name="barcode-outline" size={18} color={colors.green700} /></Pressable>} />
                   </View>
                   <Field testID="item-location" label="Store in" value={location} onChangeText={setLocation} placeholder="Warehouse · Ikeja" />
                 </>
@@ -153,6 +157,7 @@ export default function NewItem() {
       <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         {step === 0 ? <Btn testID="item-next" label="Continue to pricing" onPress={() => (name.trim() ? setStep(1) : toast.show("Give the item a name first"))} /> : <Btn testID="item-save" label="Save item" onPress={() => m.mutate()} loading={m.isPending} disabled={!sell} />}
       </View>
+      <Scanner visible={scan} onClose={() => setScan(false)} onScan={(code) => { setBarcode(code); setScan(false); toast.show(`Bar code ${code} saved to this item`); }} title="Scan the bar code" hint="The code lands in the Barcode field" />
     </View>
   );
 }

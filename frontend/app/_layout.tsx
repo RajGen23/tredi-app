@@ -50,6 +50,7 @@ export default function RootLayout() {
                     <Stack.Screen name="invoices/new" options={{ presentation: "fullScreenModal" }} />
                     <Stack.Screen name="customers/new" options={{ presentation: "modal" }} />
                     <Stack.Screen name="stock/new" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="stock/photos" options={{ presentation: "modal" }} />
                     <Stack.Screen name="expenses/new" options={{ presentation: "modal" }} />
                     <Stack.Screen name="payments/new" options={{ presentation: "modal" }} />
                     <Stack.Screen name="suppliers/new" options={{ presentation: "modal" }} />

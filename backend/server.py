@@ -51,9 +51,12 @@ class CustomerIn(BaseModel):
     credit_limit: Optional[float] = None
 
 
+class PhotoIn(BaseModel):
+    photo_url: str = ""
+
+
 class ItemIn(BaseModel):
     name: str
-    photo_url: str = ""
     kind: Literal["product", "service"] = "product"
     category: str = "General"
     unit: str = "Piece"
@@ -299,6 +302,16 @@ async def get_item(iid: str, user: Annotated[dict, Depends(current_user)]):
 async def update_item(iid: str, data: ItemIn, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     await db.items.update_one({"_id": oid(iid), **f}, {"$set": {**data.model_dump(exclude={"quantity"}), "updated_at": now()}})
+    return clean(await db.items.find_one({"_id": oid(iid)}))
+
+
+@api.patch("/items/{iid}/photo")
+async def set_item_photo(iid: str, data: PhotoIn, user: Annotated[dict, Depends(current_user)]):
+    """Photo only — the bulk photo screen should not have to send a whole item."""
+    f = biz_filter(user)
+    res = await db.items.update_one({"_id": oid(iid), **f}, {"$set": {"photo_url": data.photo_url or None, "updated_at": now()}})
+    if not res.matched_count:
+        raise HTTPException(404, "Item not found")
     return clean(await db.items.find_one({"_id": oid(iid)}))
 
 

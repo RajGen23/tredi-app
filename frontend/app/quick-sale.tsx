@@ -1,6 +1,6 @@
 // 04.17 Quick sale + 04.18 Sale saved.
-import { useEffect, useMemo, useState } from "react";
-import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,9 +8,10 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
+import { Photo } from "@/src/components/photo";
+import { Scanner } from "@/src/components/scanner";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { money, parseNum } from "@/src/format";
-import { photoSource } from "@/src/uploads";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Method = "cash" | "transfer" | "card" | "credit";
@@ -20,13 +21,13 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surfaceSecondary },
   search: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderRadius: 11, paddingHorizontal: 11, minHeight: 42 },
   input: { flex: 1, fontFamily: fonts.medium, fontSize: 13, color: c.onSurface, paddingVertical: 8 },
-  tile: { width: "31.5%", backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderRadius: 14, overflow: "hidden" },
-  tileOn: { borderColor: c.brandPrimary },
-  tileImg: { width: "100%", height: 48, backgroundColor: c.surfaceTertiary },
-  tileName: { fontFamily: fonts.bold, fontSize: 11, color: c.onSurface },
-  tilePrice: { fontFamily: fonts.monoSemibold, fontSize: 10.5, color: c.onSurface },
-  count: { position: "absolute", top: 6, right: 6, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
-  countText: { fontFamily: fonts.bold, fontSize: 11, color: c.onSurfaceInverse },
+  tile: { width: "48.5%", backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderRadius: 14, overflow: "hidden" },
+  tileOn: { borderColor: c.brandPrimary, borderWidth: 2 },
+  tileImg: { width: "100%", height: 118, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  tileName: { fontFamily: fonts.bold, fontSize: 13, color: c.onSurface },
+  tilePrice: { fontFamily: fonts.monoSemibold, fontSize: 13, color: c.onSurface, marginTop: 2 },
+  count: { position: "absolute", top: 8, right: 8, minWidth: 24, height: 24, borderRadius: 12, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+  countText: { fontFamily: fonts.bold, fontSize: 12.5, color: c.onSurfaceInverse },
   footer: { paddingTop: 9, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surfaceSecondary },
   bigInput: { fontFamily: fonts.monoSemibold, fontSize: 28, color: c.onSurface, textAlign: "center", paddingVertical: 4 },
   amber: { backgroundColor: c.warning, borderColor: "#F3E2BE", paddingVertical: 9 },
@@ -34,19 +35,6 @@ const useStyles = makeStyles((c) => ({
 
 /** The item's own photo fills the tile; a shop that has not added one yet keeps
  *  the pastel block so the grid never looks broken. */
-function TileImage({ url, fallback, style }: { url?: string; fallback: string; style: any }) {
-  const [src, setSrc] = useState<any>(null);
-  useEffect(() => {
-    if (!url) return setSrc(null);
-    let live = true;
-    photoSource(url).then((s) => live && setSrc(s));
-    return () => { live = false; };
-  }, [url]);
-  return src
-    ? <Image source={src} style={style} resizeMode="cover" />
-    : <View style={[style, { backgroundColor: fallback }]} />;
-}
-
 export default function QuickSale() {
   const s = useStyles();
   const { colors } = useTheme();
@@ -62,6 +50,8 @@ export default function QuickSale() {
   const [tender, setTender] = useState(false);
   const [tendered, setTendered] = useState("");
   const [saved, setSaved] = useState<any | null>(null);
+  const [scan, setScan] = useState(false);
+  const [unknown, setUnknown] = useState("");
 
   const items = itemsQ.data ?? [];
   const cats = useMemo(() => ["Popular", ...Array.from(new Set(items.map((i) => i.category)))], [items]);
@@ -78,11 +68,26 @@ export default function QuickSale() {
 
   const reset = () => { setCart({}); setTendered(""); setSaved(null); setMethod("cash"); };
 
+  const addToCart = (id: string) => setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
+
+  // A scan is matched against the barcode the shop typed on the item; a code
+  // nobody has saved yet becomes a new item with the code already filled in.
+  const onScan = (code: string) => {
+    const hit = items.find((i) => (i.barcode ?? "").trim() === code);
+    if (!hit) {
+      setScan(false);
+      setUnknown(code);
+      return toast.show("No item carries that bar code yet");
+    }
+    addToCart(hit.id);
+    toast.show(`${hit.name} added · ${money(hit.selling_price)}`);
+  };
+
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="quick-sale-screen">
-      <AppBar title="Quick sale" close right={<IconBtn name="barcode-outline" testID="quick-sale-scan" />} />
+      <AppBar title="Quick sale" close right={<IconBtn name="barcode-outline" testID="quick-sale-scan" onPress={() => setScan(true)} />} />
       <View style={{ paddingHorizontal: 14 }}>
-        <View style={s.search}><Ionicons name="search-outline" size={16} color={colors.ink60} /><TextInput testID="quick-sale-search" value={search} onChangeText={setSearch} placeholder="Search or scan" placeholderTextColor={colors.ink40} style={s.input} /></View>
+        <View style={s.search}><Ionicons name="search-outline" size={16} color={colors.ink60} /><TextInput testID="quick-sale-search" value={search} onChangeText={setSearch} placeholder="Search or scan" placeholderTextColor={colors.ink40} style={s.input} /><Pressable onPress={() => setScan(true)} hitSlop={8} testID="quick-sale-search-scan"><Ionicons name="barcode-outline" size={18} color={colors.green700} /></Pressable></View>
       </View>
       <View style={{ height: 44, marginTop: 4 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 14, gap: 6, alignItems: "center" }}>
@@ -93,13 +98,15 @@ export default function QuickSale() {
         {itemsQ.isLoading ? <Loading /> : (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {grid.map((it, i) => (
-              <Pressable key={it.id} testID={`quick-sale-tile-${it.id}`} onPress={() => setCart((c) => ({ ...c, [it.id]: (c[it.id] ?? 0) + 1 }))} style={({ pressed }) => [s.tile, cart[it.id] ? s.tileOn : null, pressed && { opacity: 0.8 }]}>
-                <TileImage url={it.photo_url} fallback={TILE_COLORS[i % TILE_COLORS.length]} style={s.tileImg} />
-                <View style={{ padding: 7 }}><Text style={s.tileName} numberOfLines={1}>{it.name}</Text><Text style={s.tilePrice}>{money(it.selling_price, { symbol: false })}</Text></View>
+              <Pressable key={it.id} testID={`quick-sale-tile-${it.id}`} onPress={() => addToCart(it.id)} style={({ pressed }) => [s.tile, cart[it.id] ? s.tileOn : null, pressed && { opacity: 0.8 }]}>
+                {it.photo_url
+                  ? <Photo url={it.photo_url} style={s.tileImg} testID={`quick-sale-photo-${it.id}`} />
+                  : <View style={[s.tileImg, { backgroundColor: TILE_COLORS[i % TILE_COLORS.length] }]}><Ionicons name="cube-outline" size={22} color={colors.ink40} /></View>}
+                <View style={{ padding: 10 }}><Text style={s.tileName} numberOfLines={2}>{it.name}</Text><Text style={s.tilePrice}>{money(it.selling_price, { symbol: false })}</Text></View>
                 {cart[it.id] ? <View style={s.count}><Text style={s.countText}>{cart[it.id]}</Text></View> : null}
               </Pressable>
             ))}
-            <Pressable testID="quick-sale-add-item" onPress={() => router.push("/stock/new")} style={[s.tile, { borderStyle: "dashed", alignItems: "center", justifyContent: "center", minHeight: 84 }]}><Ionicons name="add" size={20} color={colors.ink40} /></Pressable>
+            <Pressable testID="quick-sale-add-item" onPress={() => router.push("/stock/new")} style={[s.tile, { borderStyle: "dashed", alignItems: "center", justifyContent: "center", minHeight: 150 }]}><Ionicons name="add" size={24} color={colors.ink40} /><Text style={[s.tilePrice, { color: colors.ink60 }]}>New item</Text></Pressable>
           </View>
         )}
         {lines.length ? (
@@ -121,6 +128,22 @@ export default function QuickSale() {
         </View>
         <Btn label="Take payment" disabled={!lines.length} onPress={() => (method === "cash" ? setTender(true) : m.mutate())} loading={m.isPending && !tender} testID="quick-sale-take-payment" />
       </View>
+
+      <Scanner visible={scan} onClose={() => setScan(false)} onScan={onScan} title="Scan to sell" hint="Point at the bar code — each scan adds one" />
+
+      <Sheet visible={!!unknown} onClose={() => setUnknown("")} testID="quick-sale-unknown-sheet">
+        <H4>No item with that code</H4>
+        <Sub style={{ marginTop: 3 }}>Nothing in your stock carries this bar code yet.</Sub>
+        <Card style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Av icon="barcode-outline" tone="sq" />
+          <View style={{ flex: 1 }}><Lbl>Scanned code</Lbl><Money size={13} testID="quick-sale-unknown-code">{unknown}</Money></View>
+        </Card>
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          <View style={{ flex: 1 }}><Btn small variant="ghost" label="Scan again" onPress={() => { setUnknown(""); setScan(true); }} testID="quick-sale-unknown-retry" /></View>
+          <View style={{ flex: 1.4 }}><Btn small label="Create this item" testID="quick-sale-unknown-create"
+            onPress={() => { const code = unknown; setUnknown(""); router.push({ pathname: "/stock/new", params: { barcode: code } }); }} /></View>
+        </View>
+      </Sheet>
 
       <Sheet visible={tender} onClose={() => setTender(false)} testID="tender-sheet">
         <H4>Cash received</H4>

@@ -1,11 +1,12 @@
-// 11.3 Import from Excel — validation runs before anything is written, names
-// the row, and lets the clean rows through.
+// 11.3 Import from Excel — .xlsx, .xls or CSV. Validation runs before anything
+// is written, names the row, and lets the clean rows through.
 import { useState } from "react";
 import { Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
+import * as XLSX from "xlsx";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
@@ -14,19 +15,40 @@ import { useToast } from "@/src/components/sheet";
 import { makeStyles, useTheme } from "@/src/theme";
 
 type Target = "customers" | "items";
+type Rows = { row: number; values: Record<string, string> }[];
+
+const SHEET_MIME = [
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+  "text/csv", "text/comma-separated-values", "text/plain", "*/*",
+];
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
-function parseCsv(text: string): { header: string[]; rows: { row: number; values: Record<string, string> }[] } {
+/** Header names are matched loosely: "Selling Price" and "selling_price" are
+ *  the same column as far as the shop is concerned. */
+function rowsFromGrid(grid: any[][]): Rows {
+  const header = (grid[0] ?? []).map((h) => String(h ?? "").toLowerCase().trim().replace(/\s+/g, "_"));
+  return grid.slice(1)
+    .filter((r) => r.some((c) => String(c ?? "").trim().length))
+    .map((r, i) => ({ row: i + 1, values: Object.fromEntries(header.map((h, j) => [h, r[j] == null ? "" : String(r[j]).trim()])) }));
+}
+
+function parseCsv(text: string): Rows {
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length);
-  if (!lines.length) return { header: [], rows: [] };
   const split = (l: string) => l.split(",").map((x) => x.trim().replace(/^"|"$/g, ""));
-  const header = split(lines[0]).map((h) => h.toLowerCase().replace(/\s+/g, "_"));
-  const rows = lines.slice(1).map((l, i) => {
-    const cells = split(l);
-    return { row: i + 1, values: Object.fromEntries(header.map((h, j) => [h, cells[j] ?? ""])) };
-  });
-  return { header, rows };
+  return rowsFromGrid(lines.map(split));
+}
+
+/** Excel bytes never reach the server — the sheet is read on the phone and only
+ *  the rows travel, so the same validation covers pasted text and .xlsx. */
+async function parseWorkbook(uri: string): Promise<Rows> {
+  const wb = Platform.OS === "web"
+    ? XLSX.read(new Uint8Array(await (await fetch(uri)).arrayBuffer()), { type: "array" })
+    : XLSX.read(await new FileSystem.File(uri).base64(), { type: "base64" });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) return [];
+  return rowsFromGrid(XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, raw: false, defval: "" }));
 }
 
 export default function Import() {
@@ -37,7 +59,7 @@ export default function Import() {
   const qc = useQueryClient();
   const [target, setTarget] = useState<Target>("customers");
   const [filename, setFilename] = useState("");
-  const [rows, setRows] = useState<{ row: number; values: Record<string, string> }[]>([]);
+  const [rows, setRows] = useState<Rows>([]);
   const [paste, setPaste] = useState("");
   const [report, setReport] = useState<any>(null);
 
@@ -59,29 +81,26 @@ export default function Import() {
     onError: (e: any) => toast.show(e.message),
   });
 
-  const load = (name: string, text: string) => {
-    const parsed = parseCsv(text);
-    if (!parsed.rows.length) return toast.show("That file has no rows");
+  const load = (name: string, rows: Rows) => {
+    if (!rows.length) return toast.show("That file has no rows");
     setFilename(name);
-    setRows(parsed.rows);
-    preview.mutate({ filename: name, rows: parsed.rows });
+    setRows(rows);
+    preview.mutate({ filename: name, rows });
   };
 
   const pickFile = async () => {
-    const res = await DocumentPicker.getDocumentAsync({ type: ["text/csv", "text/comma-separated-values", "text/plain", "*/*"], copyToCacheDirectory: true });
+    const res = await DocumentPicker.getDocumentAsync({ type: SHEET_MIME, copyToCacheDirectory: true });
     if (res.canceled || !res.assets?.length) return;
     const asset = res.assets[0];
     try {
-      let text = "";
-      if (Platform.OS === "web") {
-        const r = await fetch(asset.uri);
-        text = await r.text();
-      } else {
-        text = await new FileSystem.File(asset.uri).text();
-      }
-      load(asset.name, text);
+      const excel = /\.(xlsx|xls|xlsm)$/i.test(asset.name ?? "");
+      if (excel) return load(asset.name, await parseWorkbook(asset.uri));
+      const text = Platform.OS === "web"
+        ? await (await fetch(asset.uri)).text()
+        : await new FileSystem.File(asset.uri).text();
+      load(asset.name, parseCsv(text));
     } catch {
-      toast.show("Could not read that file — save it as CSV first");
+      toast.show("Could not read that file — try saving it again as .xlsx or CSV");
     }
   };
 
@@ -103,7 +122,7 @@ export default function Import() {
             <>
               <Row style={{ gap: 10 }}>
                 <Av icon="cloud-upload-outline" tone="mint" />
-                <View style={{ flex: 1 }}><H4>Choose a CSV file</H4><Sub>Save your Excel sheet as CSV first</Sub></View>
+                <View style={{ flex: 1 }}><H4>Choose an Excel or CSV file</H4><Sub>.xlsx, .xls or .csv — the first sheet is read</Sub></View>
               </Row>
               <Btn label="Pick a file" style={{ marginTop: 12 }} testID="import-pick" onPress={pickFile} />
             </>
@@ -115,7 +134,7 @@ export default function Import() {
             <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Or paste the rows</Lbl>
             <Field label="CSV text" multiline placeholder={"name,phone\nGrace Mwangi,08152207741"} value={paste} onChangeText={setPaste} testID="import-paste" />
             <Btn label="Check pasted rows" variant="ghost" small style={{ marginTop: 8 }} disabled={!paste.trim()} testID="import-check-paste"
-              onPress={() => load("pasted.csv", paste)} />
+              onPress={() => load("pasted.csv", parseCsv(paste))} />
           </>
         ) : null}
 
