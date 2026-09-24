@@ -111,6 +111,9 @@ export async function uploadPhoto(uri: string, name = `photo-${Date.now()}.jpg`,
     } catch (e: any) {
       lastErr = String(e?.message ?? e ?? "").replace(/^\[?\w*Error:?\]?\s*/, "").slice(0, 80);
       if (slow) break;
+      // If the device's native uploader itself refused (older runtime shipping
+      // an Expo Go without it), don't burn the other tries on the same road.
+      if (send === nativeBinary) send = nativeBase64;
     } finally {
       clearTimeout(timer);
     }

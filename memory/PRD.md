@@ -314,3 +314,26 @@ the page below visible, and a web photo upload that lands.
   - The failure toast now names the real cause and the size sent, e.g. "Photo didn't go
     through after 3 tries (Network request failed, 240 KB)", so the next report is exact.
 - Web keeps the multipart `/upload` path (verified via file chooser on New item).
+
+## Pass 12g — "ExpoSharing.shareAsync has been rejected" on Download/Share (June 2026)
+- Symptom: downloading/sharing an invoice PDF from Expo Go failed with the native
+  `ExpoSharing.shareAsync has been rejected` error. Photo upload was confirmed working by
+  the user after Pass 12f, so this was a separate, PDF-only fault.
+- Root causes (both in the share path, not in the PDF itself):
+  1. `expo-print` writes the PDF into the **host** cache dir (`host.exp.exponent/cache/Print/…`).
+     expo-sharing refuses to read a path outside this experience's sandbox
+     (`isAllowedToRead` → `SharingInvalidArgsException`).
+  2. `src/pdf.ts` copied it into the app cache with `File.move(dest)` — which is **async** in
+     expo-file-system 57 and was never awaited, so the share fired before the file existed.
+     Now `copySync()`.
+- Four screens shared the raw print path directly and are all routed through `sharePdf()`:
+  `app/invoices/pdf/[id].tsx`, `app/quotes/[id].tsx`, `app/customers/ledger/[id].tsx`,
+  `app/tools/business-card.tsx`. Share errors now surface a readable sentence (including the
+  "a share window is already open" case) instead of the native message. On web `sharePdf`
+  goes straight to the browser print dialog (web `printToFileAsync` returns nothing).
+- Item photos in the PDF: verified in the preview for both a user-uploaded photo
+  (`/api/files/...` + token → data URI) and a hotlinked dummy photo. They print **only** when
+  the photo switch is on (Settings → Invoice, per-invoice toggle on New invoice) and the plan
+  allows photos; the seeded default is off.
+- `src/uploads.ts`: if the native uploader itself refuses, the remaining retries now fall back
+  to the base64 route instead of repeating the same failure.

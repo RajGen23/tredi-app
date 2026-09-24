@@ -5,11 +5,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 
 import { api } from "@/src/api";
 import { AppBar, Badge, Btn, Card, Chip, Field, H4, Lbl, Li, Loading, Row, Sub, Switch } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
+import { pdfName, printHtml, sharePdf } from "@/src/pdf";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 import { useBottomPad } from "@/src/safe";
 
@@ -67,9 +67,12 @@ export default function BusinessCard() {
       ${f.show_tin && f.tin ? `<div style="font-family:monospace;font-size:14px;margin-top:10px">TIN ${f.tin}</div>` : ""}
       ${f.include_bank && f.bank ? `<div style="font-family:monospace;font-size:14px">${f.bank.name} · ${f.bank.detail}</div>` : ""}
       <div style="margin-top:22px;font-size:12px;opacity:.7">made with tredi</div></div></body>`;
-    if (Platform.OS === "web") return Print.printAsync({ html });
-    const { uri } = await Print.printToFileAsync({ html });
-    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf" });
+    if (Platform.OS === "web") return printHtml(html);
+    try {
+      await sharePdf(html, pdfName([f.name, "Business-card"]));
+    } catch (e: any) {
+      toast.show(e.message ?? "Could not create the card", undefined, "bad");
+    }
   };
 
   return (

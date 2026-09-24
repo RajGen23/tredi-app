@@ -6,14 +6,13 @@ import { ScrollView, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 
 import { api } from "@/src/api";
 import { AppBar, Btn, Card, H4, IconBtn, Loading, Row, Seg, Sub, Tag } from "@/src/components/ui";
 import { InvoicePaper } from "@/src/components/invoice-paper";
 import { useToast } from "@/src/components/sheet";
 import { buildInvoiceHtml, DEFAULT_BRAND, TEMPLATES } from "@/src/invoice-templates";
+import { pdfName, printHtml, sharePdf } from "@/src/pdf";
 import { photoDataUri } from "@/src/uploads";
 import { useBottomPad } from "@/src/safe";
 import { makeStyles } from "@/src/theme";
@@ -68,12 +67,12 @@ export default function PdfViewer() {
     if (!inv) return;
     try {
       const html = buildInvoiceHtml(printable ?? inv, brand);
-      if (print) return await Print.printAsync({ html });
-      const { uri } = await Print.printToFileAsync({ html });
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: `${inv.number}.pdf` });
-      else toast.show("PDF ready — sharing is not available in this preview");
+      if (print) return await printHtml(html);
+      const name = pdfName([inv.business?.name ?? chosen.business_name, inv.customer_name, inv.number]);
+      const res = await sharePdf(html, name);
+      if (!res.shared) toast.show(`${name} is ready — sharing is not available in this preview`);
     } catch (e: any) {
-      toast.show(e.message ?? "Could not create PDF");
+      toast.show(e.message ?? "Could not create PDF", undefined, "bad");
     }
   };
 

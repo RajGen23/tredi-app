@@ -4,13 +4,12 @@ import { Platform, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 
 import { api } from "@/src/api";
 import { AppBar, Badge, Btn, Card, Divider, H4, IconBtn, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { longDate, money } from "@/src/format";
+import { pdfName, printHtml, sharePdf } from "@/src/pdf";
 import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles } from "@/src/theme";
 
@@ -65,11 +64,10 @@ export default function QuotePreview() {
     if (!d) return;
     setBusy(true);
     try {
-      if (Platform.OS === "web") await Print.printAsync({ html: html(d) });
-      else {
-        const { uri } = await Print.printToFileAsync({ html: html(d) });
-        if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf" });
-      }
+      if (Platform.OS === "web") await printHtml(html(d));
+      else await sharePdf(html(d), pdfName([d.business?.name, d.customer_name, d.number]));
+    } catch (e: any) {
+      toast.show(e.message ?? "Could not create the quotation PDF", undefined, "bad");
     } finally { setBusy(false); }
   };
 

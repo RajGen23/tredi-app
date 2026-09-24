@@ -4,14 +4,13 @@ import { ScrollView, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { AppBar, Btn, Card, Chip, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { longDate, money, shortDate } from "@/src/format";
+import { pdfName, printHtml, sharePdf } from "@/src/pdf";
 import { fonts, makeStyles } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
@@ -32,11 +31,11 @@ export default function Ledger() {
     const rows = [...d.entries].reverse().map((e: any) => `<tr><td>${shortDate(e.date)}</td><td>${e.title}</td><td style="text-align:right">${e.amount < 0 ? `(${money(-e.amount, { symbol: false })})` : money(e.amount, { symbol: false })}</td><td style="text-align:right">${money(e.balance, { symbol: false })}</td></tr>`).join("");
     const html = `<html><body style="font-family:-apple-system,Helvetica;padding:24px;color:#06241F"><h2 style="margin:0;color:#014747">${business?.name ?? ""}</h2><div style="font-size:12px;color:#93A9A4">TIN ${business?.tin ?? "—"}</div><hr style="border:0;border-top:1px solid #E5EEEB"/><div style="font-size:11px;color:#93A9A4">STATEMENT FOR</div><b>${d.customer.name}</b><div style="font-size:11px;color:#93A9A4;margin-top:4px">As at ${longDate(new Date().toISOString())}</div><table style="width:100%;border-collapse:collapse;margin-top:14px;font-size:12px"><tr style="color:#93A9A4;text-align:left"><th>DATE</th><th>DETAILS</th><th style="text-align:right">AMOUNT</th><th style="text-align:right">BALANCE</th></tr><tr><td>—</td><td>Opening</td><td></td><td style="text-align:right">${money(d.opening, { symbol: false })}</td></tr>${rows}</table><div style="margin-top:14px;background:#E9FBF4;padding:10px;border-radius:8px;display:flex;justify-content:space-between"><b>Balance due</b><b>${money(d.closing)}</b></div><p style="font-size:10px;color:#93A9A4;margin-top:20px">Made with tredi</p></body></html>`;
     try {
-      const { uri } = await Print.printToFileAsync({ html });
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf" });
-      else await Print.printAsync({ html });
+      const name = pdfName([business?.name, d.customer.name, "Statement"]);
+      const res = await sharePdf(html, name);
+      if (!res.shared) await printHtml(html);
     } catch (e: any) {
-      toast.show(e.message ?? "Could not create statement");
+      toast.show(e.message ?? "Could not create statement", undefined, "bad");
     }
   };
 
