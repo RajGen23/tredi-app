@@ -1,6 +1,7 @@
 // 07.3 Profit & loss — read on the phone, print for the accountant.
 import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
@@ -8,7 +9,7 @@ import { api } from "@/src/api";
 import { AppBar, Card, H4, IconBtn, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { SingleBars } from "@/src/components/charts";
 import { ExportBar, useReportMeta } from "@/src/components/export";
-import { PeriodSheet, usePeriod } from "@/src/period";
+import { PeriodBar, PeriodSheet, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -25,8 +26,9 @@ export default function Pnl() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [sheet, setSheet] = useState(false);
-  const { query } = usePeriod();
+  const { query, shortLabel } = usePeriod();
   const meta = useReportMeta();
   const q = useQuery({ queryKey: ["reports-pnl", query], queryFn: () => api(`/reports/pnl?${query}`) });
   const d = q.data;
@@ -50,9 +52,10 @@ export default function Pnl() {
     <View style={[s.root, { paddingTop: insets.top }]} testID="pnl-screen">
       <AppBar title="Profit & loss" back right={<IconBtn name="calendar-outline" testID="pnl-period" onPress={() => setSheet(true)} />} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
+        <PeriodBar label={d?.label ?? shortLabel} onPress={() => setSheet(true)} />
         {!d ? <Loading /> : (
           <>
-            <Card testID="pnl-headline">
+            <Card testID="pnl-headline" style={{ marginTop: 9 }}>
               <Row between style={{ alignItems: "flex-start" }}>
                 <View>
                   <Lbl>Net profit · {d.label}</Lbl>
@@ -63,12 +66,17 @@ export default function Pnl() {
               <View style={{ marginTop: 11 }}><SingleBars data={d.bars} /></View>
             </Card>
             <Card style={{ marginTop: 9, paddingVertical: 4 }} testID="pnl-statement">
-              <View style={s.row}><H4 style={{ flex: 1 }}>Sales revenue</H4><Money>{money(d.revenue, { symbol: false })}</Money></View>
+              <Pressable testID="pnl-revenue-open" onPress={() => router.push("/reports/entries?kind=sales&title=Sales%20revenue")}>
+                <View style={s.row}><H4 style={{ flex: 1 }}>Sales revenue</H4><Money>{money(d.revenue, { symbol: false })}</Money></View>
+              </Pressable>
               <View style={s.row}><Sub style={[{ flex: 1 }, s.indent]}>Less returns</Sub><Money tone="pos">({money(d.returns, { symbol: false })})</Money></View>
               <View style={s.row}><Sub style={[{ flex: 1 }, s.indent]}>Cost of goods sold</Sub><Money>({money(d.cogs, { symbol: false })})</Money></View>
               <View style={[s.row, s.mintRow]}><H4 style={{ flex: 1 }}>Gross profit</H4><Money>{money(d.gross, { symbol: false })}</Money></View>
               {d.expense_lines.map((e: any) => (
-                <View key={e.label} style={s.row}><Sub style={[{ flex: 1 }, s.indent]}>{e.label}</Sub><Money>({money(e.amount, { symbol: false })})</Money></View>
+                <Pressable key={e.label} testID={`pnl-expense-${e.label}`}
+                  onPress={() => router.push(`/reports/entries?kind=expenses&key=${encodeURIComponent(e.label)}&title=${encodeURIComponent(e.label)}`)}>
+                  <View style={s.row}><Sub style={[{ flex: 1 }, s.indent]}>{e.label}</Sub><Money>({money(e.amount, { symbol: false })})</Money></View>
+                </Pressable>
               ))}
               {d.expense_lines.length === 0 ? <View style={s.row}><Sub style={[{ flex: 1 }, s.indent]}>No expenses recorded</Sub><Money>(0)</Money></View> : null}
               <View style={[s.row, s.deepRow, { borderBottomWidth: 0 }]}>

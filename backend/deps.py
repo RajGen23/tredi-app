@@ -25,9 +25,19 @@ JWT_ALG = os.environ.get("JWT_ALGORITHM", "HS256")
 TOKEN_MINUTES = int(os.environ.get("ACCESS_TOKEN_MINUTES", "43200"))
 VAT_RATE = 7.5
 
+# passlib reads bcrypt.__about__ for its version, which bcrypt 4.1+ no longer
+# ships — without this shim every hash logs a traceback.
+import bcrypt as _bcrypt
+if not hasattr(_bcrypt, "__about__"):
+    _bcrypt.__about__ = type("about", (), {"__version__": getattr(_bcrypt, "__version__", "4.1")})
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 DUMMY_HASH = pwd_context.hash("dummy-password-used-only-for-timing")
+
+# A cancelled invoice keeps its number on the record but must never count as a
+# sale again — one clause, used by every figure in the app.
+LIVE_SALE = {"$nin": ["draft", "quote", "cancelled"]}
 
 PyObjectId = Annotated[str, BeforeValidator(lambda v: str(v) if isinstance(v, ObjectId) else v)]
 
@@ -220,6 +230,19 @@ async def writing_shop(user: dict, given: str = "") -> str:
     return (await business_shops(str(user["business_id"])))[0]
 
 
+def writing_rep(user: dict, given: str = "") -> str:
+    """Whose sale (or expense) this is. Defaults to whoever is typing, which is
+    what makes 'sales by rep' and the rep page possible."""
+    return (given or user.get("name") or "").strip()
+
+
+def rep_clause(rep: str = "") -> dict:
+    """Filter a figure down to one rep: the person who recorded it."""
+    if not rep:
+        return {}
+    return {"$or": [{"rep": rep}, {"rep": {"$in": ["", None]}, "created_by": rep}, {"rep": {"$exists": False}, "created_by": rep}]}
+
+
 def stock_map(item: dict, main: str) -> dict:
     """Quantity per shop. Items saved before shops existed sit at the main branch."""
     rows = item.get("stock")
@@ -307,7 +330,7 @@ async def customer_balance(business_id: str, customer_id: str) -> float:
     """Positive = customer owes us; negative = unused credit."""
     c = await db.customers.find_one({"_id": oid(customer_id)})
     bal = c.get("opening_balance", 0) * (1 if c.get("opening_type") == "owes_me" else -1)
-    async for inv in db.invoices.find({"business_id": business_id, "customer_id": customer_id, "deleted_at": None, "status": {"$ne": "draft"}}):
+    async for inv in db.invoices.find({"business_id": business_id, "customer_id": customer_id, "deleted_at": None, "status": LIVE_SALE}):
         bal += inv["totals"]["total"]
     async for p in db.payments.find({"business_id": business_id, "customer_id": customer_id, "deleted_at": None}):
         bal -= p["amount"]
@@ -325,7 +348,7 @@ def invoice_status(inv: dict, paid: float) -> dict:
     due = round(inv["totals"]["total"] - paid, 2)
     status = inv.get("status", "issued")
     days_overdue = 0
-    if status not in ("draft", "quote"):
+    if status not in ("draft", "quote", "cancelled"):
         if due <= 0:
             status = "paid"
         else:

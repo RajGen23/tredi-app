@@ -56,6 +56,11 @@ export default function Team() {
               ))}
             </Card>
             <Btn label="Build a role" variant="ghost" style={{ marginTop: 12 }} testID="team-build-role" onPress={() => router.push("/team/role-new")} />
+            <Li last style={{ marginTop: 12 }} testID="team-reps" onPress={() => router.push("/team/reps")}>
+              <Av icon="podium-outline" tone="green" />
+              <View style={{ flex: 1 }}><H4>Reps performance</H4><Sub>What each rep sold, collected and spent</Sub></View>
+              <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
+            </Li>
             <Li last style={{ marginTop: 12 }} testID="team-lock" onPress={() => router.push("/settings/lock")}>
               <Av icon="lock-closed-outline" tone="sq" />
               <View style={{ flex: 1 }}><H4>App lock</H4><Sub>PIN and idle timeout on this phone</Sub></View>

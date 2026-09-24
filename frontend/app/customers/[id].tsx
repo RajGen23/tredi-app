@@ -1,5 +1,5 @@
 // 03.2 Customer profile — teal top, debt hero, shortcuts, KPIs, links.
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -37,7 +37,11 @@ export default function CustomerProfile() {
     <View style={s.root} testID="customer-profile-screen">
       <View style={[s.teal, { height: insets.top + 132 }]} />
       <View style={{ paddingTop: insets.top }}>
-        <AppBar teal back title="Customer" right={<><IconBtn teal name="create-outline" testID="customer-edit" /><IconBtn teal name="ellipsis-horizontal" testID="customer-more" /></>} />
+        <AppBar teal back title="Customer" right={<>
+          {c?.phone ? <IconBtn teal name="call-outline" testID="customer-call" onPress={() => Linking.openURL(`tel:${String(c.phone).replace(/\s/g, "")}`)} /> : null}
+          <IconBtn teal name="create-outline" testID="customer-edit" onPress={() => router.push({ pathname: "/customers/new", params: { edit: id } })} />
+          <IconBtn teal name="ellipsis-horizontal" testID="customer-more" onPress={() => router.push(`/customers/ledger/${id}`)} />
+        </>} />
       </View>
       {!c ? <Card style={{ marginHorizontal: 14 }}><Loading /></Card> : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
@@ -48,9 +52,25 @@ export default function CustomerProfile() {
               {c.overdue_count > 0 ? <Badge tone="over">Overdue</Badge> : c.balance > 0 ? <Badge tone="due">Owing</Badge> : <Badge tone="paid">Clear</Badge>}
             </Row>
             <Divider />
-            <Row between style={{ alignItems: "flex-start" }}>
-              <View><Lbl>Outstanding debt</Lbl><Money tone="neg" size={20} testID="customer-debt">{money(Math.max(0, c.balance))}</Money></View>
-              <View style={{ alignItems: "flex-end" }}><Lbl>Unused credit</Lbl><Money tone="pos">{money(Math.max(0, -c.balance))}</Money></View>
+            {/* The three figures the old app put on one card: what they have
+                bought, what is still unpaid, and what came back as returns. */}
+            <View style={{ flexDirection: "row" }} testID="customer-figures">
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Lbl numberOfLines={1}>Purchased</Lbl>
+                <Money size={14} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="customer-purchased">{money(c.total_purchases)}</Money>
+              </View>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Lbl numberOfLines={1}>Unpaid debt</Lbl>
+                <Money tone="neg" size={14} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="customer-debt">{money(Math.max(0, c.unpaid))}</Money>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Lbl numberOfLines={1}>Returns</Lbl>
+                <Money size={14} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="customer-returns">{money(c.returns_total)}</Money>
+              </View>
+            </View>
+            <Row between style={{ marginTop: 8 }}>
+              <Sub>{c.returns_count ? `${c.returns_count} return${c.returns_count === 1 ? "" : "s"} on record` : "No returns on record"}</Sub>
+              <Sub>{Math.max(0, -c.balance) > 0 ? `${money(Math.max(0, -c.balance))} unused credit` : c.credit_limit ? `Limit ${money(c.credit_limit)}` : "No credit limit"}</Sub>
             </Row>
             <View style={{ flexDirection: "row", marginTop: 11, gap: 6 }}>
               {shortcuts.map((sc) => (
@@ -65,7 +85,7 @@ export default function CustomerProfile() {
             <View style={{ width: "48.5%" }}><Kpi label="Total received" value={money(c.total_received)} tone="pos" /></View>
             <View style={{ width: "48.5%" }}><Kpi label="Total purchases" value={money(c.total_purchases)} small={`${c.invoices.length} invoices`} /></View>
             <View style={{ width: "48.5%" }}><Kpi label="Overdue invoices" value={String(c.overdue_count)} small={c.max_days_overdue ? `${c.max_days_overdue} days late` : "none"} tone={c.overdue_count ? "neg" : undefined} /></View>
-            <View style={{ width: "48.5%" }}><Kpi label="Price list" value={c.price_list} small={c.credit_limit ? `Limit ${money(c.credit_limit)}` : "No limit"} /></View>
+            <View style={{ width: "48.5%" }}><Kpi label="Price list" value={c.price_list} small={c.credit_limit ? `Limit ${money(c.credit_limit)}` : "No limit"} onPress={() => router.push({ pathname: "/customers/new", params: { edit: id } })} testID="customer-edit-price-list" /></View>
           </View>
           <Card style={{ marginTop: 9, paddingVertical: 4 }}>
             <Li testID="customer-ledger-link" onPress={() => router.push(`/customers/ledger/${id}`)}>

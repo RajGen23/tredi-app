@@ -6,7 +6,8 @@ from bson import ObjectId
 from datetime import timedelta, date, timezone
 import re
 
-from deps import (CurrentUser, biz_filter, clean, db, invoice_paid, invoice_status, now, oid, period_range, scoped, shop_qty, shop_scope)
+from deps import (CurrentUser, LIVE_SALE, biz_filter, clean, db, invoice_paid, invoice_status, now, oid, period_range, scoped,
+                  shop_qty, shop_scope)
 
 router = APIRouter(prefix="/api")
 
@@ -43,7 +44,7 @@ async def search(user: CurrentUser, q: str = "", kind: str = "all"):
         async for c in db.customers.find({**f, "$or": [{"name": rx}, {"phone": rx}]}).limit(8):
             cid = str(c["_id"])
             unpaid, owed = 0, 0.0
-            async for inv in db.invoices.find({**f, "customer_id": cid, "status": {"$nin": ["draft", "quote"]}}):
+            async for inv in db.invoices.find({**f, "customer_id": cid, "status": LIVE_SALE}):
                 st = invoice_status(inv, await invoice_paid(f["business_id"], str(inv["_id"])))
                 if st["due"] > 0:
                     unpaid += 1
@@ -77,7 +78,7 @@ async def notifications(user: CurrentUser):
     sc = await shop_scope(user, "stock")
     today_rows, earlier_rows = [], []
     overdue_count, overdue_amount = 0, 0.0
-    async for inv in db.invoices.find({**f, "status": {"$nin": ["draft", "quote"]}}):
+    async for inv in db.invoices.find({**f, "status": LIVE_SALE}):
         st = invoice_status(inv, await invoice_paid(f["business_id"], str(inv["_id"])))
         if st["days_overdue"] > 0 and st["due"] > 0:
             overdue_count += 1

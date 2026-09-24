@@ -1,5 +1,6 @@
-// 12.3 App lock — the keypad is oversized on purpose.
-import { useState } from "react";
+// 12.3 App lock — the keypad is oversized on purpose, and the fingerprint or
+// Face ID sensor is offered first when the phone has one.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +9,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import { bioState, bioUnlock, type BioState } from "@/src/biometrics";
 import { Av, H4, Sub } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
@@ -34,7 +36,25 @@ export default function Lock() {
   const toast = useToast();
   const { user, business } = useAuth();
   const [pin, setPin] = useState("");
+  const [bio, setBio] = useState<BioState>({ available: false, enrolled: false, label: "Fingerprint" });
+  const tried = useRef(false);
   const settings = useQuery({ queryKey: ["lock"], queryFn: () => api("/settings/lock") });
+
+  useEffect(() => { bioState().then(setBio); }, []);
+
+  const unlockWithBio = useCallback(async () => {
+    const res = await bioUnlock(`Unlock ${business?.name ?? "TREDI"}`);
+    if (res.ok) return router.replace("/(tabs)");
+    if (res.message) toast.show(res.message);
+  }, [business?.name, router, toast]);
+
+  // Offered the moment the screen opens, the way a banking app does — the PIN
+  // pad is still there underneath if the sensor says no.
+  useEffect(() => {
+    if (tried.current || !settings.data?.biometrics || !bio.available || !bio.enrolled) return;
+    tried.current = true;
+    unlockWithBio();
+  }, [settings.data?.biometrics, bio, unlockWithBio]);
 
   const verify = useMutation({
     mutationFn: (value: string) => api("/settings/lock/verify", { method: "POST", json: { pin: value } }),
@@ -44,7 +64,7 @@ export default function Lock() {
 
   const press = (k: string) => {
     if (k === "del") return setPin(pin.slice(0, -1));
-    if (k === "bio") return toast.show("Fingerprint unlock needs a device build", "Soon");
+    if (k === "bio") return unlockWithBio();
     if (pin.length >= 6) return;
     const next = pin + k;
     setPin(next);
@@ -63,14 +83,14 @@ export default function Lock() {
         {KEYS.map((k) => (
           <Pressable key={k} testID={`lock-key-${k}`} onPress={() => press(k)} style={({ pressed }) => [s.key, pressed && { opacity: 0.5 }]}>
             {k === "del" ? <Ionicons name="backspace-outline" size={24} color={colors.ink60} />
-              : k === "bio" ? <Ionicons name="finger-print-outline" size={24} color={colors.ink60} />
+              : k === "bio" ? <Ionicons name={bio.label === "Face ID" ? "scan-outline" : "finger-print-outline"} size={24} color={bio.available && bio.enrolled ? colors.green700 : colors.ink60} />
               : <Text style={s.keyText}>{k}</Text>}
           </Pressable>
         ))}
       </View>
       <Sub style={s.hint}>
         {settings.data?.has_pin
-          ? `Locks after ${settings.data.idle_minutes} minutes idle${settings.data.biometrics ? " · fingerprint enabled" : ""}`
+          ? `Locks after ${settings.data.idle_minutes} minutes idle${settings.data.biometrics && bio.available && bio.enrolled ? ` · ${bio.label} enabled` : ""}`
           : "No PIN set yet — set one under Users & permissions."}
       </Sub>
       {!settings.data?.has_pin ? (

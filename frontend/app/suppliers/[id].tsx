@@ -71,8 +71,9 @@ export default function SupplierProfile() {
             </Row>
           </Card>
           <Row style={{ gap: 8, marginTop: 9 }}>
-            <View style={{ flex: 1 }}><Kpi label="Orders" value={String(d.purchases.length)} small="all time" /></View>
-            <View style={{ flex: 1 }}><Kpi label="Payments sent" value={String(d.payments.length)} small="all time" /></View>
+            <View style={{ flex: 1 }}><Kpi label="Orders" value={String(d.purchases.length)} small="tap to see the last one" testID="supplier-kpi-orders"
+              onPress={() => d.purchases[0] && router.push(`/purchases/${d.purchases[0].id}`)} /></View>
+            <View style={{ flex: 1 }}><Kpi label="Payments sent" value={String(d.payments.length)} small={d.payments[0] ? `last from ${d.payments[0].account_name}` : "none yet"} /></View>
           </Row>
 
           <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Ledger</Lbl>
@@ -81,12 +82,13 @@ export default function SupplierProfile() {
           ) : (
             <Card style={{ paddingVertical: 4 }}>
               {d.purchases.map((p: any) => (
-                <Li key={p.id} testID={`supplier-purchase-${p.id}`}>
+                <Li key={p.id} testID={`supplier-purchase-${p.id}`} onPress={() => router.push(`/purchases/${p.id}`)}>
                   <Av icon="cart-outline" tone="sq" />
                   <View style={{ flex: 1 }}>
                     <Row between><H4>{p.number}</H4><Money tone="neg">+ {money(p.total)}</Money></Row>
                     <Row between><Sub>{p.lines.length} line{p.lines.length === 1 ? "" : "s"} · {shortDate(p.created_at)}</Sub>
                       {p.due > 0 ? <Badge tone="due">{money(p.due)} due</Badge> : <Badge tone="paid">Paid</Badge>}</Row>
+                    <Tag>Paid from {p.account_name} · tap to see what was procured</Tag>
                   </View>
                 </Li>
               ))}
@@ -95,7 +97,7 @@ export default function SupplierProfile() {
                   <Av icon="arrow-up-outline" tone="mint" />
                   <View style={{ flex: 1 }}>
                     <Row between><H4>Payment sent</H4><Money tone="pos">− {money(p.amount)}</Money></Row>
-                    <Sub>{p.note} · {shortDate(p.created_at)}</Sub>
+                    <Sub>From {p.account_name} · {shortDate(p.created_at)}{p.note ? ` · ${p.note}` : ""}</Sub>
                   </View>
                 </Li>
               ))}

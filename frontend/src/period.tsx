@@ -3,9 +3,12 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import dayjs, { Dayjs } from "dayjs";
+import { useQuery } from "@tanstack/react-query";
 
 import { Btn, Divider, H4, Lbl, Row, Sub } from "@/src/components/ui";
 import { Sheet } from "@/src/components/sheet";
+import { PickerField } from "@/src/components/picker";
+import { api } from "@/src/api";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 export type PeriodKey = "today" | "yesterday" | "week" | "month" | "last_month" | "year" | "all" | "custom";
@@ -21,13 +24,21 @@ export const PERIODS: { key: PeriodKey; label: string }[] = [
   { key: "custom", label: "Custom" },
 ];
 
-type Value = { period: PeriodKey; start: string | null; end: string | null; set: (p: PeriodKey, s?: string | null, e?: string | null) => void };
-const Ctx = createContext<Value>({ period: "month", start: null, end: null, set: () => {} });
+type Value = {
+  period: PeriodKey; start: string | null; end: string | null; rep: string;
+  set: (p: PeriodKey, s?: string | null, e?: string | null) => void;
+  setRep: (rep: string) => void;
+};
+const Ctx = createContext<Value>({ period: "month", start: null, end: null, rep: "", set: () => {}, setRep: () => {} });
 
 export function PeriodProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<{ period: PeriodKey; start: string | null; end: string | null }>({ period: "month", start: null, end: null });
+  const [state, setState] = useState<{ period: PeriodKey; start: string | null; end: string | null; rep: string }>({ period: "month", start: null, end: null, rep: "" });
   const value = useMemo(
-    () => ({ ...state, set: (period: PeriodKey, start: string | null = null, end: string | null = null) => setState({ period, start, end }) }),
+    () => ({
+      ...state,
+      set: (period: PeriodKey, start: string | null = null, end: string | null = null) => setState((s) => ({ ...s, period, start, end })),
+      setRep: (rep: string) => setState((s) => ({ ...s, rep })),
+    }),
     [state],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -35,7 +46,8 @@ export function PeriodProvider({ children }: { children: React.ReactNode }) {
 
 export function usePeriod() {
   const v = useContext(Ctx);
-  const query = v.period === "custom" && v.start && v.end ? `period=custom&start=${v.start}&end=${v.end}` : `period=${v.period}`;
+  const range = v.period === "custom" && v.start && v.end ? `period=custom&start=${v.start}&end=${v.end}` : `period=${v.period}`;
+  const query = v.rep ? `${range}&rep=${encodeURIComponent(v.rep)}` : range;
   const label = PERIODS.find((p) => p.key === v.period)?.label ?? "This month";
   return { ...v, query, shortLabel: v.period === "custom" && v.start ? `${dayjs(v.start).format("DD MMM")} – ${dayjs(v.end).format("DD MMM YYYY")}` : label };
 }
@@ -55,11 +67,14 @@ const useStyles = makeStyles((c) => ({
 export function PeriodSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const s = useStyles();
   const { colors } = useTheme();
-  const { period, start, end, set } = usePeriod();
+  const { period, start, end, rep, set, setRep } = usePeriod();
   const [draft, setDraft] = useState<PeriodKey>(period);
   const [month, setMonth] = useState<Dayjs>(dayjs());
   const [a, setA] = useState<string | null>(start);
   const [b, setB] = useState<string | null>(end);
+  const teamQ = useQuery({ queryKey: ["team"], queryFn: () => api("/team"), enabled: visible });
+  const repOptions = [{ key: "", label: "Everyone" }].concat(((teamQ.data as any)?.users ?? [])
+    .filter((u: any) => u.active !== false).map((u: any) => ({ key: u.name, label: u.name, sub: u.role_label })));
 
   const pick = (iso: string) => {
     if (!a || (a && b)) { setA(iso); setB(null); }
@@ -113,6 +128,11 @@ export function PeriodSheet({ visible, onClose }: { visible: boolean; onClose: (
         })}
       </View>
       {draft === "custom" ? <Sub style={{ marginTop: 8 }}>{a ? `${dayjs(a).format("DD MMM")} → ${b ? dayjs(b).format("DD MMM") : "pick an end date"}` : "Tap a start date"}</Sub> : null}
+      <Divider />
+      <Lbl>Filter by rep or staff member</Lbl>
+      <PickerField value={rep} options={repOptions} onPick={setRep} searchable title="Whose figures?"
+        placeholder="Everyone" style={{ marginTop: 6 }} testID="period-rep" />
+      <Sub style={{ marginTop: 6 }}>A rep means whoever recorded the sale or the expense.</Sub>
       <Btn label="Apply to all reports" testID="period-apply" style={{ marginTop: 13 }} onPress={apply} />
     </Sheet>
   );
@@ -120,6 +140,7 @@ export function PeriodSheet({ visible, onClose }: { visible: boolean; onClose: (
 
 export function PeriodBar({ onPress, label, icon = "◷" }: { onPress: () => void; label: string; icon?: string }) {
   const { colors } = useTheme();
+  const { rep } = usePeriod();
   return (
     <Pressable testID="period-bar" onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}>
       <Row between style={{ backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9 }}>
@@ -128,7 +149,7 @@ export function PeriodBar({ onPress, label, icon = "◷" }: { onPress: () => voi
             <Text style={{ color: colors.ink60, fontSize: 13 }}>{icon}</Text>
           </View>
           <View>
-            <Lbl>Period</Lbl>
+            <Lbl>{rep ? `Period · ${rep}` : "Period"}</Lbl>
             <Text style={{ fontFamily: fonts.monoSemibold, fontSize: 11.5, color: colors.onSurface }}>{label}</Text>
           </View>
         </Row>

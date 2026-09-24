@@ -1,5 +1,5 @@
 // 03.5 Add customer — duplicate phone detection while typing.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,8 +27,10 @@ export default function NewCustomer() {
   const qc = useQueryClient();
   const toast = useToast();
   // Arrives from the invoice flow — save the customer and go straight back to it.
-  const params = useLocalSearchParams<{ return?: string }>();
+  // With ?edit=<id> the same screen corrects an existing customer.
+  const params = useLocalSearchParams<{ return?: string; edit?: string }>();
   const backToInvoice = params.return === "invoice";
+  const editId = params.edit || "";
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -38,17 +40,38 @@ export default function NewCustomer() {
   const [priceList, setPriceList] = useState("Retail");
   const [limitOn, setLimitOn] = useState(true);
   const [limit, setLimit] = useState("150000");
+  const [loaded, setLoaded] = useState(false);
   const existing = useQuery({ queryKey: ["customers"], queryFn: () => api<any[]>("/customers") });
+  const editQ = useQuery({ queryKey: ["customer", editId], queryFn: () => api(`/customers/${editId}`), enabled: !!editId });
   const dupe = useMemo(() => {
     const p = phone.replace(/\D/g, "");
-    return p.length >= 7 ? existing.data?.find((c) => c.phone.replace(/\D/g, "").endsWith(p.slice(-9))) : undefined;
-  }, [phone, existing.data]);
+    if (p.length < 7) return undefined;
+    return existing.data?.find((c) => c.id !== editId && c.phone.replace(/\D/g, "").endsWith(p.slice(-9)));
+  }, [phone, existing.data, editId]);
+
+  useEffect(() => {
+    const c: any = editQ.data;
+    if (!c || loaded) return;
+    setLoaded(true);
+    setName(c.name ?? "");
+    setPhone(c.phone ?? "");
+    setEmail(c.email ?? "");
+    setAddress(c.address ?? "");
+    setOpening(c.opening_balance ? String(c.opening_balance) : "");
+    setType(c.opening_type === "i_owe" ? "i_owe" : "owes_me");
+    setPriceList(c.price_list ?? "Retail");
+    setLimitOn(c.credit_limit != null);
+    setLimit(c.credit_limit != null ? String(c.credit_limit) : "150000");
+  }, [editQ.data, loaded]);
 
   const m = useMutation({
-    mutationFn: () => api("/customers", { method: "POST", json: { name, phone, email, address, opening_balance: parseNum(opening), opening_type: type, price_list: priceList, credit_limit: limitOn ? parseNum(limit) : null } }),
+    mutationFn: () => {
+      const json = { name, phone, email, address, opening_balance: parseNum(opening), opening_type: type, price_list: priceList, credit_limit: limitOn ? parseNum(limit) : null };
+      return editId ? api(`/customers/${editId}`, { method: "PUT", json }) : api("/customers", { method: "POST", json });
+    },
     onSuccess: (c: any) => {
-      qc.invalidateQueries({ queryKey: ["customers"] });
-      toast.show(`${c.name} added`, "Saved.");
+      ["customers", "customer", "customer-summary", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      toast.show(`${c.name} ${editId ? "updated" : "added"}`, "Saved.");
       if (backToInvoice) router.replace({ pathname: "/invoices/new", params: { customer_id: c.id } });
       else router.replace(`/customers/${c.id}`);
     },
@@ -56,7 +79,7 @@ export default function NewCustomer() {
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-customer-screen">
-      <AppBar title="New customer" close rightText={m.isPending ? "Saving…" : "Save"} onRightText={() => (name.trim() ? m.mutate() : null)} />
+      <AppBar title={editId ? "Edit customer" : "New customer"} close rightText={m.isPending ? "Saving…" : "Save"} onRightText={() => (name.trim() ? m.mutate() : null)} />
       <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: insets.bottom + 24, gap: 10 }} bottomOffset={24} keyboardShouldPersistTaps="handled">
         <Field testID="customer-name" label="Name" value={name} onChangeText={setName} placeholder="Kunle Stores" autoFocus autoCapitalize="words" />
         <Field testID="customer-phone" label="Phone" value={phone} onChangeText={setPhone} placeholder="+234 706 118 9002" keyboardType="phone-pad" mono />

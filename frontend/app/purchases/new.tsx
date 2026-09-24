@@ -1,13 +1,17 @@
 // 06.3 Record purchase — raises stock and what you owe in one entry.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import dayjs from "dayjs";
 
 import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, Field, H4, Lbl, Li, Loading, Money, Row, Sub, Switch } from "@/src/components/ui";
+import { PickerField } from "@/src/components/picker";
+import { DateField } from "@/src/components/date-field";
 import { Sheet, useToast } from "@/src/components/sheet";
+import { useAccounts } from "@/src/lookups";
 import { initials, money, parseNum } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -24,7 +28,7 @@ export default function NewPurchase() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ supplier?: string }>();
+  const params = useLocalSearchParams<{ supplier?: string; item?: string }>();
   const toast = useToast();
   const qc = useQueryClient();
 
@@ -35,22 +39,41 @@ export default function NewPurchase() {
   const [draft, setDraft] = useState<{ item_id: string | null; name: string; unit: string; qty: string; cost: string } | null>(null);
   const [paid, setPaid] = useState("");
   const [method, setMethod] = useState<"credit" | "cash" | "transfer">("credit");
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [date, setDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [updateCost, setUpdateCost] = useState(true);
 
   const suppliers = useQuery({ queryKey: ["suppliers"], queryFn: () => api("/suppliers") });
-  const items = useQuery({ queryKey: ["items"], queryFn: () => api("/items") });
+  const items = useQuery({ queryKey: ["items"], queryFn: () => api<any[]>("/items") });
+  const { accounts, options: accountOptions } = useAccounts();
   const supplier = suppliers.data?.suppliers?.find((x: any) => x.id === supplierId);
   const total = useMemo(() => lines.reduce((a, l) => a + l.quantity * l.unit_cost, 0), [lines]);
+  const account = accounts.find((a: any) => a.id === accountId) ?? accounts[0];
+
+  // Reordering straight from an item: it is already on the bill when the screen opens.
+  useEffect(() => {
+    if (!params.item || !items.data || lines.length || draft) return;
+    const it = items.data.find((x: any) => x.id === params.item);
+    if (it) {
+      setDraft({ item_id: it.id, name: it.name, unit: it.unit, qty: "", cost: String(it.cost_price || "") });
+      setPickItem(true);
+      if (it.supplier && !supplierId) {
+        const s2 = suppliers.data?.suppliers?.find((x: any) => x.name === it.supplier);
+        if (s2) { setSupplierId(s2.id); setPickSupplier(false); }
+      }
+    }
+  }, [params.item, items.data, lines.length, draft, supplierId, suppliers.data]);
 
   const save = useMutation({
     mutationFn: () => api("/purchases", {
       method: "POST",
-      json: { supplier_id: supplierId, lines, paid: parseNum(paid), method, update_cost: updateCost },
+      json: { supplier_id: supplierId, lines, paid: parseNum(paid), method, update_cost: updateCost, date,
+              account_id: method === "credit" ? null : account?.id ?? null },
     }),
     onSuccess: (r: any) => {
       qc.invalidateQueries();
       toast.show(`${money(r.total)} recorded`, r.number);
-      router.replace(`/suppliers/${supplierId}`);
+      router.replace(`/purchases/${r.id}`);
     },
     onError: (e: any) => toast.show(e.message),
   });
@@ -102,6 +125,11 @@ export default function NewPurchase() {
             ))}
           </Row>
           <Field label="Paid now" placeholder="0" keyboardType="numeric" mono value={paid} onChangeText={setPaid} testID="purchase-paid" />
+          {method !== "credit" ? (
+            <PickerField label="Paid from" value={account?.id ?? null} options={accountOptions} onPick={setAccountId}
+              title="Which account paid for it?" placeholder="Cash till" testID="purchase-account" />
+          ) : null}
+          <DateField label="Date on the bill" value={date} onChange={setDate} testID="purchase-date" />
           <Row between>
             <View style={{ flex: 1 }}><H4>Update cost prices</H4><Sub>Uses the price on this bill</Sub></View>
             <Switch on={updateCost} onChange={setUpdateCost} testID="purchase-update-cost" />

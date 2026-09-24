@@ -10,14 +10,26 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import dayjs from "dayjs";
 
 import { api } from "@/src/api";
+import { useAuth } from "@/src/auth";
 import { AppBar, Av, Badge, Btn, Card, Check, Chip, Divider, Field, H4, IconBtn, Li, Lbl, Money, Prog, Row, Seg, Sub, Switch, Tag } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
+import { AccountForm } from "@/src/components/account-form";
+import { DateField } from "@/src/components/date-field";
+import { PickerField } from "@/src/components/picker";
+import { Scanner, ScanMode } from "@/src/components/scanner";
+import { ScanResultSheet } from "@/src/components/scan-result";
 import { initials, money, parseNum, sym } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Line = { key: string; item_id?: string; name: string; quantity: number; unit_price: number; discount_type: "amount" | "percent"; discount_value: number; note: string; quick_add: boolean; unit: string; photo_url?: string; stock?: number; track?: boolean };
 type DiscMode = "amount" | "percent" | "final";
 const VAT = 7.5;
+const PAY_MODES = [
+  { key: "credit", label: "On credit", sub: "Customer pays later" },
+  { key: "cash", label: "Cash", sub: "Money in the till now" },
+  { key: "transfer", label: "Bank transfer", sub: "Straight into an account" },
+  { key: "card", label: "Card", sub: "POS terminal" },
+];
 
 function calcLine(l: Line) {
   const gross = l.quantity * l.unit_price;
@@ -61,23 +73,32 @@ export default function NewInvoice() {
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
-  const params = useLocalSearchParams<{ customer_id?: string; from?: string }>();
+  const { user } = useAuth();
+  const params = useLocalSearchParams<{ customer_id?: string; from?: string; edit?: string }>();
+  const editId = params.edit || "";
 
   const customersQ = useQuery({ queryKey: ["customers"], queryFn: () => api<any[]>("/customers") });
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => api<any[]>("/items") });
   const accountsQ = useQuery({ queryKey: ["accounts"], queryFn: () => api("/accounts") });
   const termsQ = useQuery({ queryKey: ["terms"], queryFn: () => api<any[]>("/terms") });
   const settingsQ = useQuery({ queryKey: ["invoice-settings"], queryFn: () => api("/settings/invoice") });
+  const teamQ = useQuery({ queryKey: ["team"], queryFn: () => api("/team") });
+  const editQ = useQuery({ queryKey: ["invoice", editId], queryFn: () => api(`/invoices/${editId}`), enabled: !!editId });
 
   // A repeat purchase starts from an existing invoice instead of an empty basket.
   const repeatQ = useQuery({ queryKey: ["duplicate", params.from], queryFn: () => api(`/invoices/${params.from}/duplicate`), enabled: !!params.from });
-  const [step, setStep] = useState<0 | 1 | 2>(params.customer_id || params.from ? 1 : 0);
+  const [step, setStep] = useState<0 | 1 | 2>(params.customer_id || params.from || params.edit ? 1 : 0);
   const [customerId, setCustomerId] = useState<string | null>(params.customer_id ?? null);
   const [search, setSearch] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [pick, setPick] = useState(false);
   const [quick, setQuick] = useState(false);
+  const [newCust, setNewCust] = useState(false);
+  const [scan, setScan] = useState(false);
+  const [scanMode, setScanMode] = useState<ScanMode>("add");
+  const [scanCode, setScanCode] = useState("");
+  const [scanItem, setScanItem] = useState<any | null>(null);
   const [editKey, setEditKey] = useState<string | null>(null);
   const [discOpen, setDiscOpen] = useState(false);
   const [discMode, setDiscMode] = useState<DiscMode>("amount");
@@ -85,23 +106,57 @@ export default function NewInvoice() {
   const [discDraft, setDiscDraft] = useState("");
   const [vatOn, setVatOn] = useState(true);
   const [payMode, setPayMode] = useState<"credit" | "cash" | "transfer" | "card">("credit");
-  const [dueDays, setDueDays] = useState(14);
+  const [issueDate, setIssueDate] = useState(dayjs().format("YYYY-MM-DD"));
+  const [dueDate, setDueDate] = useState("");
+  const [rep, setRep] = useState("");
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [shipping, setShipping] = useState("");
   const [bankIds, setBankIds] = useState<string[]>([]);
   const [banksOpen, setBanksOpen] = useState(false);
+  const [addBank, setAddBank] = useState(false);
   const [termsOn, setTermsOn] = useState(true);
   const [termsId, setTermsId] = useState<string | null>(null);
   const [termsOpen, setTermsOpen] = useState(false);
   const [useCredit, setUseCredit] = useState(false);
   const [showPhotos, setShowPhotos] = useState(false);
   const photosAllowed = (settingsQ.data as any)?.photos_allowed;
+  const summaryQ = useQuery({ queryKey: ["customer-summary", customerId], queryFn: () => api(`/customers/${customerId}/summary`), enabled: !!customerId });
+  const summary: any = summaryQ.data;
+
+  useEffect(() => { if (!rep && user?.name) setRep(user.name); }, [user?.name, rep]);
 
   useEffect(() => {
     const st: any = settingsQ.data;
     if (!st) return;
     setShowPhotos((v) => (v ? v : !!st.show_photos));
     setBankIds((ids) => (ids.length ? ids : st.default_bank_account_id ? [st.default_bank_account_id] : []));
+    setDueDate((d) => d || dayjs().add(st.due_days ?? 7, "day").format("YYYY-MM-DD"));
   }, [settingsQ.data]);
+
+  // Correcting an existing invoice: the same document is loaded, edited and saved back.
+  useEffect(() => {
+    const inv: any = editQ.data;
+    if (!inv || lines.length) return;
+    setCustomerId(inv.customer_id ?? null);
+    setDiscMode((inv.invoice_discount_type ?? "amount") as DiscMode);
+    setDiscValue(inv.invoice_discount_value ?? 0);
+    setVatOn(!!inv.vat_rate);
+    setPayMode(inv.payment_mode ?? "credit");
+    setAccountId(inv.account_id ?? null);
+    setRep(inv.rep || inv.created_by || "");
+    setIssueDate(dayjs(inv.created_at).format("YYYY-MM-DD"));
+    if (inv.due_date) setDueDate(dayjs(inv.due_date).format("YYYY-MM-DD"));
+    setShipping(inv.totals?.shipping ? String(inv.totals.shipping) : "");
+    setBankIds(inv.bank_account_ids ?? []);
+    setTermsId(inv.terms_id ?? null);
+    setTermsOn(!!inv.terms_id);
+    setShowPhotos(!!inv.show_photos);
+    setLines((inv.lines ?? []).map((l: any, i: number) => ({
+      key: `${l.item_id ?? l.name}-${i}`, item_id: l.item_id ?? undefined, name: l.name, quantity: l.quantity, unit_price: l.unit_price,
+      discount_type: l.discount_type ?? "amount", discount_value: l.discount_value ?? 0, note: l.note ?? "", quick_add: !!l.quick_add,
+      unit: l.unit ?? "", photo_url: l.photo_url ?? "", track: true,
+    })));
+  }, [editQ.data, lines.length]);
 
   useEffect(() => {
     const r = repeatQ.data;
@@ -122,8 +177,16 @@ export default function NewInvoice() {
   const wholesale = customer?.price_list === "Wholesale";
   const ship = parseNum(shipping);
   const totals = useMemo(() => calcTotals(lines, discMode, discValue, vatOn, ship), [lines, discMode, discValue, vatOn, ship]);
-  const credit = Math.max(0, -(customer?.balance ?? 0));
+  const credit = Math.max(0, -(summary?.balance ?? customer?.balance ?? 0));
   const creditUsed = useCredit ? Math.min(credit, totals.total) : 0;
+  // A credit limit warns, it never blocks — the person at the counter decides.
+  const limit: number | null = summary?.credit_limit ?? null;
+  const afterBalance = (summary?.balance ?? 0) + totals.total;
+  const overLimit = !!limit && afterBalance > limit;
+  const repOptions = ((teamQ.data as any)?.users ?? []).filter((u: any) => u.active !== false)
+    .map((u: any) => ({ key: u.name, label: u.name, sub: u.role_label }));
+  const accounts: any[] = (accountsQ.data as any)?.accounts ?? [];
+  const accountOptions = accounts.map((a: any) => ({ key: a.id, label: a.name, sub: a.detail || a.kind }));
   const shopTerms = (termsQ.data ?? []).filter((t) => !t.shop || t.shop === (customer?.shop ?? "") || !customer);
   const terms = shopTerms.find((t) => t.id === termsId) ?? shopTerms.find((t) => t.is_default) ?? shopTerms[0];
   const draftTotals = useMemo(() => calcTotals(lines, discMode, parseNum(discDraft), vatOn), [lines, discMode, discDraft, vatOn]);
@@ -141,16 +204,55 @@ export default function NewInvoice() {
   };
   const bump = (key: string, d: number) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, quantity: Math.max(0, l.quantity + d) } : l)).filter((l) => l.quantity > 0));
 
+  // Scanning straight onto the invoice. In Add mode each scan drops a line in
+  // and the camera stays open; in Price check mode nothing is touched until the
+  // person at the counter taps Add. An unknown code offers to create the item.
+  const onScan = (code: string) => {
+    const hit = (itemsQ.data ?? []).find((i) => String(i.barcode ?? "").trim() === code) ?? null;
+    if (scanMode === "price" || !hit) {
+      setScan(false);
+      setScanCode(code);
+      setScanItem(hit);
+      if (!hit) toast.show("No item carries that bar code yet");
+      return;
+    }
+    addItem(hit);
+    toast.show(`${hit.name} added · ${money(wholesale && hit.wholesale_price ? hit.wholesale_price : hit.selling_price)}`);
+  };
+  const closeScanResult = () => { setScanCode(""); setScanItem(null); };
+  const openScanner = () => { setAddOpen(false); setPick(false); setScan(true); };
+
+  const body = (status: "draft" | "issued") => ({
+    customer_id: customerId, lines: lines.map(({ key, stock, track, ...l }) => l), invoice_discount_type: discMode,
+    invoice_discount_value: discValue, vat_rate: vatOn ? VAT : 0, issue_date: issueDate,
+    due_date: dueDate || dayjs().add(7, "day").format("YYYY-MM-DD"), payment_mode: payMode,
+    account_id: payMode !== "credit" ? accountId ?? bankIds[0] ?? accounts[0]?.id ?? null : null, status, rep,
+    shipping_fee: ship, bank_account_ids: bankIds, credit_applied: creditUsed,
+    terms_id: termsOn ? terms?.id ?? null : null, show_photos: showPhotos,
+  });
+
   const save = useMutation({
-    mutationFn: (status: "draft" | "issued") => api("/invoices", { method: "POST", json: {
-      customer_id: customerId, lines: lines.map(({ key, stock, track, ...l }) => l), invoice_discount_type: discMode, invoice_discount_value: discValue, vat_rate: vatOn ? VAT : 0,
-      due_date: dayjs().add(dueDays, "day").format("YYYY-MM-DD"), payment_mode: payMode, account_id: payMode !== "credit" ? bankIds[0] ?? accountsQ.data?.accounts?.[0]?.id ?? null : null, status,
-      shipping_fee: ship, bank_account_ids: bankIds, credit_applied: creditUsed, terms_id: termsOn ? terms?.id ?? null : null, show_photos: showPhotos,
-    } }),
+    mutationFn: (status: "draft" | "issued") =>
+      editId ? api(`/invoices/${editId}`, { method: "PUT", json: body(status) })
+             : api("/invoices", { method: "POST", json: body(status) }),
     onSuccess: (inv: any, status) => {
-      ["invoices", "customers", "items", "dashboard", "accounts"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
-      toast.show(status === "draft" ? "Draft saved" : `${inv.number} raised for ${money(inv.totals.total)}`, status === "draft" ? undefined : "Sent.");
+      ["invoices", "invoice", "customers", "customer-summary", "items", "low-stock", "dashboard", "accounts", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      toast.show(editId ? `${inv.number} updated` : status === "draft" ? "Draft saved — nothing has left your stock yet" : `${inv.number} raised for ${money(inv.totals.total)}`,
+        editId ? "Saved." : status === "draft" ? undefined : "Issued.");
       router.replace(`/invoices/${inv.id}`);
+    },
+    onError: (e: Error) => toast.show(e.message),
+  });
+
+  const addCustomer = useMutation({
+    mutationFn: (data: { name: string; phone: string; credit_limit: number | null }) => api("/customers", { method: "POST", json: data }),
+    onSuccess: (c: any) => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      setCustomerId(c.id);
+      setNewCust(false);
+      setSearch("");
+      setStep(1);
+      toast.show(`${c.name} added — carry on with the invoice`, "Saved.");
     },
     onError: (e: Error) => toast.show(e.message),
   });
@@ -160,9 +262,10 @@ export default function NewInvoice() {
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-invoice-screen">
-      <AppBar title={step === 0 ? "New invoice" : step === 1 ? "Items" : "Review & send"} close={step === 0} back={step > 0} onBack={() => (step > 0 ? setStep((step - 1) as 0 | 1) : router.back())}
-        rightText={step === 0 ? "Save draft" : undefined} onRightText={() => (lines.length ? save.mutate("draft") : toast.show("Add an item before saving a draft"))}
-        right={step === 1 ? <IconBtn name="camera-outline" testID="items-photo-toggle" /> : undefined} />
+      <AppBar title={editId ? `Edit ${(editQ.data as any)?.number ?? "invoice"}` : step === 0 ? "New invoice" : step === 1 ? "Items" : "Review & send"}
+        close={step === 0} back={step > 0} onBack={() => (step > 0 ? setStep((step - 1) as 0 | 1) : router.back())}
+        rightText={step === 0 && !editId ? "Save draft" : undefined} onRightText={() => (lines.length ? save.mutate("draft") : toast.show("Add an item before saving a draft"))}
+        right={step === 1 ? <IconBtn name="barcode-outline" testID="items-scan" onPress={openScanner} /> : undefined} />
 
       {/* progress */}
       <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: 14, marginBottom: 10 }}>
@@ -176,8 +279,8 @@ export default function NewInvoice() {
           <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }} keyboardShouldPersistTaps="handled">
             <Field testID="invoice-customer-search" label="Bill to" value={search} onChangeText={setSearch} placeholder="Search or add a customer" autoFocus />
             <Card style={{ marginTop: 8, paddingVertical: 4 }}>
-              <Li testID="invoice-new-customer" onPress={() => router.push("/customers/new")}>
-                <Av icon="add" tone="green" /><View style={{ flex: 1 }}><H4>New customer</H4><Sub>Add name and phone only</Sub></View>
+              <Li testID="invoice-new-customer" onPress={() => setNewCust(true)}>
+                <Av icon="add" tone="green" /><View style={{ flex: 1 }}><H4>New customer</H4><Sub>Name and phone only — you stay on this invoice</Sub></View>
               </Li>
               {filteredCustomers.map((c, i) => (
                 <Li key={c.id} testID={`invoice-pick-customer-${c.id}`} last={i === filteredCustomers.length - 1} onPress={() => { setCustomerId(c.id); setSearch(""); setStep(1); }}>
@@ -198,16 +301,13 @@ export default function NewInvoice() {
       {step === 1 ? (
         <>
           <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }} keyboardShouldPersistTaps="handled">
-            <Card style={[s.faint, { flexDirection: "row", alignItems: "center", gap: 8 }]}>
-              <Av text={customer ? initials(customer.name) : "—"} size={24} tone={customer ? "mint" : "sq"} />
-              <View style={{ flex: 1 }}><H4 style={{ fontSize: 12.5 }}>{customer?.name ?? "Cash sale"}</H4><Tag>{wholesale ? "Wholesale prices applied" : "Retail prices"}</Tag></View>
-              <Chip label="Change" onPress={() => setStep(0)} testID="invoice-change-customer" />
-            </Card>
+            <CustomerStrip summary={summary} name={customer?.name ?? ""} sub={wholesale ? "Wholesale prices applied" : "Retail prices"}
+              onChange={() => setStep(0)} testID="invoice-change-customer" />
             <Pressable testID="invoice-add-item-field" onPress={() => setAddOpen(true)} style={{ marginTop: 9 }}>
               <View style={{ backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: 11, paddingHorizontal: 12, minHeight: 46, flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="search-outline" size={16} color={colors.ink60} />
                 <Text style={{ flex: 1, fontFamily: fonts.medium, fontSize: 13, color: colors.ink40 }}>Search item or scan barcode</Text>
-                <Ionicons name="barcode-outline" size={18} color={colors.ink60} />
+                <Pressable onPress={openScanner} hitSlop={10} testID="invoice-search-scan"><Ionicons name="barcode-outline" size={18} color={colors.green700} /></Pressable>
               </View>
             </Pressable>
             <View style={{ gap: 6, marginTop: 9 }}>
@@ -251,11 +351,8 @@ export default function NewInvoice() {
       {step === 2 ? (
         <>
           <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }}>
-            <Card style={[s.faint, { flexDirection: "row", alignItems: "center", gap: 8 }]}>
-              <Av text={customer ? initials(customer.name) : "—"} size={24} tone={customer ? "mint" : "sq"} />
-              <View style={{ flex: 1 }}><H4 style={{ fontSize: 12.5 }}>{customer?.name ?? "Cash sale"}</H4><Tag>{customer?.phone || "No phone on file"}</Tag></View>
-              <Chip label="Edit" onPress={() => setStep(0)} testID="review-edit-customer" />
-            </Card>
+            <CustomerStrip summary={summary} name={customer?.name ?? ""} sub={customer?.phone || "No phone on file"}
+              onChange={() => setStep(0)} testID="review-edit-customer" />
             <Card style={{ marginTop: 9, paddingVertical: 4 }}>
               {lines.map((l, i) => <Li key={l.key} last={i === lines.length - 1}><View style={{ flex: 1 }}><H4>{l.name}</H4><Tag>{l.quantity} × {money(l.unit_price, { symbol: false })}</Tag></View><Money>{money(calcLine(l).total, { symbol: false })}</Money></Li>)}
             </Card>
@@ -299,10 +396,33 @@ export default function NewInvoice() {
                 <Switch on={useCredit} onChange={setUseCredit} testID="review-use-credit" />
               </Card>
             ) : null}
+            {overLimit ? (
+              <Card style={[s.amberCard, { marginTop: 9 }]} testID="review-credit-warning">
+                <Row style={{ alignItems: "flex-start", gap: 8 }}>
+                  <Text style={{ color: colors.amber, fontFamily: fonts.bold }}>!</Text>
+                  <Sub style={{ flex: 1 }}>
+                    This takes <Text style={{ fontFamily: fonts.bold }}>{customer?.name}</Text> to {money(afterBalance)} against a {money(limit ?? 0)} credit limit —{" "}
+                    {money(afterBalance - (limit ?? 0))} over. You can still sell; this is a warning, not a block.
+                  </Sub>
+                </Row>
+              </Card>
+            ) : limit ? (
+              <Card style={[s.mintCard, { marginTop: 9 }]} testID="review-credit-ok">
+                <Sub>{money(Math.max(0, limit - afterBalance))} of {customer?.name}&rsquo;s {money(limit)} credit limit is left after this invoice.</Sub>
+              </Card>
+            ) : null}
             <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}>
-              <Field label="Due date" value={dayjs().add(dueDays, "day").format("DD MMM YYYY")} mono onPress={() => setDueDays(dueDays === 14 ? 30 : dueDays === 30 ? 7 : 14)} style={{ flex: 1 }} testID="review-due-date" />
-              <Field label="Payment" value={payMode === "credit" ? "On credit" : payMode[0].toUpperCase() + payMode.slice(1)} onPress={() => setPayMode(payMode === "credit" ? "cash" : payMode === "cash" ? "transfer" : payMode === "transfer" ? "card" : "credit")} right={<Sub>⌄</Sub>} style={{ flex: 1 }} testID="review-payment-mode" />
+              <DateField label="Issue date" value={issueDate} onChange={setIssueDate} style={{ flex: 1 }} testID="review-issue-date" />
+              <DateField label="Due date" value={dueDate} onChange={setDueDate} style={{ flex: 1 }} testID="review-due-date" />
             </View>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}>
+              <PickerField label="Payment" value={payMode} options={PAY_MODES} onPick={(k) => setPayMode(k as any)} title="How is this being paid?" style={{ flex: 1 }} testID="review-payment-mode" />
+              <PickerField label="Sold by" value={rep} options={repOptions} onPick={setRep} title="Which rep sold this?" placeholder="Choose rep" searchable style={{ flex: 1 }} testID="review-rep" />
+            </View>
+            {payMode !== "credit" ? (
+              <PickerField label="Paid into" value={accountId ?? accounts[0]?.id ?? null} options={accountOptions} onPick={setAccountId}
+                title="Which account received the money?" style={{ marginTop: 9 }} testID="review-account" />
+            ) : null}
             <Card style={{ marginTop: 8, paddingVertical: 2 }}>
               <Li testID="review-pay-into" onPress={() => setBanksOpen(true)}>
                 <Av icon="card-outline" tone="sq" size={24} />
@@ -329,10 +449,19 @@ export default function NewInvoice() {
             </Card>
           </ScrollView>
           <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <Btn small variant="ghost" label="Save draft" style={{ flex: 1 }} onPress={() => save.mutate("draft")} loading={save.isPending && save.variables === "draft"} testID="review-save-draft" />
-              <Btn small label="Save & send" style={{ flex: 1 }} icon="logo-whatsapp" onPress={() => save.mutate("issued")} loading={save.isPending && save.variables === "issued"} testID="review-send" />
-            </View>
+            {editId ? (
+              <Btn label="Save changes" onPress={() => save.mutate(((editQ.data as any)?.status === "draft" ? "draft" : "issued"))} loading={save.isPending} testID="review-save-changes" />
+            ) : (
+              <>
+                <Sub style={{ marginBottom: 7, textAlign: "center", fontSize: 11 }}>
+                  A draft touches nothing. Issuing takes the items off your shelf.
+                </Sub>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <Btn small variant="ghost" label="Save as draft" style={{ flex: 1 }} onPress={() => save.mutate("draft")} loading={save.isPending && save.variables === "draft"} testID="review-save-draft" />
+                  <Btn small label="Issue invoice" style={{ flex: 1 }} icon="checkmark-circle-outline" onPress={() => save.mutate("issued")} loading={save.isPending && save.variables === "issued"} testID="review-send" />
+                </View>
+              </>
+            )}
           </View>
         </>
       ) : null}
@@ -343,7 +472,7 @@ export default function NewInvoice() {
           <>
             <H4>Add item</H4>
             <View style={{ gap: 6, marginTop: 11 }}>
-              <Card style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12 }} testID="add-item-scan"><Av icon="barcode-outline" tone="sq" size={32} /><View style={{ flex: 1 }}><H4>Scan bar code</H4><Sub>Fastest at the counter</Sub></View><Ionicons name="chevron-forward" size={16} color={colors.ink40} /></Card>
+              <Pressable testID="add-item-scan" onPress={openScanner}><Card style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12 }}><Av icon="barcode-outline" tone="sq" size={32} /><View style={{ flex: 1 }}><H4>Scan bar code</H4><Sub>Fastest at the counter · or check a price</Sub></View><Ionicons name="chevron-forward" size={16} color={colors.ink40} /></Card></Pressable>
               <Pressable testID="add-item-inventory" onPress={() => setPick(true)}><Card style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12 }}><Av icon="cube-outline" tone="sq" size={32} /><View style={{ flex: 1 }}><H4>Choose from inventory</H4><Sub>{itemsQ.data?.length ?? 0} items · search by name or brand</Sub></View><Ionicons name="chevron-forward" size={16} color={colors.ink40} /></Card></Pressable>
               <Pressable testID="add-item-quick" onPress={() => { setAddOpen(false); setTimeout(() => setQuick(true), 200); }}><Card style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12, borderColor: colors.brandPrimary }}><Av icon="add" tone="green" size={32} /><View style={{ flex: 1 }}><H4>Quick add</H4><Sub>Something you don’t keep in stock</Sub></View><Ionicons name="chevron-forward" size={16} color={colors.ink40} /></Card></Pressable>
             </View>
@@ -373,24 +502,50 @@ export default function NewInvoice() {
       {/* 04.14 Quick add */}
       <QuickAdd visible={quick} onClose={() => setQuick(false)} onAdd={(l) => { setLines((ls) => [...ls, l]); setQuick(false); }} />
 
+      {/* Scan straight onto the invoice, or switch the camera to a price check */}
+      <Scanner visible={scan} onClose={() => setScan(false)} onScan={onScan} title="Scan onto this invoice"
+        hint="Point at the bar code — each scan adds one line" mode={scanMode} onMode={setScanMode} addLabel="Add to invoice" />
+      <ScanResultSheet testID="invoice-scan" code={scanCode} item={scanItem} onClose={closeScanResult}
+        onScanAgain={() => { closeScanResult(); setScan(true); }}
+        addLabel="Add to invoice"
+        onAdd={(it) => { addItem(it); closeScanResult(); toast.show(`${it.name} added to the invoice`); }} />
+
+      {/* New customer, without leaving the invoice */}
+      <NewCustomerSheet visible={newCust} onClose={() => setNewCust(false)} saving={addCustomer.isPending}
+        onSave={(d) => addCustomer.mutate(d)} />
+
       {/* 04.13 Line item details */}
       {editing ? <LineEditor line={editing} onClose={() => setEditKey(null)} onSave={(l) => { setLines((ls) => ls.map((x) => (x.key === l.key ? l : x))); setEditKey(null); }} onRemove={() => { setLines((ls) => ls.filter((x) => x.key !== editing.key)); setEditKey(null); }} /> : null}
 
       {/* Bank accounts that print on this invoice */}
-      <Sheet visible={banksOpen} onClose={() => setBanksOpen(false)} testID="banks-sheet">
+      <Sheet visible={banksOpen} onClose={() => { setBanksOpen(false); setAddBank(false); }} testID="banks-sheet">
         <H4>Bank accounts on this invoice</H4>
         <Sub style={{ marginTop: 3 }}>Tick the accounts the customer should pay into. They print in the bank details block.</Sub>
-        <Card style={{ marginTop: 10, paddingVertical: 2 }}>
-          {(accountsQ.data?.accounts ?? []).map((a: any, i: number, arr: any[]) => (
-            <Li key={a.id} last={i === arr.length - 1} testID={`bank-pick-${a.id}`}
-              onPress={() => setBankIds((ids) => (ids.includes(a.id) ? ids.filter((x) => x !== a.id) : [...ids, a.id]))}>
-              <Av icon="card-outline" tone={bankIds.includes(a.id) ? "green" : "sq"} />
-              <View style={{ flex: 1 }}><H4>{a.name}</H4><Sub>{a.bank || a.type || "Account"}{a.number ? ` · ${a.number}` : ""}</Sub></View>
-              <Check on={bankIds.includes(a.id)} />
-            </Li>
-          ))}
-        </Card>
-        <Btn label="Done" style={{ marginTop: 12 }} onPress={() => setBanksOpen(false)} testID="banks-done" />
+        {addBank ? (
+          <View style={{ marginTop: 11 }}>
+            <AccountForm saveLabel="Save and use on this invoice" onCancel={() => setAddBank(false)}
+              onCreated={(a) => { setBankIds((ids) => [...ids, a.id]); setAddBank(false); }} />
+          </View>
+        ) : (
+          <>
+            <Card style={{ marginTop: 10, paddingVertical: 2 }}>
+              {(accountsQ.data?.accounts ?? []).map((a: any) => (
+                <Li key={a.id} testID={`bank-pick-${a.id}`}
+                  onPress={() => setBankIds((ids) => (ids.includes(a.id) ? ids.filter((x) => x !== a.id) : [...ids, a.id]))}>
+                  <Av icon="card-outline" tone={bankIds.includes(a.id) ? "green" : "sq"} />
+                  <View style={{ flex: 1 }}><H4>{a.name}</H4><Sub>{a.detail || a.kind}</Sub></View>
+                  <Check on={bankIds.includes(a.id)} />
+                </Li>
+              ))}
+              <Li last testID="bank-add" onPress={() => setAddBank(true)}>
+                <Av icon="add" tone="green" />
+                <View style={{ flex: 1 }}><H4>Add a bank account</H4><Sub>Saved to your books and ticked here</Sub></View>
+                <Ionicons name="chevron-forward" size={15} color={colors.ink40} />
+              </Li>
+            </Card>
+            <Btn label="Done" style={{ marginTop: 12 }} onPress={() => setBanksOpen(false)} testID="banks-done" />
+          </>
+        )}
       </Sheet>
 
       {/* Terms of payment set, per shop */}
@@ -548,6 +703,71 @@ function QuickAdd({ visible, onClose, onAdd }: { visible: boolean; onClose: () =
       <Card style={{ marginTop: 9, flexDirection: "row", alignItems: "center", gap: 10 }}><View style={{ flex: 1 }}><H4>Also save to inventory</H4><Sub>Keep it for next time, with stock tracking off</Sub></View><Switch on={saveInv} onChange={setSaveInv} testID="quick-save-inventory" /></Card>
       <Card style={[s.faint, { marginTop: 9, flexDirection: "row", gap: 8, alignItems: "center" }]}><Badge tone="info">Quick add</Badge><Sub style={{ flex: 1 }}>Lines like this are tagged on the invoice and in reports, so stock valuation stays honest.</Sub></Card>
       <Btn label={`Add to invoice — ${money(total)}`} onPress={add} disabled={!name || !price} style={{ marginTop: 12 }} testID="quick-add-submit" />
+    </Sheet>
+  );
+}
+
+/** Who the invoice is for, with what they owe and the room left on their limit. */
+function CustomerStrip({ summary, name, sub, onChange, testID }: {
+  summary: any; name: string; sub: string; onChange: () => void; testID: string;
+}) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  return (
+    <Card style={[s.faint, { paddingVertical: 9 }]} testID="invoice-customer-strip">
+      <Row between>
+        <Row style={{ gap: 8, flex: 1 }}>
+          <Av text={name ? initials(name) : "—"} size={24} tone={name ? "mint" : "sq"} />
+          <View style={{ flex: 1 }}><H4 style={{ fontSize: 12.5 }}>{name || "Cash sale"}</H4><Tag>{sub}</Tag></View>
+        </Row>
+        <Chip label="Change" onPress={onChange} testID={testID} />
+      </Row>
+      {summary ? (
+        <Row between style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <View><Lbl>Owes now</Lbl><Money size={12.5} tone={summary.unpaid > 0 ? "neg" : "pos"} testID="strip-owes">{money(summary.unpaid)}</Money></View>
+          <View><Lbl>Bought so far</Lbl><Money size={12.5}>{money(summary.purchased)}</Money></View>
+          <View style={{ alignItems: "flex-end" }}>
+            <Lbl>Credit left</Lbl>
+            <Money size={12.5} tone={summary.over_limit ? "neg" : undefined} testID="strip-credit">
+              {summary.credit_limit ? money(summary.credit_left) : "No limit"}
+            </Money>
+          </View>
+        </Row>
+      ) : null}
+    </Card>
+  );
+}
+
+/** 04.3 — add a customer in the middle of an invoice and come straight back. */
+function NewCustomerSheet({ visible, onClose, onSave, saving }: {
+  visible: boolean; onClose: () => void; saving: boolean;
+  onSave: (d: { name: string; phone: string; credit_limit: number | null }) => void;
+}) {
+  const s = useStyles();
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [limitOn, setLimitOn] = useState(false);
+  const [limit, setLimit] = useState("");
+  return (
+    <Sheet visible={visible} onClose={onClose} testID="new-customer-sheet">
+      <H4>New customer</H4>
+      <Sub style={{ marginTop: 3 }}>Just the name is enough. You come back to this invoice the moment it saves.</Sub>
+      <View style={{ gap: 9, marginTop: 11 }}>
+        <Field label="Customer name" value={name} onChangeText={setName} placeholder="Blessing Adeyemi" autoFocus testID="new-customer-name" />
+        <Field label="Phone" value={phone} onChangeText={setPhone} placeholder="+234 803 000 0000" keyboardType="phone-pad" testID="new-customer-phone" />
+      </View>
+      <Card style={{ marginTop: 9 }}>
+        <Row between>
+          <View style={{ flex: 1 }}><H4>Give them a credit limit</H4><Sub>You are warned when a sale goes past it</Sub></View>
+          <Switch on={limitOn} onChange={setLimitOn} testID="new-customer-limit-toggle" />
+        </Row>
+        {limitOn ? <Field value={limit} onChangeText={setLimit} keyboardType="decimal-pad" mono placeholder={`${sym()} 0`} style={{ marginTop: 9 }} testID="new-customer-limit" /> : null}
+      </Card>
+      <Card style={[s.mintCard, { marginTop: 9, paddingVertical: 9 }]}>
+        <Sub>Everything else — address, email, opening balance — can be filled in later on their profile.</Sub>
+      </Card>
+      <Btn label="Save and use on this invoice" style={{ marginTop: 12 }} disabled={!name.trim()} loading={saving}
+        testID="new-customer-save" onPress={() => onSave({ name: name.trim(), phone: phone.trim(), credit_limit: limitOn && parseNum(limit) > 0 ? parseNum(limit) : null })} />
     </Sheet>
   );
 }

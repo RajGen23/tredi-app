@@ -8,6 +8,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Check, Field, H4, Lbl, Li, Loading, Row, Seg, Sub, Switch } from "@/src/components/ui";
+import { AddAccountSheet } from "@/src/components/account-form";
 import { useToast } from "@/src/components/sheet";
 import { parseNum } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -24,6 +25,7 @@ export default function InvoiceSettings() {
   const q = useQuery({ queryKey: ["invoice-settings"], queryFn: () => api("/settings/invoice") });
   const [f, setF] = useState<any>(null);
   const [newCondition, setNewCondition] = useState("");
+  const [addAccount, setAddAccount] = useState(false);
   useEffect(() => { if (q.data && !f) setF(q.data); }, [q.data]);
 
   const save = useMutation({
@@ -72,9 +74,9 @@ export default function InvoiceSettings() {
               {f.default_bank_account_id === a.id ? <Badge tone="paid">Default</Badge> : null}
             </Li>
           ))}
-          <Li last testID="settings-add-account" onPress={() => router.push("/accounts")}>
+          <Li last testID="settings-add-account" onPress={() => setAddAccount(true)}>
             <Av icon="add" tone="green" />
-            <View style={{ flex: 1 }}><H4>Add an account</H4></View>
+            <View style={{ flex: 1 }}><H4>Add an account</H4><Sub>Bank, cash till or mobile money — it prints on invoices</Sub></View>
             <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
           </Li>
         </Card>
@@ -127,6 +129,8 @@ export default function InvoiceSettings() {
 
         <Btn label="Save settings" style={{ marginTop: 16 }} loading={save.isPending} testID="settings-save" onPress={() => save.mutate()} />
       </ScrollView>
+      <AddAccountSheet visible={addAccount} onClose={() => setAddAccount(false)}
+        onCreated={(a) => setF((cur: any) => ({ ...cur, accounts: [...(cur.accounts ?? []), a], default_bank_account_id: cur.default_bank_account_id || a.id }))} />
     </View>
   );
 }

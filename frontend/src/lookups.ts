@@ -23,7 +23,7 @@ export function useShops() {
   };
 }
 
-export type LookupKind = "item_category" | "unit" | "expense_category" | "location";
+export type LookupKind = "item_category" | "brand" | "unit" | "expense_category" | "location";
 
 /** A dropdown list the trader can extend. `add` saves it for next time. */
 export function useLookup(kind: LookupKind) {

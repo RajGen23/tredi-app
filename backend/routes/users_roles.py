@@ -4,8 +4,8 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Dict, List, Optional, Literal
 from bson import ObjectId
 
-from deps import (CurrentUser, biz_filter, clean, db, ensure_feature, ensure_limit, hash_password, invoice_paid, invoice_status,
-                  log_activity, now, oid, period_range, date_query, public_user)
+from deps import (CurrentUser, LIVE_SALE, biz_filter, clean, db, ensure_feature, ensure_limit, hash_password, invoice_paid,
+                  invoice_status, log_activity, now, oid, period_range, date_query, public_user, rep_clause, scoped)
 
 router = APIRouter(prefix="/api")
 
@@ -196,6 +196,85 @@ async def create_role(data: RoleIn, user: CurrentUser):
     return {"id": rid, "label": data.label, "can": can, "scopes": scopes, "assigned": len(data.assign_to)}
 
 
+@router.get("/reps")
+async def reps(user: CurrentUser, period: str = "month"):
+    """The Reps page: who is on the team, how to reach them, and how they are
+    selling — amount sold and how often, not just a permission list."""
+    f = await scoped(user, "reports")
+    bf = biz_filter(user)
+    a, b, label = period_range(period)
+    rows = []
+    async for u in db.users.find({"business_id": bf["business_id"]}).sort("created_at", 1):
+        name = u.get("name", "")
+        base = await resolve_role(bf["business_id"], u.get("role", "owner"))
+        sold, count, last = 0.0, 0, None
+        unpaid, owed = 0, 0.0
+        async for inv in db.invoices.find(date_query({**f, **rep_clause(name), "status": LIVE_SALE}, a, b)):
+            sold += inv["totals"]["total"]
+            count += 1
+            ts = inv["created_at"]
+            last = ts if not last or ts > last else last
+        async for s in db.sales.find(date_query({**f, **rep_clause(name)}, a, b)):
+            sold += s["totals"]["total"]
+            count += 1
+            ts = s["created_at"]
+            last = ts if not last or ts > last else last
+        async for inv in db.invoices.find({**f, **rep_clause(name), "status": LIVE_SALE}):
+            st = invoice_status(inv, await invoice_paid(bf["business_id"], str(inv["_id"])))
+            if st["due"] > 0:
+                unpaid += 1
+                owed += st["due"]
+        days = max(1, ((b - a).days if a else 30))
+        rows.append({"id": str(u["_id"]), "name": name, "email": u.get("email", ""), "phone": u.get("phone", ""),
+                     "role": u.get("role", "owner"), "role_label": base["label"], "shops": u.get("shops", []),
+                     "active": u.get("active", True), "is_you": str(u["_id"]) == str(user["_id"]),
+                     "sold": round(sold, 2), "count": count, "frequency": round(count / days * 7, 1),
+                     "average": round(sold / count, 2) if count else 0, "unpaid": unpaid, "owed": round(owed, 2),
+                     "last_sale": last.isoformat() if last else None})
+    rows.sort(key=lambda r: -r["sold"])
+    return {"label": label, "period": period, "rows": rows, "total": round(sum(r["sold"] for r in rows), 2),
+            "best": rows[0]["name"] if rows and rows[0]["sold"] else ""}
+
+
+@router.get("/reps/{uid}/transactions")
+async def rep_transactions(uid: str, user: CurrentUser, period: str = "month"):
+    """One rep's own transactions, each badged Paid, Part paid or Unpaid."""
+    f = await scoped(user, "reports")
+    bf = biz_filter(user)
+    u = await db.users.find_one({"_id": oid(uid), "business_id": bf["business_id"]})
+    if not u:
+        raise HTTPException(404, "User not found")
+    name = u.get("name", "")
+    a, b, label = period_range(period)
+    rows = []
+    async for inv in db.invoices.find(date_query({**f, **rep_clause(name), "status": LIVE_SALE}, a, b)).sort("created_at", -1):
+        st = invoice_status(inv, await invoice_paid(bf["business_id"], str(inv["_id"])))
+        cust = await db.customers.find_one({"_id": ObjectId(inv["customer_id"])}) if ObjectId.is_valid(inv.get("customer_id") or "") else None
+        rows.append({"id": str(inv["_id"]), "kind": "invoice", "number": inv.get("number", ""),
+                     "customer": (cust or {}).get("name", "Cash sale"), "amount": inv["totals"]["total"],
+                     "due": st["due"], "status": st["status"], "shop": inv.get("shop", ""),
+                     "date": inv["created_at"].isoformat(), "route": f"/invoices/{str(inv['_id'])}"})
+    async for s in db.sales.find(date_query({**f, **rep_clause(name)}, a, b)).sort("created_at", -1):
+        cust = await db.customers.find_one({"_id": ObjectId(s["customer_id"])}) if ObjectId.is_valid(s.get("customer_id") or "") else None
+        rows.append({"id": str(s["_id"]), "kind": "sale", "number": s.get("number", ""),
+                     "customer": (cust or {}).get("name", "Cash sale"), "amount": s["totals"]["total"],
+                     "due": 0 if s.get("method") != "credit" else s["totals"]["total"],
+                     "status": "pending" if s.get("method") == "credit" else "paid", "shop": s.get("shop", ""),
+                     "date": s["created_at"].isoformat(), "route": f"/sales/{str(s['_id'])}"})
+    expenses = []
+    async for e in db.expenses.find(date_query({**f, **rep_clause(name)}, a, b)).sort("created_at", -1):
+        expenses.append({"id": str(e["_id"]), "title": e.get("note") or e["category"], "category": e["category"],
+                         "amount": e["amount"], "date": e["created_at"].isoformat(), "shop": e.get("shop", "")})
+    rows.sort(key=lambda r: r["date"], reverse=True)
+    sold = round(sum(r["amount"] for r in rows), 2)
+    return {"rep": {"id": uid, "name": name, "email": u.get("email", ""), "phone": u.get("phone", ""),
+                    "role": u.get("role", "owner"), "shops": u.get("shops", [])},
+            "label": label, "period": period, "rows": rows, "expenses": expenses,
+            "sold": sold, "count": len(rows), "average": round(sold / len(rows), 2) if rows else 0,
+            "unpaid": round(sum(r["due"] for r in rows), 2),
+            "expense_total": round(sum(e["amount"] for e in expenses), 2)}
+
+
 @router.get("/team/{uid}/preview")
 async def preview_member(uid: str, user: CurrentUser):
     """12.5 — what this user can and cannot see, in numbers."""
@@ -213,7 +292,7 @@ async def preview_member(uid: str, user: CurrentUser):
 
     own_inv = hidden_inv = 0
     own_sales = hidden_sales = 0.0
-    async for inv in db.invoices.find({**f, "status": {"$nin": ["draft", "quote"]}}):
+    async for inv in db.invoices.find({**f, "status": LIVE_SALE}):
         mine = inv.get("created_by") == u.get("name")
         in_shop = (not shops) or (inv.get("shop") in shops)
         visible = scopes.get("sales") == "all" or (scopes.get("sales") == "shop" and in_shop) or (scopes.get("sales") == "own" and mine)
@@ -243,7 +322,7 @@ async def handover_preview(uid: str, user: CurrentUser):
         raise HTTPException(404, "User not found")
     name = u.get("name", "")
     unpaid, owed = 0, 0.0
-    async for inv in db.invoices.find({**f, "created_by": name, "status": {"$nin": ["draft", "quote"]}}):
+    async for inv in db.invoices.find({**f, "created_by": name, "status": LIVE_SALE}):
         st = invoice_status(inv, await invoice_paid(f["business_id"], str(inv["_id"])))
         if st["due"] > 0:
             unpaid += 1

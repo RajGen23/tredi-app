@@ -76,7 +76,7 @@ export function parseNum(s: string): number {
   return isNaN(n) ? 0 : n;
 }
 
-export type Status = "paid" | "overdue" | "unpaid" | "part_paid" | "draft";
+export type Status = "paid" | "overdue" | "unpaid" | "part_paid" | "draft" | "cancelled";
 export function statusLabel(inv: { status: string; days_overdue?: number; due_date?: string | null; created_at?: string }): string {
   switch (inv.status) {
     case "overdue":
@@ -85,6 +85,10 @@ export function statusLabel(inv: { status: string; days_overdue?: number; due_da
       return "Paid in full";
     case "draft":
       return "Draft";
+    case "cancelled":
+      return "Cancelled";
+    case "part_paid":
+      return "Part paid";
     default: {
       if (!inv.due_date) return "Unpaid";
       const days = dayjs(inv.due_date).startOf("day").diff(dayjs().startOf("day"), "day");

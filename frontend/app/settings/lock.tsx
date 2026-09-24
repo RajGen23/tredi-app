@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
+import { bioState, bioUnlock, type BioState } from "@/src/biometrics";
 import { AppBar, Badge, Btn, Card, Chip, Field, H4, Lbl, Loading, Row, Sub, Switch } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { makeStyles } from "@/src/theme";
@@ -23,13 +24,21 @@ export default function LockSettings() {
   const [bio, setBio] = useState(true);
   const [idle, setIdle] = useState(2);
   const [pin, setPin] = useState("");
+  const [sensor, setSensor] = useState<BioState>({ available: false, enrolled: false, label: "Fingerprint" });
   useEffect(() => { if (q.data) { setEnabled(q.data.enabled); setBio(q.data.biometrics); setIdle(q.data.idle_minutes); } }, [q.data]);
+  useEffect(() => { bioState().then(setSensor); }, []);
 
   const save = useMutation({
     mutationFn: () => api("/settings/lock", { method: "PUT", json: { enabled, pin, idle_minutes: idle, biometrics: bio } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["lock"] }); setPin(""); toast.show("App lock updated"); },
     onError: (e: any) => toast.show(e.message),
   });
+
+  const test = async () => {
+    const res = await bioUnlock("Test the unlock");
+    if (res.ok) toast.show(`${sensor.label} read — that is how it will unlock`, "Worked.");
+    else if (res.message) toast.show(res.message);
+  };
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="lock-settings-screen">
@@ -43,9 +52,19 @@ export default function LockSettings() {
                 <Switch on={enabled} onChange={setEnabled} testID="lock-enabled" />
               </Row>
               <Row between style={{ marginTop: 12 }}>
-                <View style={{ flex: 1 }}><H4>Allow fingerprint</H4><Sub>Needs a device build to work</Sub></View>
+                <View style={{ flex: 1 }}>
+                  <H4>Allow {sensor.label}</H4>
+                  <Sub>
+                    {!sensor.available ? "This phone has no fingerprint or face sensor — a device build is needed to test it"
+                      : !sensor.enrolled ? `Add a ${sensor.label.toLowerCase()} in your phone settings first`
+                      : `Offered first on the lock screen, with the PIN underneath`}
+                  </Sub>
+                </View>
                 <Switch on={bio} onChange={setBio} testID="lock-bio" />
               </Row>
+              {sensor.available && sensor.enrolled && bio ? (
+                <Btn variant="ghost" small label={`Test ${sensor.label}`} style={{ marginTop: 10 }} testID="lock-bio-test" onPress={test} />
+              ) : null}
             </Card>
             <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Lock after</Lbl>
             <Row style={{ gap: 6 }}>

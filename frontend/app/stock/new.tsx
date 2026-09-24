@@ -1,22 +1,24 @@
-// 05.2 New item · details → 05.3 Pricing & stock.
-import { useState } from "react";
+// 05.2 New item · details → 05.3 Pricing & stock. The same screen edits an
+// existing item (`?edit=<id>`), so a price or a photo is never retyped from
+// scratch — and every dropdown is a list the shop can extend itself.
+import { useEffect, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
 import { photoSource, pickAndUploadPhoto } from "@/src/uploads";
-import { AppBar, Av, Btn, Card, Divider, Field, H4, Lbl, Money, Seg, Sub, Switch, Tag } from "@/src/components/ui";
+import { AppBar, Btn, Card, Divider, Field, H4, Lbl, Money, Row, Seg, Sub, Switch, Tag } from "@/src/components/ui";
+import { PickerField } from "@/src/components/picker";
+import { DateField } from "@/src/components/date-field";
 import { Scanner } from "@/src/components/scanner";
 import { useToast } from "@/src/components/sheet";
-import { money, parseNum, slashDate, sym } from "@/src/format";
+import { useLookup, useShops } from "@/src/lookups";
+import { money, parseNum, sym } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
-
-const CATS = ["Grains", "Oils", "Home", "Building", "Drinks", "General"];
-const UNITS = ["Bag", "Piece", "Carton", "Litre", "Kg", "Service"];
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surfaceSecondary },
@@ -33,24 +35,34 @@ export default function NewItem() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   // Arrives from a Quick sale scan that found nothing — the code is already known.
-  const params = useLocalSearchParams<{ barcode?: string }>();
+  const params = useLocalSearchParams<{ barcode?: string; edit?: string }>();
+  const editId = params.edit || "";
   const qc = useQueryClient();
   const toast = useToast();
+  const cats = useLookup("item_category");
+  const brands = useLookup("brand");
+  const units = useLookup("unit");
+  const locations = useLookup("location");
+  const { writeShop } = useShops();
+  const suppliersQ = useQuery({ queryKey: ["suppliers"], queryFn: () => api("/suppliers") });
+  const editQ = useQuery({ queryKey: ["item", editId], queryFn: () => api(`/items/${editId}`), enabled: !!editId });
+
   const [step, setStep] = useState<0 | 1>(0);
   const [photo, setPhoto] = useState("");
   const [photoUri, setPhotoUri] = useState("");
   const [uploading, setUploading] = useState(false);
   const [kind, setKind] = useState<"product" | "service">("product");
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("Grains");
-  const [unit, setUnit] = useState("Bag");
+  const [brand, setBrand] = useState("");
+  const [category, setCategory] = useState("General");
+  const [unit, setUnit] = useState("Piece");
   const [supplier, setSupplier] = useState("");
   const [expiryOn, setExpiryOn] = useState(false);
   const [expiry, setExpiry] = useState("");
   const [qty, setQty] = useState("");
   const [barcode, setBarcode] = useState(params.barcode ?? "");
   const [scan, setScan] = useState(false);
-  const [location, setLocation] = useState("Warehouse");
+  const [location, setLocation] = useState("");
   const [cost, setCost] = useState("");
   const [sell, setSell] = useState("");
   const [wholesale, setWholesale] = useState("");
@@ -59,36 +71,78 @@ export default function NewItem() {
   const margin = parseNum(sell) - parseNum(cost);
   const marginPct = parseNum(sell) ? (margin / parseNum(sell)) * 100 : 0;
 
-  const m = useMutation({
-    mutationFn: () => api("/items", { method: "POST", json: { name, kind, category, unit, barcode, supplier, location, photo_url: photo, cost_price: parseNum(cost), selling_price: parseNum(sell), wholesale_price: wholesale ? parseNum(wholesale) : null, track_stock: kind === "product" && track, quantity: parseNum(qty), alert_below: parseNum(alert), expiry: expiryOn ? expiry : null } }),
-    onSuccess: (it: any) => { ["items", "dashboard"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast.show(`${it.name} added to stock`, "Saved."); router.replace(`/stock/${it.id}`); },
+  useEffect(() => { if (!location && writeShop) setLocation(writeShop); }, [writeShop, location]);
+
+  useEffect(() => {
+    const it: any = editQ.data;
+    if (!it || name) return;
+    setKind(it.kind ?? "product");
+    setName(it.name ?? "");
+    setBrand(it.brand ?? "");
+    setCategory(it.category ?? "General");
+    setUnit(it.unit ?? "Piece");
+    setSupplier(it.supplier ?? "");
+    setLocation(it.location ?? "");
+    setBarcode(it.barcode ?? "");
+    setCost(it.cost_price ? String(it.cost_price) : "");
+    setSell(it.selling_price ? String(it.selling_price) : "");
+    setWholesale(it.wholesale_price ? String(it.wholesale_price) : "");
+    setTrack(it.track_stock !== false);
+    setAlert(String(it.alert_below ?? 0));
+    setExpiryOn(!!it.expiry);
+    setExpiry(it.expiry ?? "");
+    setPhoto(it.photo_url ?? "");
+  }, [editQ.data, name]);
+
+  useEffect(() => {
+    if (!photo) return setPhotoUri("");
+    photoSource(photo).then((src) => setPhotoUri(src.uri));
+  }, [photo]);
+
+  const payload = () => ({
+    name, kind, brand, category, unit, barcode, supplier, location, photo_url: photo,
+    cost_price: parseNum(cost), selling_price: parseNum(sell), wholesale_price: wholesale ? parseNum(wholesale) : null,
+    track_stock: kind === "product" && track, quantity: parseNum(qty), alert_below: parseNum(alert),
+    expiry: expiryOn && expiry ? expiry : null,
   });
+
+  const m = useMutation({
+    mutationFn: () => (editId ? api(`/items/${editId}`, { method: "PUT", json: payload() }) : api("/items", { method: "POST", json: payload() })),
+    onSuccess: (it: any) => {
+      ["items", "item", "items-stats", "low-stock", "dashboard", "lookup"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      toast.show(editId ? `${it.name} updated` : `${it.name} added to stock`, "Saved.");
+      router.replace(`/stock/${it.id}`);
+    },
+  });
+
+  const addPhoto = async () => {
+    setUploading(true);
+    try {
+      const url = await pickAndUploadPhoto();
+      if (url) {
+        setPhoto(url);
+        toast.show(editId ? "Photo replaced — save to keep it" : "Photo added — it can print on invoices");
+      }
+    } catch (e: any) {
+      toast.show(e.message ?? "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const supplierOptions = ((suppliersQ.data as any)?.suppliers ?? []).map((x: any) => ({ key: x.name, label: x.name, sub: x.phone || x.category }));
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-item-screen">
-      <AppBar title={step === 0 ? "New item" : "Pricing & stock"} close={step === 0} back={step === 1} onBack={() => (step === 1 ? setStep(0) : router.back())} rightText={step === 0 ? "Next" : undefined} onRightText={() => (name.trim() ? setStep(1) : toast.show("Give the item a name first"))} />
+      <AppBar title={editId ? (step === 0 ? "Edit item" : "Prices & stock") : step === 0 ? "New item" : "Pricing & stock"}
+        close={step === 0} back={step === 1} onBack={() => (step === 1 ? setStep(0) : router.back())}
+        rightText={step === 0 ? "Next" : undefined} onRightText={() => (name.trim() ? setStep(1) : toast.show("Give the item a name first"))} />
       <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }} bottomOffset={80} keyboardShouldPersistTaps="handled">
         {step === 0 ? (
           <>
-            <Card style={[s.faint, { flexDirection: "row", alignItems: "center", gap: 8 }]}>
-              <Av icon="business-outline" tone="sq" size={24} />
-              <View style={{ flex: 1 }}><Field value={supplier} onChangeText={setSupplier} placeholder="Supplier — optional" style={{ borderWidth: 0, paddingHorizontal: 0, minHeight: 34, backgroundColor: "transparent" }} testID="item-supplier" /></View>
-            </Card>
-            <Pressable testID="item-photo-add" disabled={uploading} onPress={async () => {
-              setUploading(true);
-              try {
-                const url = await pickAndUploadPhoto();
-                if (url) {
-                  setPhoto(url);
-                  setPhotoUri((await photoSource(url)).uri);
-                  toast.show("Photo added — it can print on invoices");
-                }
-              } catch (e: any) {
-                toast.show(e.message ?? "Upload failed");
-              } finally {
-                setUploading(false);
-              }
-            }}>
+            <PickerField label="Supplier" value={supplier} options={supplierOptions} onPick={setSupplier} searchable
+              placeholder="Optional — who you buy it from" title="Which supplier?" testID="item-supplier" />
+            <Pressable testID="item-photo-add" disabled={uploading} onPress={addPhoto}>
               <Card style={{ marginTop: 9, padding: 9, flexDirection: "row", gap: 7, alignItems: "center" }}>
                 {photoUri
                   ? <Image source={{ uri: photoUri }} style={{ width: 44, height: 44, borderRadius: 10 }} testID="item-photo-preview" />
@@ -100,34 +154,48 @@ export default function NewItem() {
                 <Ionicons name="chevron-forward" size={15} color={colors.ink40} />
               </Card>
             </Pressable>
-            <View style={{ marginTop: 9 }}><Seg testID="item-kind" value={kind} onChange={(k) => { setKind(k); if (k === "service") setUnit("Service"); }} options={[{ key: "product", label: "Product" }, { key: "service", label: "Service" }]} /></View>
+            <View style={{ marginTop: 9 }}>
+              <Seg testID="item-kind" value={kind} onChange={(k) => { setKind(k); if (k === "service") setUnit("Service"); }}
+                options={[{ key: "product", label: "Product" }, { key: "service", label: "Service" }]} />
+            </View>
             <View style={{ gap: 10, marginTop: 10 }}>
-              <Field testID="item-name" label="Item name" value={name} onChangeText={setName} placeholder="Adeba Rice 50kg" autoFocus />
+              <Field testID="item-name" label="Item name" value={name} onChangeText={setName} placeholder="Adeba Rice 50kg" autoFocus={!editId} />
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <Field testID="item-category" label="Category" value={category} onPress={() => setCategory(CATS[(CATS.indexOf(category) + 1) % CATS.length])} right={<Sub>⌄</Sub>} style={{ flex: 1 }} />
-                <Field testID="item-unit" label="Unit" value={unit} onPress={() => setUnit(UNITS[(UNITS.indexOf(unit) + 1) % UNITS.length])} right={<Sub>⌄</Sub>} style={{ flex: 1 }} />
+                <PickerField label="Brand" value={brand} options={brands.options} onPick={setBrand} onAdd={(v) => { brands.add(v); setBrand(v); }}
+                  addLabel="Add a brand" searchable placeholder="Optional" style={{ flex: 1 }} testID="item-brand" />
+                <PickerField label="Category" value={category} options={cats.options} onPick={setCategory} onAdd={(v) => { cats.add(v); setCategory(v); }}
+                  addLabel="Add a category" searchable style={{ flex: 1 }} testID="item-category" />
+              </View>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <PickerField label="Unit" value={unit} options={units.options} onPick={setUnit} onAdd={(v) => { units.add(v); setUnit(v); }}
+                  addLabel="Add a unit" style={{ flex: 1 }} testID="item-unit" />
+                <Field testID="item-barcode" label="Barcode" value={barcode} onChangeText={setBarcode} placeholder="Scan" mono style={{ flex: 1 }}
+                  right={<Pressable onPress={() => setScan(true)} hitSlop={8} testID="item-barcode-scan"><Ionicons name="barcode-outline" size={18} color={colors.green700} /></Pressable>} />
               </View>
               {kind === "product" ? (
                 <>
                   <View style={{ flexDirection: "row", gap: 8 }}>
-                    <Field label="Date received" value={slashDate()} onPress={() => {}} mono style={{ flex: 1 }} />
-                    <Field testID="item-expiry" label="Expiry" value={expiryOn ? expiry : ""} onChangeText={setExpiry} placeholder={expiryOn ? "DD/MM/YYYY" : "Off"} mono editable={expiryOn} style={{ flex: 1 }} right={<Switch on={expiryOn} onChange={setExpiryOn} testID="item-expiry-toggle" />} />
+                    <PickerField label="Store in" value={location} options={locations.options} onPick={setLocation} onAdd={(v) => { locations.add(v); setLocation(v); }}
+                      addLabel="Add a location" style={{ flex: 1 }} testID="item-location" />
+                    {expiryOn
+                      ? <DateField label="Expiry" value={expiry} onChange={setExpiry} allowClear style={{ flex: 1 }} testID="item-expiry" />
+                      : <Field label="Expiry" value="" placeholder="Off" onPress={() => setExpiryOn(true)} style={{ flex: 1 }} testID="item-expiry-off" right={<Switch on={expiryOn} onChange={setExpiryOn} testID="item-expiry-toggle" />} />}
                   </View>
-                  <View style={{ flexDirection: "row", gap: 8 }}>
-                    <Field testID="item-qty" label="Quantity supplied" value={qty} onChangeText={setQty} keyboardType="decimal-pad" mono placeholder="0" style={{ flex: 1 }} />
-                    <Field testID="item-barcode" label="Barcode" value={barcode} onChangeText={setBarcode} placeholder="Scan" mono style={{ flex: 1 }} right={<Pressable onPress={() => setScan(true)} hitSlop={8} testID="item-barcode-scan"><Ionicons name="barcode-outline" size={18} color={colors.green700} /></Pressable>} />
-                  </View>
-                  <Field testID="item-location" label="Store in" value={location} onChangeText={setLocation} placeholder="Warehouse · Ikeja" />
+                  {!editId ? (
+                    <Field testID="item-qty" label="Quantity supplied" value={qty} onChangeText={setQty} keyboardType="decimal-pad" mono placeholder="0" />
+                  ) : null}
                 </>
               ) : null}
             </View>
-            <Sub style={{ textAlign: "center", marginTop: 9 }}>Expiry is off by default — switch it on only for items that need it.</Sub>
+            <Sub style={{ textAlign: "center", marginTop: 9 }}>
+              {editId ? "The count itself is changed with Adjust stock, so every movement keeps its reason." : "Expiry is off by default — switch it on only for items that need it."}
+            </Sub>
           </>
         ) : (
           <>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <Field testID="item-cost" label="Cost price" value={cost} onChangeText={setCost} keyboardType="decimal-pad" mono placeholder={`${sym()} 0`} style={{ flex: 1 }} />
-              <Field testID="item-sell" label="Selling price" value={sell} onChangeText={setSell} keyboardType="decimal-pad" mono placeholder={`${sym()} 0`} style={{ flex: 1 }} autoFocus />
+              <Field testID="item-sell" label="Selling price" value={sell} onChangeText={setSell} keyboardType="decimal-pad" mono placeholder={`${sym()} 0`} style={{ flex: 1 }} autoFocus={!editId} />
             </View>
             <Card style={[s.mint, { marginTop: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}>
               <Sub>Margin on retail</Sub><Money tone={margin >= 0 ? "pos" : "neg"} testID="item-margin">{marginPct.toFixed(1)}% · {money(margin)}</Money>
@@ -137,16 +205,18 @@ export default function NewItem() {
               <View style={{ flex: 1 }}><H4>Wholesale</H4><Tag>Applied to wholesale customers</Tag></View>
               <Field testID="item-wholesale" value={wholesale} onChangeText={setWholesale} keyboardType="decimal-pad" mono placeholder={`${sym()} 0`} style={{ width: 120, minHeight: 40 }} />
             </Card>
-            <Card style={{ marginTop: 6, paddingVertical: 12, paddingHorizontal: 11, borderStyle: "dashed", flexDirection: "row", justifyContent: "space-between" }}><H4 style={{ color: colors.ink60 }}>Add customer-specific price</H4><Text style={{ color: colors.green700, fontFamily: fonts.extrabold }}>＋</Text></Card>
             <Divider />
             {kind === "product" ? (
               <>
-                <Card style={{ flexDirection: "row", alignItems: "center", gap: 10 }}><View style={{ flex: 1 }}><H4>Track stock quantity</H4><Sub>Off for services and made-to-order items</Sub></View><Switch on={track} onChange={setTrack} testID="item-track" /></Card>
+                <Card style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ flex: 1 }}><H4>Track stock quantity</H4><Sub>Off for services and made-to-order items</Sub></View>
+                  <Switch on={track} onChange={setTrack} testID="item-track" />
+                </Card>
                 {track ? (
-                  <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-                    <Field testID="item-opening" label="Opening qty" value={qty} onChangeText={setQty} keyboardType="decimal-pad" mono style={{ flex: 1 }} />
+                  <Row style={{ gap: 8, marginTop: 8 }}>
+                    {!editId ? <Field testID="item-opening" label="Opening qty" value={qty} onChangeText={setQty} keyboardType="decimal-pad" mono style={{ flex: 1 }} /> : null}
                     <Field testID="item-alert" label="Alert me below" value={alert} onChangeText={setAlert} keyboardType="decimal-pad" mono style={{ flex: 1 }} />
-                  </View>
+                  </Row>
                 ) : null}
               </>
             ) : null}
@@ -155,7 +225,9 @@ export default function NewItem() {
         )}
       </KeyboardAwareScrollView>
       <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        {step === 0 ? <Btn testID="item-next" label="Continue to pricing" onPress={() => (name.trim() ? setStep(1) : toast.show("Give the item a name first"))} /> : <Btn testID="item-save" label="Save item" onPress={() => m.mutate()} loading={m.isPending} disabled={!sell} />}
+        {step === 0
+          ? <Btn testID="item-next" label={editId ? "Continue to prices" : "Continue to pricing"} onPress={() => (name.trim() ? setStep(1) : toast.show("Give the item a name first"))} />
+          : <Btn testID="item-save" label={editId ? "Save changes" : "Save item"} onPress={() => m.mutate()} loading={m.isPending} disabled={!sell} />}
       </View>
       <Scanner visible={scan} onClose={() => setScan(false)} onScan={(code) => { setBarcode(code); setScan(false); toast.show(`Bar code ${code} saved to this item`); }} title="Scan the bar code" hint="The code lands in the Barcode field" />
     </View>

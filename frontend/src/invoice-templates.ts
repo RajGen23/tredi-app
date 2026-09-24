@@ -43,7 +43,7 @@ const madeWith = (label: string) =>
 
 const esc = (v: unknown) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-function readable(hex: string): string {
+export function readable(hex: string): string {
   const h = hex.replace("#", "");
   const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16) || 0);
@@ -272,6 +272,71 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
 
 /** Counter receipt for a quick sale — the paper a walk-in customer takes away.
  *  Deliberately narrow so it prints on A4 or on an 80mm roll. */
+/** 13.2 — the waybill rides along with the invoice, so it carries the same
+ *  letterhead: the logo, the brand colour and the business block. Prices stay
+ *  off unless the trader asks for them, because goods in transit are not a bill. */
+export function buildWaybillHtml(w: any, brandIn?: Partial<Brand>): string {
+  const brand = { ...DEFAULT_BRAND, ...(brandIn ?? {}) } as Brand;
+  const c = brand.brand_color || DEFAULT_BRAND.brand_color;
+  const on = readable(c);
+  const b = w.business ?? {};
+  const prices = !!w.show_prices;
+  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;padding:26px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#06241F;background:#fff}
+    .paper{max-width:760px;margin:0 auto}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:3px solid ${c};padding-bottom:12px}
+    .biz{font-size:19px;font-weight:800;color:${c};letter-spacing:-0.3px}
+    .meta{font-size:11px;color:#6B807D;line-height:1.55}
+    .doc{text-align:right}
+    .tag{display:inline-block;background:${c};color:${on};font-size:12px;font-weight:800;padding:4px 10px;border-radius:5px;letter-spacing:.8px}
+    .num{font-size:13px;font-weight:800;margin-top:6px}
+    .grid{display:flex;gap:14px;margin-top:14px}
+    .box{flex:1;border:1px solid #E3EAE8;border-radius:9px;padding:10px}
+    .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.8px;color:#93A9A4}
+    .val{font-size:12.5px;font-weight:700;margin-top:3px}
+    table{width:100%;border-collapse:collapse;margin-top:16px}
+    th{font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:#FFFFFF;background:${c};text-align:right;padding:8px 10px}
+    th.l,td.l{text-align:left}
+    td{font-size:12.5px;padding:9px 10px;border-bottom:1px solid #EEF3F2;text-align:right;font-variant-numeric:tabular-nums}
+    .packs{display:flex;justify-content:space-between;background:#F4F8F7;border-radius:9px;padding:10px 12px;margin-top:12px;font-size:13px;font-weight:800}
+    .sign{display:flex;gap:28px;margin-top:34px}
+    .sline{flex:1;border-top:1px solid #9FB4B0;padding-top:6px;font-size:10.5px;color:#6B807D}
+    .foot{margin-top:18px;padding-top:9px;border-top:1px solid #E3EAE8;font-size:10.5px;color:#6B807D;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  </style></head><body><div class="paper">
+    <div class="head">
+      <div>
+        ${logoTag(brand, 44)}
+        <div class="biz">${esc(b.name)}</div>
+        <div class="meta">${esc(b.address)}${b.phone ? `<br/>${esc(b.phone)}` : ""}${b.tin ? `<br/>TIN ${esc(b.tin)}` : ""}</div>
+      </div>
+      <div class="doc">
+        <span class="tag">WAYBILL</span>
+        <div class="num">${esc(w.number)}</div>
+        <div class="meta">${longDate(w.created_at)}${w.invoice_number ? `<br/>For invoice <b>${esc(w.invoice_number)}</b>` : ""}</div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="box"><div class="lbl">Deliver to</div><div class="val">${esc(w.customer_name || "—")}</div><div class="meta">${esc(w.deliver_to)}</div></div>
+      <div class="box"><div class="lbl">Driver</div><div class="val">${esc(w.driver || "—")}</div><div class="lbl" style="margin-top:8px">Vehicle</div><div class="val">${esc(w.vehicle || "—")}</div></div>
+    </div>
+    <table>
+      <thead><tr><th class="l">Item</th><th>Unit</th><th>Qty</th>${prices ? "<th>Rate</th><th>Amount</th>" : ""}</tr></thead>
+      <tbody>${(w.lines ?? []).map((l: any) => `<tr>
+        <td class="l">${esc(l.name)}</td><td>${esc(l.unit || "Piece")}</td><td>${l.quantity}</td>
+        ${prices ? `<td>${money(l.unit_price ?? 0, { symbol: false })}</td><td>${money((l.unit_price ?? 0) * (l.quantity ?? 0), { symbol: false })}</td>` : ""}
+      </tr>`).join("")}</tbody>
+    </table>
+    <div class="packs"><span>Total packages</span><span>${w.packages}</span></div>
+    <div class="sign">
+      <div class="sline">Received in good condition — name &amp; signature</div>
+      <div class="sline">Date</div>
+    </div>
+    <div class="foot"><span>Goods remain the property of ${esc(b.name)} until paid for in full.</span>${brand.tredi_mark === false ? "" : madeWith("Made with")}</div>
+  </div></body></html>`;
+}
+
 export function buildReceiptHtml(sale: any, brandIn?: Partial<Brand>): string {
   const brand = { ...DEFAULT_BRAND, ...(brandIn ?? {}) } as Brand;
   const c = brand.brand_color || DEFAULT_BRAND.brand_color;

@@ -308,3 +308,65 @@ agent_communication:
 agent_communication:
   - agent: "main"
     message: "Pass 10: subscriptions with real enforcement, multi-currency display and report exports. Phase 7 shop separation was verified first (iteration_13, 24/25 backend + frontend). Needs: (1) plan limits on a fresh trial account, (2) the read-only block and that reads still work, (3) the Super Admin activation flow, (4) currency switch reflected across screens and PDFs, (5) Export/Print on all 8 reports."
+
+  - task: "Part 6 — Expenses: editable categories, category drill-down, edit any expense"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/expenses/index.tsx, /app/frontend/app/expenses/new.tsx, /app/frontend/app/expenses/[id].tsx"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Add expense now uses real pickers: category from /lookups/expense_category with add-your-own, account picker, calendar date, shop, rep and a receipt photo upload. New /expenses/[id] opens any expense, corrects amount/category/account/date/shop/rep/note/receipt behind a confirmation that lists the changes, shows the activity trail from /history/{id} and removes an expense with a reason. The list gained a filter sheet (period, rep, category), a by-category card where every category opens its own entries, a last-synced stamp and rows that open the expense. Backend already had GET/PUT/DELETE /expenses/{id} with rep/shop/date/receipt_url."
+
+  - task: "Part 8 — Reports: rep filter, drill-down on every figure, Sales by rep + Debtors, accuracy pass"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/period.tsx, /app/frontend/app/reports/entries.tsx, /app/frontend/app/reports/reps.tsx, /app/frontend/app/reports/debtors.tsx, /app/frontend/app/reports/index.tsx, /app/frontend/app/reports/sales.tsx, /app/frontend/app/reports/pnl.tsx, /app/frontend/app/reports/products.tsx, /app/frontend/app/reports/receivables.tsx, /app/backend/routes/reports.py, /app/backend/tests/reconcile_reports.py"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "The period context now carries a rep, so 'filter by rep' applies to every report at once (picker lives in the period sheet, shown on the period bar). New /reports/entries screen renders the records behind any figure (kind=sales|customer|product|shop|rep|expenses, or an exact day via start/end) and each row opens the invoice, sale or expense. New Sales by rep and Debtors reports (customer, amount owed, oldest unpaid invoice, days overdue), both printable/exportable. sales-summary rows now carry a drill-down key. Accuracy pass: backend/tests/reconcile_reports.py reconciles sales four ways, every grouping, P&L identities, expense categories, receivables vs debtors vs buckets, cash flow, account statements, stock valuation and rep figures — it found and fixed /reports/receivables silently truncating its rows to 40 while the total counted all of them (rows are now complete, the screen pages them with 'Show all')."
+
+  - task: "Part 9 — Home page: money card overlap and real money in/out"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(tabs)/index.tsx"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Received/Owed moved out of the same row as the headline figure onto their own divided row, both shrink-to-fit, so a long total can never run into them at any width. The cash-flow card is now 'Money in / money out' with real figures — money in, money out and net for the last 7 days — above the bars."
+
+  - task: "Part 10 — video extras: reps performance, biometrics, last-synced, working filters, customer card"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/team/reps/index.tsx, /app/frontend/app/team/reps/[id].tsx, /app/frontend/app/team/index.tsx, /app/frontend/src/biometrics.ts, /app/frontend/app/lock.tsx, /app/frontend/app/settings/lock.tsx, /app/frontend/src/components/sync.tsx, /app/frontend/app/(tabs)/sales.tsx, /app/frontend/app/(tabs)/stock.tsx, /app/frontend/app/customers/[id].tsx, /app/frontend/app/customers/new.tsx, /app/backend/server.py"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Team → Reps performance lists every rep with contact details, sales value, invoices raised, collections and expenses recorded, tap-to-call, edit, and a drill-down into that rep's own transactions (Paid / Part paid / Unpaid badges) plus the expenses they recorded. expo-local-authentication added: the lock screen offers Face ID or fingerprint first and falls back to the PIN, and App lock settings reports whether the phone has a sensor and can test it (device build only). A shared SyncStamp puts 'last synced' on the sales, stock, expenses and reps lists. Filters now work on the lists: sales by status, period, rep and shop with a sort; stock by status, category, brand and sort. Customer profile shows purchased / unpaid debt / returns on one card with call and edit buttons, and editing works through a new PUT /api/customers/{id} with the same screen in edit mode."
+
+  - task: "Reported bugs: product photo upload error, and adding a bank account"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/uploads.ts, /app/frontend/src/components/account-form.tsx, /app/frontend/app/accounts/index.tsx, /app/frontend/app/settings/invoice.tsx, /app/frontend/app/invoices/new.tsx"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Photo upload: every picked photo is now resized (max 1600px) and re-compressed to JPEG on the device before it is sent, which is what the screens promised and what keeps a 6–9 MB phone photo under the 8 MB limit on shop data; upload failures now report the real reason (too large, sign in again, no connection) instead of a bare 'Upload failed'. Adding a bank account: one shared AccountForm/AddAccountSheet is used on the accounts page, inside Invoice settings (it used to bounce you to another screen) and — as the user asked — inside the invoice review step, where 'Add a bank account' saves it and ticks it onto the invoice straight away."
+
+agent_communication:
+  - agent: "main"
+    message: "Pass 11 — the last four parts of the master plan plus the two bugs the user reported. Please test: (1) product photo upload on New item / Item detail / bulk Add photos (Playwright needs page.expect_file_chooser to complete the pick), (2) adding a bank account from the accounts page, from Invoice settings and from the invoice review sheet, then that it prints/ticks on the invoice, (3) expenses: add with category add-your-own + rep + shop + date + receipt, open an expense, correct it (including moving shops), the confirmation list, the activity trail and remove-with-reason, (4) reports: rep filter applied from the period sheet, drill-down from a sales-summary row and a P&L expense line, Sales by rep, Debtors, and 'Show all' on receivables, (5) home money card at 390px (no overlap) and the money in/out figures, (6) Team → Reps performance and a rep's transactions, (7) last-synced stamps and the sales/stock filter sheets. Biometrics cannot be tested on web — skip it."
+
+  - task: "Pass 12 — Scan on invoices, Price check, Low stock alerts, Simple vs Professional preview"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py, /app/frontend/src/components/scanner.tsx, /app/frontend/src/components/scan-result.tsx, /app/frontend/src/components/invoice-paper.tsx, /app/frontend/app/stock/price-check.tsx, /app/frontend/app/stock/low.tsx, /app/frontend/app/invoices/new.tsx, /app/frontend/app/invoices/pdf/[id].tsx, /app/frontend/app/quick-sale.tsx, /app/frontend/app/(tabs)/stock.tsx, /app/frontend/app/(tabs)/index.tsx"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Scan on invoices: the barcode icon in the item search bar, the app-bar icon on the Items step and the 'Scan bar code' card in the Add item sheet all open the camera; a matched code drops a line on the invoice (or bumps the quantity), an unknown code offers 'Create this item' pre-filled. Price check: the camera carries an Add/Price check switch (quick sale and invoice), plus its own screen at /stock/price-check (Stock app bar, pricetag icon) with a name/code search so it works without a camera — the result sheet shows selling price, wholesale price, stock on hand, per-shop stock and says plainly that nothing was added. Low stock: new GET /api/low-stock returns each item at or below its alert level with units sold in 30 days, sales per day, days of cover, a suggested order quantity and its cost; new /stock/low reorder list (Finished / Running low chips, order quantity per row, total cost, Record a purchase) linked from a Home card and a Stock nudge. Invoice preview: the on-screen paper is now drawn per format by src/components/invoice-paper.tsx — Professional has the big INVOICE title, 2x2 meta (issue/due, customer, business, branch+TIN), a dark item table, right-hand totals and two-column terms/bank; Simple keeps the chosen template letterhead, one Bill-to block, a light table and stacked totals, and a note above the paper spells out the difference."
+
+agent_communication:
+  - agent: "main"
+    message: "Pass 12. Please test: (1) GET /api/low-stock as owner@tredi.app — items at/below alert level only, out-of-stock first, suggest/reorder_cost/per_day/days_left present and sane, count/out/low consistent with the items list; (2) Home 'N items about to run out' card opens /stock/low; (3) /stock/low: chips All/Finished/Running low filter, rows show order quantity, total cost card, Record a purchase opens /purchases/new; (4) /stock/price-check from the Stock app bar (pricetag icon): search 'Cooking' -> tap the row -> result sheet shows price, wholesale, on hand, 'nothing was added' note, Scan next and Open item; (5) invoice PDF screen: Simple <-> Professional toggle visibly changes the paper (professional shows paper-pro-title/paper-pro-meta, simple shows paper-simple-head) and the note text changes; Download/Share still work; (6) new invoice Items step: the barcode icon (invoice-search-scan), the app-bar icon (items-scan) and the Add item sheet card (add-item-scan) all open the scanner modal (web shows only the camera permission screen — that is expected, just check it opens and closes without breaking the invoice), and the rest of the invoice flow (add item from inventory, review, issue) still works. Camera scanning itself cannot be tested on web — do not try."

@@ -1,7 +1,7 @@
 // 07.1 Reports — four headline figures, then reports grouped the way an
 // accountant asks for them.
 import { useState } from "react";
-import { ScrollView, View } from "react-native";
+import { ScrollView, Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -16,11 +16,13 @@ import { fonts, makeStyles, useTheme } from "@/src/theme";
 const GROUPS: { title: string; items: { label: string; sub?: string; icon: IonName; route: string; badge?: string; testID: string }[] }[] = [
   { title: "Sales", items: [
     { label: "Sales summary", sub: "By day, customer, product, shop", icon: "grid-outline", route: "/reports/sales", testID: "report-sales-summary" },
+    { label: "Sales by rep", sub: "Who sold what, and how often", icon: "people-outline", route: "/reports/reps", testID: "report-reps" },
     { label: "Sales returns", icon: "return-down-back-outline", route: "/reports/returns", testID: "report-returns" },
   ] },
   { title: "Finance", items: [
     { label: "Profit & loss", icon: "cash-outline", route: "/reports/pnl", badge: "Most used", testID: "report-pnl" },
     { label: "Cash flow", icon: "pulse-outline", route: "/reports/cashflow", testID: "report-cashflow" },
+    { label: "Debtors", sub: "Who owes, how much, how late", icon: "alert-circle-outline", route: "/reports/debtors", testID: "report-debtors" },
     { label: "Receivables & payables", icon: "albums-outline", route: "/reports/receivables", testID: "report-receivables" },
   ] },
   { title: "Inventory", items: [
@@ -29,6 +31,7 @@ const GROUPS: { title: string; items: { label: string; sub?: string; icon: IonNa
   ] },
   { title: "Business", items: [
     { label: "Summary", sub: "Sales, purchases, expenses, profit", icon: "speedometer-outline", route: "/reports/summary", testID: "report-summary" },
+    { label: "Expenses by category", sub: "Every heading, and what is inside it", icon: "receipt-outline", route: "/expenses", testID: "report-expenses" },
   ] },
 ];
 
@@ -44,7 +47,7 @@ export default function Reports() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [sheet, setSheet] = useState(false);
-  const { query, shortLabel } = usePeriod();
+  const { query, shortLabel, rep } = usePeriod();
   const sum = useQuery({ queryKey: ["reports-summary", query], queryFn: () => api(`/reports/summary?${query}`) });
   const rec = useQuery({ queryKey: ["reports-receivables"], queryFn: () => api("/reports/receivables") });
   const pnl = useQuery({ queryKey: ["reports-pnl", query], queryFn: () => api(`/reports/pnl?${query}`) });
@@ -55,15 +58,20 @@ export default function Reports() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
         <PeriodBar label={sum.data?.label ?? shortLabel} onPress={() => setSheet(true)} />
         <Card style={{ marginTop: 9, backgroundColor: colors.deep, borderColor: colors.deep }} testID="reports-glance">
-          <Lbl style={{ color: colors.onDeepMuted }}>At a glance</Lbl>
+          <Row between>
+            <Lbl style={{ color: colors.onDeepMuted }}>At a glance{rep ? ` · ${rep}` : ""}</Lbl>
+            <Lbl style={{ color: colors.onDeepSoft }}>tap a figure</Lbl>
+          </Row>
           {!sum.data || !pnl.data ? <Loading /> : (
             <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8 }}>
-              {[["Sales", money(sum.data.sales), false], ["Profit", money(pnl.data.net), true],
-                ["Receivables", money(rec.data?.total ?? 0), false], ["Payables", money(rec.data?.payables ?? 0), false]].map(([l, v, green]) => (
-                <View key={l as string} style={{ width: "50%", marginBottom: 8 }}>
-                  <Sub style={{ color: colors.onDeepSoft }}>{l as string}</Sub>
-                  <View><Sub style={[s.deepValue, green ? s.green : null]} testID={`glance-${l}`}>{v as string}</Sub></View>
-                </View>
+              {([["Sales", money(sum.data.sales), false, "/reports/entries?kind=sales"],
+                ["Profit", money(pnl.data.net), true, "/reports/pnl"],
+                ["Receivables", money(rec.data?.total ?? 0), false, "/reports/debtors"],
+                ["Payables", money(rec.data?.payables ?? 0), false, "/suppliers"]] as [string, string, boolean, string][]).map(([l, v, green, route]) => (
+                <Pressable key={l} style={{ width: "50%", marginBottom: 8 }} testID={`glance-open-${l}`} onPress={() => router.push(route as any)}>
+                  <Sub style={{ color: colors.onDeepSoft }}>{l}</Sub>
+                  <View><Sub style={[s.deepValue, green ? s.green : null]} testID={`glance-${l}`}>{v}</Sub></View>
+                </Pressable>
               ))}
             </View>
           )}
@@ -82,7 +90,7 @@ export default function Reports() {
             </Card>
           </View>
         ))}
-        <Row style={{ marginTop: 12 }}><Sub>Choosing a period here sets it on every report.</Sub></Row>
+        <Row style={{ marginTop: 12 }}><Sub>Choosing a period or a rep here sets it on every report.</Sub></Row>
       </ScrollView>
       <PeriodSheet visible={sheet} onClose={() => setSheet(false)} />
     </View>

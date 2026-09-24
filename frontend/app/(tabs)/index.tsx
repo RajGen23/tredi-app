@@ -22,6 +22,8 @@ const useStyles = makeStyles((c) => ({
   edit: { fontFamily: fonts.bold, fontSize: 12, color: c.green700 },
   scLabel: { fontFamily: fonts.semibold, fontSize: 10, color: c.onSurface, textAlign: "center", marginTop: 4 },
   legend: { width: 8, height: 8, borderRadius: 3 },
+  split: { flexDirection: "row", alignItems: "center", marginTop: 10, paddingTop: 9, borderTopWidth: 1, borderTopColor: c.border },
+  splitLine: { width: 1, alignSelf: "stretch", backgroundColor: c.border },
 }));
 
 export default function Home() {
@@ -35,9 +37,12 @@ export default function Home() {
   const notifications = useQuery({ queryKey: ["notifications"], queryFn: () => api("/notifications") });
   const shops = useQuery({ queryKey: ["shops"], queryFn: () => api("/shops") });
   const plan = useQuery({ queryKey: ["subscription"], queryFn: () => api<any>("/subscription") });
+  const lowStock = useQuery({ queryKey: ["low-stock"], queryFn: () => api<any>("/low-stock") });
   const d = q.data;
   const list = shortcuts.data?.on ?? [];
   const pct = d && d.total_sales ? (d.received / d.total_sales) * 100 : 0;
+  const weekIn = (d?.cashflow ?? []).reduce((a: number, c: any) => a + c.in, 0);
+  const weekOut = (d?.cashflow ?? []).reduce((a: number, c: any) => a + c.out, 0);
 
   return (
     <View style={s.root} testID="home-screen">
@@ -52,25 +57,28 @@ export default function Home() {
         <IconBtn teal name="search-outline" testID="home-search" onPress={() => router.push("/search")} />
         <IconBtn teal name="notifications-outline" testID="home-notifications" dot={!!notifications.data?.count} onPress={() => router.push("/notifications")} />
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => { q.refetch(); lowStock.refetch(); }} tintColor={colors.brandPrimary} />}>
         {!d ? <Card style={s.hero}><Loading /></Card> : (
           <Pressable testID="home-total-sales-open" onPress={() => router.push("/reports/sales")} style={({ pressed }) => pressed && { opacity: 0.85 }}>
             <Card style={s.hero} testID="home-total-sales-card">
-              <Row between style={{ alignItems: "flex-start" }}>
-                <View style={{ flexShrink: 1, paddingRight: 10 }}>
-                  <Row style={{ gap: 5 }}><Lbl>Total sales</Lbl><Ionicons name="chevron-forward" size={12} color={colors.ink40} /></Row>
-                  <Text style={s.big} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} testID="home-total-sales">{money(d.total_sales)}</Text>
-                  <Sub style={{ marginTop: 1 }}>
-                    {d.month}{d.change_pct !== null ? <> · <Text style={{ color: d.change_pct >= 0 ? colors.green700 : colors.coral, fontFamily: fonts.bold }}>{d.change_pct >= 0 ? "▲" : "▼"} {Math.abs(d.change_pct)}%</Text> vs last month</> : null}
-                  </Sub>
-                </View>
-                <View style={{ alignItems: "flex-end", flexShrink: 0 }}>
+              <Row style={{ gap: 5 }}><Lbl>Total sales</Lbl><Ionicons name="chevron-forward" size={12} color={colors.ink40} /></Row>
+              <Text style={s.big} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} testID="home-total-sales">{money(d.total_sales)}</Text>
+              <Sub style={{ marginTop: 1 }}>
+                {d.month}{d.change_pct !== null ? <> · <Text style={{ color: d.change_pct >= 0 ? colors.green700 : colors.coral, fontFamily: fonts.bold }}>{d.change_pct >= 0 ? "▲" : "▼"} {Math.abs(d.change_pct)}%</Text> vs last month</> : null}
+              </Sub>
+              {/* Received and Owed sit on their own row, so a long figure can never
+                  run into them however narrow the phone is. */}
+              <View style={s.split}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
                   <Lbl numberOfLines={1}>Received</Lbl>
-                  <Money tone="pos" numberOfLines={1} testID="home-received">{money(d.received)}</Money>
-                  <Lbl style={{ marginTop: 5 }} numberOfLines={1}>Owed</Lbl>
-                  <Money tone="neg" numberOfLines={1} testID="home-owed">{money(d.owed)}</Money>
+                  <Money tone="pos" size={14} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="home-received">{money(d.received)}</Money>
                 </View>
-              </Row>
+                <View style={s.splitLine} />
+                <View style={{ flex: 1, paddingLeft: 10 }}>
+                  <Lbl numberOfLines={1}>Owed</Lbl>
+                  <Money tone="neg" size={14} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="home-owed">{money(d.owed)}</Money>
+                </View>
+              </View>
               <View style={{ marginTop: 10 }}><Prog pct={pct} /></View>
               <Sub style={{ marginTop: 7, fontSize: 10.5 }}>Tap to see this month&rsquo;s sales, by day, customer or product</Sub>
             </Card>
@@ -91,6 +99,22 @@ export default function Home() {
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={colors.ink60} />
               </Row>
+            </Card>
+          </Pressable>
+        ) : null}
+
+        {lowStock.data && lowStock.data.count > 0 ? (
+          <Pressable testID="home-low-stock-card" onPress={() => router.push("/stock/low")} style={({ pressed }) => pressed && { opacity: 0.85 }}>
+            <Card style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Av icon="alert-circle-outline" tone={lowStock.data.out ? "coral" : "mint"} />
+              <View style={{ flex: 1 }}>
+                <H4 testID="home-low-stock-count">{lowStock.data.count} item{lowStock.data.count === 1 ? "" : "s"} about to run out</H4>
+                <Sub numberOfLines={2} style={{ marginTop: 1 }}>
+                  {lowStock.data.items.slice(0, 3).map((i: any) => i.name).join(", ")}
+                  {lowStock.data.count > 3 ? ` +${lowStock.data.count - 3} more` : ""}
+                </Sub>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.ink60} />
             </Card>
           </Pressable>
         ) : null}
@@ -121,11 +145,24 @@ export default function Home() {
               </View>
             </View>
             <Card style={{ marginTop: 9 }} testID="home-cashflow-card">
-              <Row between><Lbl>Cash flow</Lbl><Tag>Last 7 days</Tag></Row>
-              <Row between style={{ marginTop: 5 }}>
-                <Money tone={d.net_week >= 0 ? "pos" : "neg"} size={16}>{d.net_week >= 0 ? "+ " : "− "}{money(d.net_week)}</Money>
-                <Tag>net this week</Tag>
-              </Row>
+              <Row between><Lbl>Money in / money out</Lbl><Tag>Last 7 days</Tag></Row>
+              {/* Real figures, not just a chart: in, out and the net of the two. */}
+              <View style={{ flexDirection: "row", marginTop: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Lbl numberOfLines={1}>Money in</Lbl>
+                  <Money tone="pos" size={14} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="home-money-in">{money(weekIn)}</Money>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Lbl numberOfLines={1}>Money out</Lbl>
+                  <Money tone="neg" size={14} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="home-money-out">{money(weekOut)}</Money>
+                </View>
+                <View style={{ flex: 1, alignItems: "flex-end" }}>
+                  <Lbl numberOfLines={1}>Net</Lbl>
+                  <Money tone={d.net_week >= 0 ? "pos" : "neg"} size={14} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="home-net-week">
+                    {d.net_week >= 0 ? "+ " : "− "}{money(Math.abs(d.net_week))}
+                  </Money>
+                </View>
+              </View>
               <View style={{ marginTop: 9 }}>
                 <Bars values={d.cashflow.flatMap((c: any) => [{ v: c.in, on: true }, { v: c.out }])} height={40} />
               </View>

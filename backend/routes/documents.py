@@ -22,6 +22,7 @@ class WaybillLine(BaseModel):
     name: str
     unit: str = "Piece"
     quantity: float = 1
+    unit_price: float = 0
 
 
 class WaybillIn(BaseModel):
@@ -106,7 +107,8 @@ async def create_waybill(data: WaybillIn, user: CurrentUser):
     if data.invoice_id and not lines:
         inv = await db.invoices.find_one({"_id": oid(data.invoice_id), **f})
         if inv:
-            lines = [{"name": l["name"], "unit": l.get("unit") or "Piece", "quantity": l["quantity"]} for l in inv.get("lines", [])]
+            lines = [{"name": l["name"], "unit": l.get("unit") or "Piece", "quantity": l["quantity"],
+                      "unit_price": l.get("unit_price") or 0} for l in inv.get("lines", [])]
     number = await next_number(f["business_id"], "waybill", "WB", 230)
     doc = {**data.model_dump(exclude={"lines"}), "lines": lines, "number": number, "packages": round(sum(l["quantity"] for l in lines), 2),
            **f, "created_by": user.get("name", ""), "created_at": now()}
@@ -126,6 +128,7 @@ async def get_waybill(wid: str, user: CurrentUser):
     if w.get("invoice_id"):
         inv = await db.invoices.find_one({"_id": ObjectId(w["invoice_id"])})
         d["invoice_number"] = inv["number"] if inv else ""
+        d["invoice_total"] = inv["totals"]["total"] if inv else 0
     return d
 
 

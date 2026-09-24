@@ -40,8 +40,10 @@ export default function Suppliers() {
         {!d ? <Loading /> : (
           <>
             <Row style={{ gap: 8 }}>
-              <View style={{ flex: 1 }}><Kpi label="You owe suppliers" value={money(d.owed)} small={`${d.count} suppliers`} tone="neg" /></View>
-              <View style={{ flex: 1 }}><Kpi label="Suppliers owing" value={String(d.suppliers.filter((x: any) => x.owed > 0).length)} small="with a balance" /></View>
+              <View style={{ flex: 1 }}><Kpi label="You owe suppliers" value={money(d.owed)} small={`${d.count} suppliers · see payables`} tone="neg"
+                testID="suppliers-kpi-owed" onPress={() => router.push("/reports/receivables")} /></View>
+              <View style={{ flex: 1 }}><Kpi label="Suppliers owing" value={String(d.suppliers.filter((x: any) => x.owed > 0).length)} small="tap to list them"
+                testID="suppliers-kpi-owing" onPress={() => setTab("owing")} /></View>
             </Row>
             <Row style={{ marginTop: 12, gap: 6 }}>
               <Chip label={`All ${d.count}`} on={tab === "all"} onPress={() => setTab("all")} testID="suppliers-tab-all" />

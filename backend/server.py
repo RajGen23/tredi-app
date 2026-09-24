@@ -7,9 +7,9 @@ from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
 import logging
 
-from deps import (VAT_RATE, DUMMY_HASH, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
+from deps import (VAT_RATE, DUMMY_HASH, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
                   db, decorate_invoice, hash_password, invoice_paid, invoice_status, invoice_totals, line_totals, log_activity, next_number, now, oid,
-                  public_user, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_shop)
+                  period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, users_roles
 from plans import TRIAL_DAYS
 from dummy_photos import pick_dummy_photo
@@ -61,6 +61,7 @@ class ItemIn(BaseModel):
     name: str
     kind: Literal["product", "service"] = "product"
     category: str = "General"
+    brand: str = ""
     unit: str = "Piece"
     barcode: str = ""
     supplier: str = ""
@@ -95,6 +96,7 @@ class InvoiceIn(BaseModel):
     status: Literal["draft", "issued"] = "issued"
     note: str = ""
     shop: str = ""
+    rep: str = ""          # who sold it — drives the rep reports and the rep page
     terms_id: Optional[str] = None
     # 04.5 review-screen options
     shipping_fee: float = 0
@@ -110,6 +112,7 @@ class SaleIn(BaseModel):
     customer_id: Optional[str] = None
     account_id: Optional[str] = None
     shop: str = ""
+    rep: str = ""
 
 
 class PaymentIn(BaseModel):
@@ -129,6 +132,7 @@ class ExpenseIn(BaseModel):
     date: Optional[str] = None
     note: str = ""
     shop: str = ""
+    rep: str = ""
     receipt_url: Optional[str] = None
 
 
@@ -198,6 +202,10 @@ async def update_business(data: BusinessIn, user: Annotated[dict, Depends(curren
     return clean(await db.businesses.find_one({"_id": ObjectId(user["business_id"])}))
 
 
+def money_words(v: float) -> str:
+    return f"{v:,.2f}".rstrip("0").rstrip(".")
+
+
 # ---------------------------------------------------------------- customers
 @api.get("/customers")
 async def list_customers(user: Annotated[dict, Depends(current_user)]):
@@ -208,7 +216,7 @@ async def list_customers(user: Annotated[dict, Depends(current_user)]):
         d["balance"] = await customer_balance(f["business_id"], d["id"])
         inv_count = 0
         overdue = 0
-        async for inv in db.invoices.find({**f, "customer_id": d["id"], "status": {"$ne": "draft"}}):
+        async for inv in db.invoices.find({**f, "customer_id": d["id"], "status": LIVE_SALE}):
             st = invoice_status(inv, await invoice_paid(f["business_id"], str(inv["_id"])))
             if st["due"] > 0:
                 inv_count += 1
@@ -229,6 +237,20 @@ async def create_customer(data: CustomerIn, user: Annotated[dict, Depends(curren
     return d
 
 
+@api.put("/customers/{cid}")
+async def update_customer(cid: str, data: CustomerIn, user: Annotated[dict, Depends(current_user)]):
+    """Correct a customer's details — including their credit limit and the
+    opening balance they started with."""
+    f = biz_filter(user)
+    c = await db.customers.find_one({"_id": oid(cid), **f})
+    if not c:
+        raise HTTPException(404, "Customer not found")
+    await db.customers.update_one({"_id": c["_id"]}, {"$set": {**data.model_dump(), "updated_at": now(), "updated_by": user.get("name", "")}})
+    await log_activity(f["business_id"], user, "customer", f"{data.name} updated",
+                       "Details corrected", 0, cid, c.get("shop", ""))
+    return await get_customer(cid, user)
+
+
 @api.get("/customers/{cid}")
 async def get_customer(cid: str, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
@@ -245,7 +267,62 @@ async def get_customer(cid: str, user: Annotated[dict, Depends(current_user)]):
     d["total_received"] = round(sum([p["amount"] async for p in db.payments.find({**f, "customer_id": cid})]), 2)
     d["overdue_count"] = sum(1 for i in invoices if i["status"] == "overdue")
     d["max_days_overdue"] = max([i["days_overdue"] for i in invoices] or [0])
+    d["unpaid"] = round(sum(i["due"] for i in invoices), 2)
+    d["returns_total"] = round(sum([r.get("total") or 0 async for r in db.returns.find({**f, "customer_id": cid})]), 2)
+    d["returns_count"] = await db.returns.count_documents({**f, "customer_id": cid})
+    limit = c.get("credit_limit")
+    d["credit_limit"] = limit
+    d["credit_left"] = round(limit - d["balance"], 2) if limit else None
+    d["over_limit"] = bool(limit and d["balance"] > limit)
     return d
+
+
+@api.get("/customers/{cid}/summary")
+async def customer_summary(cid: str, user: Annotated[dict, Depends(current_user)]):
+    """The small card the invoice shows once a customer is picked: what they owe,
+    the room left on their credit limit, and their last invoice."""
+    f = biz_filter(user)
+    c = await db.customers.find_one({"_id": oid(cid), **f})
+    if not c:
+        raise HTTPException(404, "Customer not found")
+    bal = await customer_balance(f["business_id"], cid)
+    limit = c.get("credit_limit")
+    purchased = unpaid = 0.0
+    count = 0
+    async for inv in db.invoices.find({**f, "customer_id": cid, "status": LIVE_SALE}):
+        purchased += inv["totals"]["total"]
+        unpaid += invoice_status(inv, await invoice_paid(f["business_id"], str(inv["_id"])))["due"]
+        count += 1
+    last = await db.invoices.find_one({**f, "customer_id": cid, "status": LIVE_SALE}, sort=[("created_at", -1)])
+    returns = round(sum([r.get("total") or 0 async for r in db.returns.find({**f, "customer_id": cid})]), 2)
+    return {"id": cid, "name": c.get("name", ""), "phone": c.get("phone", ""), "email": c.get("email", ""),
+            "address": c.get("address", ""), "price_list": c.get("price_list", "Retail"),
+            "balance": bal, "unpaid": round(unpaid, 2), "purchased": round(purchased, 2), "invoices": count,
+            "returns_total": returns, "credit_limit": limit,
+            "credit_left": round(limit - bal, 2) if limit else None, "over_limit": bool(limit and bal > limit),
+            "last_invoice": {"id": str(last["_id"]), "number": last.get("number", ""), "total": last["totals"]["total"],
+                             "date": last["created_at"].isoformat()} if last else None}
+
+
+@api.post("/customers/{cid}/credit-check")
+async def credit_check(cid: str, body: dict, user: Annotated[dict, Depends(current_user)]):
+    """Would this sale take the customer past their limit? A warning, never a
+    block — the person at the counter decides."""
+    f = biz_filter(user)
+    c = await db.customers.find_one({"_id": oid(cid), **f})
+    if not c:
+        raise HTTPException(404, "Customer not found")
+    amount = float(body.get("amount") or 0)
+    limit = c.get("credit_limit")
+    bal = await customer_balance(f["business_id"], cid)
+    after = round(bal + amount, 2)
+    if not limit:
+        return {"warn": False, "balance": bal, "after": after, "limit": None,
+                "message": "No credit limit set for this customer."}
+    return {"warn": after > limit, "balance": bal, "after": after, "limit": limit,
+            "over_by": round(after - limit, 2) if after > limit else 0,
+            "message": (f"This takes {c['name']} to {money_words(after)} against a {money_words(limit)} limit."
+                        if after > limit else f"{money_words(round(limit - after, 2))} of credit left after this sale.")}
 
 
 @api.get("/customers/{cid}/ledger")
@@ -256,7 +333,7 @@ async def customer_ledger(cid: str, user: Annotated[dict, Depends(current_user)]
         raise HTTPException(404, "Customer not found")
     entries = []
     opening = c.get("opening_balance", 0) * (1 if c.get("opening_type") == "owes_me" else -1)
-    async for inv in db.invoices.find({**f, "customer_id": cid, "status": {"$ne": "draft"}}):
+    async for inv in db.invoices.find({**f, "customer_id": cid, "status": LIVE_SALE}):
         entries.append({"date": inv["created_at"], "title": inv["number"], "sub": f"Sale · {len(inv['lines'])} items", "amount": inv["totals"]["total"], "kind": "sale", "ref_id": str(inv["_id"])})
     async for p in db.payments.find({**f, "customer_id": cid}):
         acc = await db.accounts.find_one({"_id": ObjectId(p["account_id"])}) if p.get("account_id") and ObjectId.is_valid(p["account_id"]) else None
@@ -273,9 +350,11 @@ async def customer_ledger(cid: str, user: Annotated[dict, Depends(current_user)]
 
 # ---------------------------------------------------------------- items
 @api.get("/items")
-async def list_items(user: Annotated[dict, Depends(current_user)]):
+async def list_items(user: Annotated[dict, Depends(current_user)], include_archived: bool = False):
     """The catalogue is shared; the quantity shown is the stock in view."""
     f = biz_filter(user)
+    if not include_archived:
+        f = {**f, "archived": {"$ne": True}}
     sc = await shop_scope(user, "stock")
     out = []
     async for i in db.items.find(f).sort("name", 1):
@@ -319,13 +398,183 @@ async def get_item(iid: str, user: Annotated[dict, Depends(current_user)]):
     d["shop_in_view"] = sc["shops"][0] if sc["shops"] and len(sc["shops"]) == 1 else ""
     d["movements"] = [clean(mv) async for mv in db.movements.find({**f, "item_id": iid}).sort("created_at", -1).limit(50)]
     d["adjustments"] = [mv for mv in d["movements"] if mv["kind"] == "adjustment"]
+
+    # Everything this item has done since it was first stocked: what it sold,
+    # what it earned, what came back, and where it was supplied from.
+    sold_qty = revenue = cost = 0.0
+    async for inv in db.invoices.find({**f, "status": LIVE_SALE}):
+        for l in inv.get("lines", []):
+            if l.get("item_id") == iid:
+                sold_qty += l.get("quantity") or 0
+                revenue += l.get("total") or 0
+                cost += (l.get("quantity") or 0) * (i.get("cost_price") or 0)
+    async for s in db.sales.find(f):
+        for l in s.get("lines", []):
+            if l.get("item_id") == iid:
+                sold_qty += l.get("quantity") or 0
+                revenue += l.get("total") or 0
+                cost += (l.get("quantity") or 0) * (i.get("cost_price") or 0)
+    returned_qty = returned_value = 0.0
+    async for r in db.returns.find(f):
+        for l in r.get("lines", []):
+            if l.get("item_id") == iid:
+                returned_qty += l.get("quantity") or 0
+                returned_value += l.get("total") or 0
+    d["sold_qty"] = round(sold_qty, 3)
+    d["revenue"] = round(revenue, 2)
+    d["cost_of_sales"] = round(cost, 2)
+    d["profit"] = round(revenue - returned_value - cost, 2)
+    d["margin"] = round(d["profit"] / revenue * 100, 1) if revenue else 0
+    d["returned_qty"] = round(returned_qty, 3)
+    d["returned_value"] = round(returned_value, 2)
+
+    supply = []
+    async for po in db.purchases.find(f).sort("created_at", -1):
+        for l in po.get("lines", []):
+            if l.get("item_id") == iid:
+                supply.append({"id": str(po["_id"]), "number": po.get("number", ""), "supplier": po.get("supplier_name", ""),
+                               "supplier_id": po.get("supplier_id", ""), "quantity": l.get("quantity") or 0,
+                               "unit_cost": l.get("unit_cost") or 0, "date": po["created_at"].isoformat()})
+    d["supply_history"] = supply[:20]
+    d["suppliers"] = sorted({s["supplier"] for s in supply if s["supplier"]})
+
+    last_sale = await db.movements.find_one({**f, "item_id": iid, "kind": "sale"}, sort=[("created_at", -1)])
+    last_in = await db.movements.find_one({**f, "item_id": iid, "kind": {"$in": ["purchase", "opening", "transfer_in"]}}, sort=[("created_at", -1)])
+    d["last_sold_at"] = last_sale["created_at"].isoformat() if last_sale else None
+    d["last_received_at"] = last_in["created_at"].isoformat() if last_in else None
+    since = last_sale or last_in
+    d["idle_days"] = (now() - since["created_at"].replace(tzinfo=timezone.utc)).days if since else None
+    d["archived"] = bool(i.get("archived"))
     return d
+
+
+@api.get("/items-stats")
+async def item_stats(user: Annotated[dict, Depends(current_user)]):
+    """Units sold, returns and how long the stock has been sitting — the columns
+    the stock list needs, kept out of GET /items so every other screen stays fast."""
+    f = biz_filter(user)
+    sold: dict = {}
+    revenue: dict = {}
+    async for inv in db.invoices.find({**f, "status": LIVE_SALE}):
+        for l in inv.get("lines", []):
+            k = l.get("item_id")
+            if k:
+                sold[k] = round(sold.get(k, 0) + (l.get("quantity") or 0), 3)
+                revenue[k] = round(revenue.get(k, 0) + (l.get("total") or 0), 2)
+    async for s in db.sales.find(f):
+        for l in s.get("lines", []):
+            k = l.get("item_id")
+            if k:
+                sold[k] = round(sold.get(k, 0) + (l.get("quantity") or 0), 3)
+                revenue[k] = round(revenue.get(k, 0) + (l.get("total") or 0), 2)
+    returned: dict = {}
+    async for r in db.returns.find(f):
+        for l in r.get("lines", []):
+            k = l.get("item_id")
+            if k:
+                returned[k] = round(returned.get(k, 0) + (l.get("quantity") or 0), 3)
+    last: dict = {}
+    async for mv in db.movements.find({**f, "kind": {"$in": ["sale", "purchase", "opening", "transfer_in"]}}).sort("created_at", 1):
+        last[mv["item_id"]] = mv["created_at"]
+    n = now()
+    rows = {}
+    for k in set(sold) | set(returned) | set(last):
+        ts = last.get(k)
+        rows[k] = {"sold": sold.get(k, 0), "revenue": revenue.get(k, 0), "returned": returned.get(k, 0),
+                   "idle_days": (n - ts.replace(tzinfo=timezone.utc)).days if ts else None}
+    return {"stats": rows}
+
+
+@api.get("/low-stock")
+async def low_stock(user: Annotated[dict, Depends(current_user)], days: int = 30):
+    """The reorder list: what is running out, how fast it sells, how many days of
+    cover are left and how much to buy to cover the next month."""
+    f = biz_filter(user)
+    sc = await shop_scope(user, "stock")
+    span = max(1, days)
+    since = now() - timedelta(days=span)
+    sold: dict = {}
+    async for inv in db.invoices.find({**f, "status": LIVE_SALE, "created_at": {"$gte": since}}):
+        for l in inv.get("lines", []):
+            if l.get("item_id"):
+                sold[l["item_id"]] = sold.get(l["item_id"], 0) + (l.get("quantity") or 0)
+    async for s in db.sales.find({**f, "created_at": {"$gte": since}}):
+        for l in s.get("lines", []):
+            if l.get("item_id"):
+                sold[l["item_id"]] = sold.get(l["item_id"], 0) + (l.get("quantity") or 0)
+
+    rows = []
+    async for it in db.items.find({**f, "archived": {"$ne": True}}):
+        if it.get("kind") == "service" or not it.get("track_stock", True):
+            continue
+        qty = round(shop_qty(it, sc["shops"], sc["main"]), 3)
+        alert = it.get("alert_below", 0) or 0
+        if not (qty <= 0 or (alert > 0 and qty <= alert)):
+            continue
+        iid = str(it["_id"])
+        moved = round(sold.get(iid, 0), 3)
+        per_day = round(moved / span, 3)
+        cover = round(qty / per_day, 1) if per_day > 0 and qty > 0 else (0 if qty <= 0 else None)
+        target = per_day * span + alert
+        suggest = max(target - qty, alert - qty, 1 if qty <= 0 else 0)
+        suggest = int(suggest) + (1 if suggest % 1 else 0)
+        cost = it.get("cost_price", 0) or 0
+        rows.append({"id": iid, "name": it.get("name", ""), "photo_url": it.get("photo_url") or "",
+                     "unit": it.get("unit", "Piece"), "category": it.get("category", ""), "brand": it.get("brand", ""),
+                     "supplier": it.get("supplier", ""), "location": it.get("location", ""),
+                     "quantity": qty, "alert_below": alert, "cost_price": cost,
+                     "selling_price": it.get("selling_price", 0) or 0,
+                     "sold": moved, "per_day": per_day, "days_left": cover,
+                     "suggest": suggest, "reorder_cost": round(suggest * cost, 2),
+                     "status": "out" if qty <= 0 else "low"})
+
+    rows.sort(key=lambda r: (0 if r["status"] == "out" else 1,
+                             r["days_left"] if r["days_left"] is not None else 9999, r["name"]))
+    out = len([r for r in rows if r["status"] == "out"])
+    return {"as_of": now().isoformat(), "days": span, "count": len(rows), "out": out, "low": len(rows) - out,
+            "reorder_cost": round(sum(r["reorder_cost"] for r in rows), 2),
+            "shop": sc["shops"][0] if sc["shops"] and len(sc["shops"]) == 1 else "", "items": rows}
 
 
 @api.put("/items/{iid}")
 async def update_item(iid: str, data: ItemIn, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     await db.items.update_one({"_id": oid(iid), **f}, {"$set": {**data.model_dump(exclude={"quantity"}), "updated_at": now()}})
+    return clean(await db.items.find_one({"_id": oid(iid)}))
+
+
+@api.delete("/items/{iid}")
+async def delete_item(iid: str, user: Annotated[dict, Depends(current_user)], reason: str = ""):
+    """An item nobody ever sold is deleted. One with history is **archived**, so
+    old invoices and reports keep telling the truth."""
+    f = biz_filter(user)
+    i = await db.items.find_one({"_id": oid(iid), **f})
+    if not i:
+        raise HTTPException(404, "Item not found")
+    used = await db.invoices.count_documents({**f, "lines.item_id": iid})
+    used += await db.sales.count_documents({**f, "lines.item_id": iid})
+    used += await db.purchases.count_documents({**f, "lines.item_id": iid})
+    if used:
+        await db.items.update_one({"_id": i["_id"]}, {"$set": {"archived": True, "archived_at": now(),
+                                                               "archived_by": user.get("name", ""), "archived_reason": reason}})
+        await log_activity(f["business_id"], user, "stock", f"{i['name']} archived", "It appears on documents already", 0, iid, i.get("shop", ""), reason)
+        return {"ok": True, "mode": "archived", "used_on": used,
+                "message": f"{i['name']} appears on {used} document{'' if used == 1 else 's'}, so it was archived instead of deleted — "
+                           "your old invoices and reports stay correct."}
+    await db.items.update_one({"_id": i["_id"]}, {"$set": {"deleted_at": now(), "deleted_by": user.get("name", ""), "deleted_reason": reason}})
+    await db.movements.update_many({**f, "item_id": iid}, {"$set": {"deleted_at": now()}})
+    await log_activity(f["business_id"], user, "stock", f"{i['name']} deleted", "Never sold or purchased", 0, iid, i.get("shop", ""), reason)
+    return {"ok": True, "mode": "deleted", "message": f"{i['name']} is gone. It had never been sold or supplied."}
+
+
+@api.post("/items/{iid}/restore")
+async def restore_item(iid: str, user: Annotated[dict, Depends(current_user)]):
+    f = biz_filter(user)
+    r = await db.items.update_one({"_id": oid(iid), "business_id": f["business_id"]},
+                                 {"$set": {"archived": False}, "$unset": {"archived_at": "", "archived_reason": "", "deleted_at": None}})
+    if not r.matched_count:
+        raise HTTPException(404, "Item not found")
+    await db.items.update_one({"_id": oid(iid)}, {"$set": {"deleted_at": None}})
     return clean(await db.items.find_one({"_id": oid(iid)}))
 
 
@@ -391,7 +640,8 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
     totals = invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)
     number = await next_number(f["business_id"], "invoice", "INV", 1000) if data.status == "issued" else "Draft"
     shop = await writing_shop(user, data.shop)
-    doc = {**data.model_dump(exclude={"lines", "shop", "issue_date"}), "shop": shop, "lines": lines, "totals": totals, "number": number, **f,
+    doc = {**data.model_dump(exclude={"lines", "shop", "issue_date"}), "shop": shop, "rep": writing_rep(user, data.rep),
+           "lines": lines, "totals": totals, "number": number, **f,
            "created_by": user.get("name", ""), "created_at": _issued_at(data.issue_date)}
     res = await db.invoices.insert_one(doc)
     inv_id = str(res.inserted_id)
@@ -465,6 +715,34 @@ async def update_invoice(iid: str, data: InvoiceIn, user: Annotated[dict, Depend
     return await decorate_invoice(await db.invoices.find_one({"_id": inv["_id"]}))
 
 
+@api.get("/invoices/{iid}/issue-preview")
+async def issue_preview(iid: str, user: Annotated[dict, Depends(current_user)]):
+    """The disclaimer the owner asked for: exactly what leaves the shelf, from
+    which shop, before a draft becomes a sales order."""
+    f = biz_filter(user)
+    inv = await db.invoices.find_one({"_id": oid(iid), **f})
+    if not inv:
+        raise HTTPException(404, "Invoice not found")
+    sc = await shop_scope(user, "stock")
+    shop = inv.get("shop") or await writing_shop(user)
+    rows = []
+    for l in inv.get("lines", []):
+        it = await db.items.find_one({"_id": ObjectId(l["item_id"])}) if ObjectId.is_valid(l.get("item_id") or "") else None
+        if not it or not it.get("track_stock", True):
+            rows.append({"name": l["name"], "quantity": l["quantity"], "unit": l.get("unit", ""), "tracked": False,
+                         "before": None, "after": None, "short": False})
+            continue
+        before = stock_map(it, sc["main"]).get(shop, 0)
+        after = round(before - l["quantity"], 3)
+        rows.append({"name": l["name"], "quantity": l["quantity"], "unit": l.get("unit") or it.get("unit", ""), "tracked": True,
+                     "before": round(before, 3), "after": after, "short": after < 0})
+    tracked = [r for r in rows if r["tracked"]]
+    return {"number": inv.get("number", "Draft"), "shop": shop, "rows": rows, "total": inv["totals"]["total"],
+            "short": [r["name"] for r in tracked if r["short"]],
+            "note": f"{len(tracked)} item{'' if len(tracked) == 1 else 's'} will come off {shop} stock the moment you confirm."
+                    if tracked else "Nothing on this invoice is stock-tracked, so no quantities change."}
+
+
 @api.post("/invoices/{iid}/issue")
 async def issue_invoice(iid: str, user: Annotated[dict, Depends(current_user)]):
     """Confirm a draft as a sales order. The same document gets a number and the
@@ -498,23 +776,62 @@ async def issue_invoice(iid: str, user: Annotated[dict, Depends(current_user)]):
 
 @api.delete("/invoices/{iid}")
 async def delete_invoice(iid: str, user: Annotated[dict, Depends(current_user)], reason: str = ""):
-    """Cancel a draft or an invoice. Anything already taken off the shelf goes
-    back, and the reason is kept on the record."""
+    """A draft is deleted outright. An issued invoice is **cancelled** — the
+    number stays on the record with a Cancelled stamp, the stock goes back and
+    every figure stops counting it. Money already received is not thrown away:
+    it comes off this invoice and sits on the customer's account as unused
+    credit, so the ledger never disagrees with the cash box."""
     f = biz_filter(user)
     inv = await db.invoices.find_one({"_id": oid(iid), **f})
     if not inv:
         raise HTTPException(404, "Invoice not found")
+    if inv.get("status") == "cancelled":
+        raise HTTPException(400, f"{inv['number']} is already cancelled")
     paid = await invoice_paid(f["business_id"], iid)
+    draft = inv.get("status") in ("draft", "quote")
+    if draft:
+        await db.invoices.update_one({"_id": inv["_id"]}, {"$set": {"deleted_at": now(), "deleted_reason": reason, "deleted_by": user.get("name", "")}})
+        await log_activity(f["business_id"], user, "invoice", "Draft deleted", "", 0, iid, inv.get("shop", ""), reason)
+        return {"ok": True, "mode": "deleted", "number": inv["number"],
+                "message": "Draft deleted. No stock or money was ever touched by it."}
+    if not reason:
+        raise HTTPException(400, "Give a reason for cancelling an issued invoice")
+    for l in inv.get("lines", []):
+        await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "sale_reversed", inv["number"], user, reason, inv.get("shop", ""))
+    # Whatever was received comes off this invoice and stays with the customer as
+    # unused credit — it can be applied to the next invoice or refunded later.
     if paid > 0:
-        raise HTTPException(400, "Payments are recorded against this invoice — delete those first")
-    if inv.get("status") == "issued":
-        if not reason:
-            raise HTTPException(400, "Give a reason for cancelling an issued invoice")
-        for l in inv.get("lines", []):
-            await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "sale_reversed", inv["number"], user, reason, inv.get("shop", ""))
-    await db.invoices.update_one({"_id": inv["_id"]}, {"$set": {"deleted_at": now(), "deleted_reason": reason, "deleted_by": user.get("name", "")}})
-    await log_activity(f["business_id"], user, "invoice", f"{inv['number']} deleted", "", 0, iid, inv.get("shop", ""), reason)
-    return {"ok": True, "number": inv["number"]}
+        async for p in db.payments.find({**f, "allocations.invoice_id": iid}):
+            keep = [a for a in (p.get("allocations") or []) if a.get("invoice_id") != iid]
+            await db.payments.update_one({"_id": p["_id"]}, {"$set": {
+                "allocations": keep,
+                "note": f"{p.get('note') or 'Payment'} · released when {inv['number']} was cancelled"}})
+    await db.invoices.update_one({"_id": inv["_id"]}, {"$set": {
+        "status": "cancelled", "cancelled_at": now(), "cancelled_by": user.get("name", ""), "cancelled_reason": reason,
+        "cancelled_credit": paid}})
+    await log_activity(f["business_id"], user, "invoice", f"{inv['number']} cancelled",
+                       f"Stock returned to the shelf{f' · {money_words(paid)} left as credit' if paid > 0 else ''}",
+                       0, iid, inv.get("shop", ""), reason)
+    items = len(inv.get("lines", []))
+    credit_note = (f" The {money_words(paid)} already received now sits on the customer's account as unused credit."
+                   if paid > 0 else "")
+    return {"ok": True, "mode": "cancelled", "number": inv["number"], "credit": paid,
+            "message": f"{inv['number']} is cancelled. {items} line{'' if items == 1 else 's'} went back on the shelf and it no longer counts as a sale.{credit_note}"}
+
+
+@api.post("/invoices/{iid}/uncancel")
+async def uncancel_invoice(iid: str, user: Annotated[dict, Depends(current_user)]):
+    """Cancelled by mistake — put it back, and take the stock off again."""
+    f = biz_filter(user)
+    inv = await db.invoices.find_one({"_id": oid(iid), **f})
+    if not inv or inv.get("status") != "cancelled":
+        raise HTTPException(404, "No cancelled invoice here")
+    for l in inv.get("lines", []):
+        await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", inv["number"], user, "Cancellation reversed", inv.get("shop", ""))
+    await db.invoices.update_one({"_id": inv["_id"]}, {"$set": {"status": "issued"},
+                                                       "$unset": {"cancelled_at": "", "cancelled_by": "", "cancelled_reason": ""}})
+    await log_activity(f["business_id"], user, "invoice", f"{inv['number']} restored", "Cancellation reversed", inv["totals"]["total"], iid, inv.get("shop", ""))
+    return await decorate_invoice(await db.invoices.find_one({"_id": inv["_id"]}))
 
 
 # ---------------------------------------------------------------- quick sales
@@ -529,7 +846,8 @@ async def create_sale(data: SaleIn, user: Annotated[dict, Depends(current_user)]
     shop = await writing_shop(user, data.shop)
     change = round(max(0.0, data.tendered - totals["total"]), 2) if data.method == "cash" and data.tendered else 0
     doc = {**f, "number": number, "lines": lines, "totals": totals, "method": data.method, "tendered": data.tendered, "change": change, "customer_id": data.customer_id,
-           "account_id": data.account_id, "shop": shop, "created_by": user.get("name", ""), "created_at": now(), "synced": True}
+           "account_id": data.account_id, "shop": shop, "rep": writing_rep(user, data.rep),
+           "created_by": user.get("name", ""), "created_at": now(), "synced": True}
     res = await db.sales.insert_one(doc)
     await log_activity(f["business_id"], user, "sale", f"{number} · quick sale", data.method, totals["total"], str(res.inserted_id), shop)
     for l in lines:
@@ -598,6 +916,44 @@ async def list_accounts(user: Annotated[dict, Depends(current_user)]):
     return {"accounts": accs, "total": round(sum(a["balance"] for a in accs), 2), "in": round(total_in, 2), "out": round(total_out, 2), "recent": recent[:8]}
 
 
+@api.get("/accounts/{aid}")
+async def account_statement(aid: str, user: Annotated[dict, Depends(current_user)], period: str = "all"):
+    """Money in and money out of one account, line by line, with a running
+    balance — and anything raised from an invoice links back to it."""
+    f = biz_filter(user)
+    acc = await db.accounts.find_one({"_id": oid(aid), **f})
+    if not acc:
+        raise HTTPException(404, "Account not found")
+    a, b, label = period_range(period)
+    rows = []
+    async for p in db.payments.find({**f, "account_id": aid}):
+        cust = await db.customers.find_one({"_id": ObjectId(p["customer_id"])}) if ObjectId.is_valid(p.get("customer_id") or "") else None
+        inv_id = (p.get("allocations") or [{}])[0].get("invoice_id") if p.get("allocations") else None
+        inv = await db.invoices.find_one({"_id": ObjectId(inv_id)}) if ObjectId.is_valid(inv_id or "") else None
+        rows.append({"id": str(p["_id"]), "date": p["created_at"], "title": cust["name"] if cust else "Cash sale",
+                     "sub": p.get("note") or "Payment in", "amount": p["amount"], "kind": "in",
+                     "method": p.get("pay_method") or p.get("method", ""),
+                     "ref_type": "invoice" if inv else ("sale" if p.get("sale_id") else ""),
+                     "ref_id": str(inv["_id"]) if inv else (p.get("sale_id") or ""),
+                     "ref_number": inv["number"] if inv else ""})
+    async for e in db.expenses.find({**f, "account_id": aid}):
+        rows.append({"id": str(e["_id"]), "date": e["created_at"], "title": e.get("note") or e["category"],
+                     "sub": f"Expense · {e['category']}", "amount": -e["amount"], "kind": "out", "method": "",
+                     "ref_type": "expense", "ref_id": str(e["_id"]), "ref_number": ""})
+    rows.sort(key=lambda r: r["date"])
+    running = acc.get("opening_balance") or 0
+    for r in rows:
+        running = round(running + r["amount"], 2)
+        r["balance"] = running
+        r["date"] = r["date"].isoformat()
+    window = [r for r in rows if (a is None or r["date"] >= a.isoformat()) and r["date"] < b.isoformat()] if period != "all" else rows
+    return {"account": {**clean(acc), "balance": running},
+            "opening": round(acc.get("opening_balance") or 0, 2), "closing": running,
+            "in": round(sum(r["amount"] for r in window if r["amount"] > 0), 2),
+            "out": round(-sum(r["amount"] for r in window if r["amount"] < 0), 2),
+            "label": label, "entries": list(reversed(window))}
+
+
 @api.post("/accounts", status_code=201)
 async def create_account(data: AccountIn, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
@@ -614,7 +970,7 @@ async def create_payment(data: PaymentIn, user: Annotated[dict, Depends(current_
     if not allocations:
         # auto-allocate oldest first
         remaining = data.amount
-        async for inv in db.invoices.find({**f, "customer_id": data.customer_id, "status": {"$ne": "draft"}}).sort("created_at", 1):
+        async for inv in db.invoices.find({**f, "customer_id": data.customer_id, "status": LIVE_SALE}).sort("created_at", 1):
             st = invoice_status(inv, await invoice_paid(f["business_id"], str(inv["_id"])))
             if st["due"] <= 0 or remaining <= 0:
                 continue
@@ -642,8 +998,12 @@ async def delete_payment(pid: str, reason: str, user: Annotated[dict, Depends(cu
 
 # ---------------------------------------------------------------- expenses
 @api.get("/expenses")
-async def list_expenses(user: Annotated[dict, Depends(current_user)], period: str = "month"):
+async def list_expenses(user: Annotated[dict, Depends(current_user)], period: str = "month", rep: str = "", category: str = ""):
     f = await scoped(user, "reports")
+    if rep:
+        f = {**f, **rep_clause(rep)}
+    if category:
+        f = {**f, "category": category}
     today = date.today()
     if period == "week":
         start = datetime.combine(today - timedelta(days=today.weekday()), datetime.min.time(), tzinfo=timezone.utc)
@@ -677,10 +1037,70 @@ async def list_expenses(user: Annotated[dict, Depends(current_user)], period: st
 @api.post("/expenses", status_code=201)
 async def create_expense(data: ExpenseIn, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
-    doc = {**data.model_dump(exclude={"date", "shop"}), "shop": await writing_shop(user, data.shop), **f,
-           "created_by": user.get("name", ""), "created_at": datetime.fromisoformat(data.date) if data.date else now()}
+    doc = {**data.model_dump(exclude={"date", "shop"}), "shop": await writing_shop(user, data.shop), "rep": writing_rep(user, data.rep), **f,
+           "created_by": user.get("name", ""), "created_at": _issued_at(data.date) if data.date else now()}
     res = await db.expenses.insert_one(doc)
     return clean(await db.expenses.find_one({"_id": res.inserted_id}))
+
+
+@api.get("/expenses/{eid}")
+async def get_expense(eid: str, user: Annotated[dict, Depends(current_user)]):
+    f = biz_filter(user)
+    e = await db.expenses.find_one({"_id": oid(eid), **f})
+    if not e:
+        raise HTTPException(404, "Expense not found")
+    d = clean(e)
+    acc = await db.accounts.find_one({"_id": ObjectId(e["account_id"])}) if ObjectId.is_valid(e.get("account_id") or "") else None
+    d["account_name"] = acc["name"] if acc else "Cash"
+    d["rep"] = e.get("rep") or e.get("created_by", "")
+    d["editable"] = not e.get("supplier_payment_id") and not e.get("purchase_id")
+    if not d["editable"]:
+        d["locked_because"] = "This row came from a supplier payment — correct it on the purchase instead."
+    return d
+
+
+@api.put("/expenses/{eid}")
+async def update_expense(eid: str, data: ExpenseIn, user: Annotated[dict, Depends(current_user)]):
+    """Fix an expense that was typed wrong — including which shop it belongs to,
+    which moves the figure between branches."""
+    f = biz_filter(user)
+    e = await db.expenses.find_one({"_id": oid(eid), **f})
+    if not e:
+        raise HTTPException(404, "Expense not found")
+    if e.get("supplier_payment_id") or e.get("purchase_id"):
+        raise HTTPException(400, "This row came from a supplier payment — correct it on the purchase instead")
+    if data.amount <= 0:
+        raise HTTPException(400, "Amount must be greater than zero")
+    patch = {**data.model_dump(exclude={"date", "shop", "rep"}),
+             "shop": data.shop or e.get("shop") or await writing_shop(user),
+             "rep": writing_rep(user, data.rep or e.get("rep") or e.get("created_by", "")),
+             "updated_at": now(), "updated_by": user.get("name", "")}
+    if data.date:
+        patch["created_at"] = _issued_at(data.date)
+    await db.expenses.update_one({"_id": e["_id"]}, {"$set": patch})
+    changes = []
+    if round(e["amount"], 2) != round(data.amount, 2):
+        changes.append(f"{money_words(e['amount'])} → {money_words(data.amount)}")
+    if e.get("category") != data.category:
+        changes.append(f"{e.get('category', '')} → {data.category}")
+    if data.shop and e.get("shop") != data.shop:
+        changes.append(f"moved to {data.shop}")
+    await log_activity(f["business_id"], user, "expense", "Expense corrected", ", ".join(changes) or "Details updated",
+                       data.amount, eid, patch["shop"])
+    return await get_expense(eid, user)
+
+
+@api.delete("/expenses/{eid}")
+async def delete_expense(eid: str, user: Annotated[dict, Depends(current_user)], reason: str = ""):
+    f = biz_filter(user)
+    e = await db.expenses.find_one({"_id": oid(eid), **f})
+    if not e:
+        raise HTTPException(404, "Expense not found")
+    if e.get("supplier_payment_id") or e.get("purchase_id"):
+        raise HTTPException(400, "This row came from a supplier payment — remove it on the purchase instead")
+    await db.expenses.update_one({"_id": e["_id"]}, {"$set": {"deleted_at": now(), "deleted_by": user.get("name", ""), "deleted_reason": reason}})
+    await log_activity(f["business_id"], user, "expense", "Expense deleted", e.get("category", ""), e["amount"], eid, e.get("shop", ""), reason)
+    return {"ok": True, "message": f"{money_words(e['amount'])} removed from {e.get('category', 'expenses')}"}
 
 
 # ---------------------------------------------------------------- dashboard
@@ -694,7 +1114,7 @@ async def dashboard(user: Annotated[dict, Depends(current_user)]):
 
     async def sales_between(a, b):
         tot = 0.0
-        async for inv in db.invoices.find({**f, "status": {"$ne": "draft"}, "created_at": {"$gte": a, "$lt": b}}):
+        async for inv in db.invoices.find({**f, "status": LIVE_SALE, "created_at": {"$gte": a, "$lt": b}}):
             tot += inv["totals"]["total"]
         async for s in db.sales.find({**f, "created_at": {"$gte": a, "$lt": b}}):
             tot += s["totals"]["total"]
@@ -703,13 +1123,16 @@ async def dashboard(user: Annotated[dict, Depends(current_user)]):
     far = now() + timedelta(days=1)
     total_sales = await sales_between(month_start, far)
     prev_sales = await sales_between(prev_start, month_start)
-    month_payments = [p["amount"] async for p in db.payments.find({**f, "created_at": {"$gte": month_start}})]
+    # A credit note or applied credit is not cash coming in, so it never counts
+    # towards "received" — only real money does.
+    month_payments = [p["amount"] async for p in db.payments.find(
+        {**f, "created_at": {"$gte": month_start}, "method": {"$nin": ["credit_note", "credit"]}})]
     # refunds are stored as negative payments — keep them out of "received" so the
     # headline stays money actually taken in
-    received = round(sum(a for a in month_payments if a > 0), 2)
+    received = round(sum(a for a in month_payments if a > 0), 2)  # credit notes excluded below
     refunded = round(-sum(a for a in month_payments if a < 0), 2)
     owed = 0.0
-    async for inv in db.invoices.find({**f, "status": {"$ne": "draft"}}):
+    async for inv in db.invoices.find({**f, "status": LIVE_SALE}):
         owed += invoice_status(inv, await invoice_paid(f["business_id"], str(inv["_id"])))["due"]
     expenses = [e async for e in db.expenses.find({**f, "created_at": {"$gte": month_start}})]
     # 7-day cash flow

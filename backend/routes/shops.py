@@ -7,8 +7,8 @@ from bson import ObjectId
 
 from plans import TRIAL_DAYS
 
-from deps import (CurrentUser, apply_stock, biz_filter, clean, db, ensure_feature, ensure_limit, log_activity, next_number, now, oid,
-                  period_range, date_query, shop_qty, shop_scope, stock_map)
+from deps import (CurrentUser, LIVE_SALE, apply_stock, biz_filter, clean, db, ensure_feature, ensure_limit, log_activity, next_number,
+                  now, oid, period_range, date_query, shop_qty, shop_scope, stock_map)
 
 router = APIRouter(prefix="/api")
 
@@ -71,7 +71,7 @@ async def shop_sales(f: dict, shop: str, a, b, is_main: bool = False) -> float:
     names: list = [shop, shop] if not is_main else [shop, "", None]
     clause = {"shop": {"$in": list(dict.fromkeys(names))}}
     total = 0.0
-    async for inv in db.invoices.find(date_query({**f, "status": {"$nin": ["draft", "quote"]}, **clause}, a, b)):
+    async for inv in db.invoices.find(date_query({**f, "status": LIVE_SALE, **clause}, a, b)):
         total += inv["totals"]["total"]
     async for s in db.sales.find(date_query({**f, **clause}, a, b)):
         total += s["totals"]["total"]
@@ -183,7 +183,7 @@ async def list_businesses(user: CurrentUser):
         bid = str(biz["_id"])
         f = {"business_id": bid, "deleted_at": None}
         sales = 0.0
-        async for inv in db.invoices.find(date_query({**f, "status": {"$nin": ["draft", "quote"]}}, a, b)):
+        async for inv in db.invoices.find(date_query({**f, "status": LIVE_SALE}, a, b)):
             sales += inv["totals"]["total"]
         async for s in db.sales.find(date_query(f, a, b)):
             sales += s["totals"]["total"]

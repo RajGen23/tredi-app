@@ -5,20 +5,32 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import dayjs from "dayjs";
 
 import { api } from "@/src/api";
-import { AppBar, Av, Btn, Card, Check, Chip, Field, H4, Li, Lbl, Money, Row, Sub, Switch, Tag } from "@/src/components/ui";
+import { AppBar, Av, Btn, Card, Check, Chip, H4, Li, Lbl, Money, Row, Sub, Switch, Tag } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
-import { initials, money, parseNum, slashDate, statusLabel, sym } from "@/src/format";
+import { DateField } from "@/src/components/date-field";
+import { PickerField } from "@/src/components/picker";
+import { initials, money, parseNum, statusLabel, sym } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surfaceSecondary },
   faint: { backgroundColor: c.faint, paddingVertical: 9, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 8 },
+  mint: { backgroundColor: c.brandTertiary, borderColor: c.mint2, paddingVertical: 9 },
   amountBox: { borderWidth: 1, borderColor: c.brandPrimary, borderRadius: 11, padding: 14, alignItems: "center", marginTop: 9 },
   bigInput: { fontFamily: fonts.monoSemibold, fontSize: 28, color: c.onSurface, textAlign: "center", paddingVertical: 4, minWidth: 160 },
   footer: { paddingTop: 10, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: c.border },
 }));
+
+const PAY_METHODS = [
+  { key: "cash", label: "Cash", sub: "Notes into the till" },
+  { key: "transfer", label: "Bank transfer", sub: "Into one of your accounts" },
+  { key: "card", label: "Card / POS", sub: "Terminal settlement" },
+  { key: "cheque", label: "Cheque", sub: "Not cleared until it lands" },
+  { key: "other", label: "Other", sub: "Anything else" },
+];
 
 export default function PaymentIn() {
   const s = useStyles();
@@ -36,14 +48,20 @@ export default function PaymentIn() {
   const [amount, setAmount] = useState("");
   const [selected, setSelected] = useState<string[]>(params.invoice_id ? [params.invoice_id] : []);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [method, setMethod] = useState("cash");
+  const [payDate, setPayDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [receipt, setReceipt] = useState(true);
   const accounts = accountsQ.data?.accounts ?? [];
   const account = accounts.find((a: any) => a.id === accountId) ?? accounts[0];
+  const accountOptions = accounts.map((a: any) => ({ key: a.id, label: a.name, sub: a.detail || a.kind }));
   const c = customerQ.data;
-  const open = useMemo(() => (c?.invoices ?? []).filter((i: any) => i.due > 0 && i.status !== "draft"), [c]);
+  const open = useMemo(() => (c?.invoices ?? []).filter((i: any) => i.due > 0 && !["draft", "cancelled"].includes(i.status)), [c]);
   const owed = Math.max(0, c?.balance ?? 0);
+  const target = open.find((i: any) => i.id === params.invoice_id);
 
   useEffect(() => { if (open.length && selected.length === 0) setSelected(open.map((i: any) => i.id)); }, [open, selected.length]);
+  // Arriving from an invoice: that invoice's balance is what they are here to pay.
+  useEffect(() => { if (target && !amount) setAmount(String(target.due)); }, [target, amount]);
 
   const allocations = useMemo(() => {
     let rem = parseNum(amount);
@@ -51,8 +69,11 @@ export default function PaymentIn() {
   }, [amount, open, selected]);
 
   const m = useMutation({
-    mutationFn: () => api("/payments", { method: "POST", json: { customer_id: customerId, amount: parseNum(amount), account_id: account?.id ?? null, allocations, note: `Payment in · ${account?.name ?? "Cash"}` } }),
-    onSuccess: () => { ["customers", "customer", "invoices", "invoice", "dashboard", "accounts", "ledger"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast.show(`${money(parseNum(amount))} from ${c?.name}`, "Recorded."); router.back(); },
+    mutationFn: () => api("/payments", { method: "POST", json: {
+      customer_id: customerId, amount: parseNum(amount), account_id: account?.id ?? null, method, date: payDate,
+      allocations, note: `Payment in · ${PAY_METHODS.find((p) => p.key === method)?.label ?? "Cash"} · ${account?.name ?? "Cash"}`,
+    } }),
+    onSuccess: () => { ["customers", "customer", "customer-summary", "invoices", "invoice", "dashboard", "accounts", "account", "ledger", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast.show(`${money(parseNum(amount))} from ${c?.name}`, "Recorded."); router.back(); },
     onError: (e: Error) => toast.show(e.message),
   });
 
@@ -65,6 +86,21 @@ export default function PaymentIn() {
           <View style={{ flex: 1 }}><H4 style={{ fontSize: 12.5 }}>{c?.name ?? "Choose a customer"}</H4><Tag>{c ? (owed > 0 ? `Owes ${money(owed)}` : "Nothing owing") : "Who is paying?"}</Tag></View>
           <Chip label={c ? "Change" : "Choose"} onPress={() => setPick(true)} testID="payment-change-customer" />
         </Card>
+        {target ? (
+          <Card style={[s.mint, { marginTop: 9 }]} testID="payment-target-invoice">
+            <Row between>
+              <View style={{ flex: 1 }}>
+                <Lbl>Paying invoice</Lbl>
+                <H4 style={{ fontFamily: fonts.monoSemibold, fontSize: 13 }}>{target.number}</H4>
+                <Tag>{statusLabel(target)} · {money(target.totals?.total ?? 0)} total</Tag>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Lbl>Due on it</Lbl>
+                <Money size={16} tone="neg" testID="payment-target-due">{money(target.due)}</Money>
+              </View>
+            </Row>
+          </Card>
+        ) : null}
         <View style={s.amountBox}>
           <Lbl>Amount received</Lbl>
           <TextInput testID="payment-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder={`${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus={!!customerId} />
@@ -77,7 +113,10 @@ export default function PaymentIn() {
         ) : null}
         {open.length ? (
           <>
-            <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Settle against</Lbl>
+            <Row between style={{ marginTop: 12, marginBottom: 6 }}>
+              <Lbl>Settle against</Lbl>
+              <Tag>{open.length} open · {money(open.reduce((a: number, i: any) => a + i.due, 0))} due</Tag>
+            </Row>
             <Card style={{ paddingVertical: 4 }}>
               {open.map((inv: any, i: number) => {
                 const on = selected.includes(inv.id);
@@ -94,9 +133,11 @@ export default function PaymentIn() {
           </>
         ) : null}
         <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}>
-          <Field testID="payment-account" label="Into account" value={account?.name ?? "Cash till"} onPress={() => { const i = accounts.findIndex((a: any) => a.id === account?.id); setAccountId(accounts[(i + 1) % Math.max(1, accounts.length)]?.id ?? null); }} right={<Sub>⌄</Sub>} style={{ flex: 1 }} />
-          <Field label="Date" value={slashDate()} mono onPress={() => {}} style={{ flex: 1 }} />
+          <PickerField label="How was it paid?" value={method} options={PAY_METHODS} onPick={setMethod} title="Means of collection" style={{ flex: 1 }} testID="payment-method" />
+          <DateField label="Date of payment" value={payDate} onChange={setPayDate} style={{ flex: 1 }} testID="payment-date" />
         </View>
+        <PickerField label="Into which account" value={account?.id ?? null} options={accountOptions} onPick={setAccountId}
+          title="Where did the money land?" placeholder="Cash till" style={{ marginTop: 9 }} testID="payment-account" />
         <Card style={{ marginTop: 9, flexDirection: "row", alignItems: "center", gap: 10 }}>
           <View style={{ flex: 1 }}><H4>Send receipt on WhatsApp</H4><Sub>{c?.phone ? `To ${c.phone}` : "No phone on file"}</Sub></View>
           <Switch on={receipt} onChange={setReceipt} testID="payment-receipt-toggle" />

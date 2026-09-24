@@ -7,8 +7,10 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Btn, H4, Sub } from "@/src/components/ui";
+import { Btn, H4, Seg, Sub } from "@/src/components/ui";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+
+export type ScanMode = "add" | "price";
 
 const TYPES = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "code93", "itf14", "codabar", "qr"] as const;
 
@@ -19,16 +21,21 @@ const useStyles = makeStyles((c) => ({
   frame: { flex: 1, alignItems: "center", justifyContent: "center" },
   window: { width: "78%", aspectRatio: 1.45, borderWidth: 2, borderColor: c.brandPrimary, borderRadius: 18 },
   hint: { marginTop: 16, fontFamily: fonts.medium, fontSize: 13, color: "#FFFFFFCC", textAlign: "center", paddingHorizontal: 30 },
+  modes: { backgroundColor: c.surfaceSecondary, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingHorizontal: 14, paddingTop: 12 },
   ask: { flex: 1, backgroundColor: c.surface, padding: 20, justifyContent: "center" },
   askIcon: { width: 56, height: 56, borderRadius: 18, backgroundColor: c.brandTertiary, alignItems: "center", justifyContent: "center", marginBottom: 14 },
 }));
 
-export function Scanner({ visible, onClose, onScan, title = "Scan bar code", hint = "Hold the code inside the frame" }: {
+export function Scanner({ visible, onClose, onScan, title = "Scan bar code", hint = "Hold the code inside the frame", mode, onMode, addLabel = "Add to sale" }: {
   visible: boolean;
   onClose: () => void;
   onScan: (code: string) => void;
   title?: string;
   hint?: string;
+  /** When a mode and handler are given, the camera carries an Add / Price check switch. */
+  mode?: ScanMode;
+  onMode?: (m: ScanMode) => void;
+  addLabel?: string;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -76,9 +83,18 @@ export function Scanner({ visible, onClose, onScan, title = "Scan bar code", hin
             <CameraView style={{ flex: 1 }} facing="back" barcodeScannerSettings={{ barcodeTypes: [...TYPES] }} onBarcodeScanned={handle} testID="scanner-camera">
               <View style={s.frame}>
                 <View style={s.window} />
-                <Text style={s.hint}>{hint}</Text>
+                <Text style={s.hint}>{mode === "price" ? "Point at the code — the price and stock come up, nothing is added" : hint}</Text>
               </View>
             </CameraView>
+            {onMode && mode ? (
+              <View style={[s.modes, { paddingBottom: Math.max(insets.bottom, 12) }]} testID="scanner-modes">
+                <Seg testID="scanner-mode" value={mode} onChange={onMode}
+                  options={[{ key: "add", label: addLabel }, { key: "price", label: "Price check" }]} />
+                <Sub style={{ marginTop: 6, textAlign: "center", fontSize: 11 }}>
+                  {mode === "price" ? "Price check only — nothing goes on the sale until you say so." : "Every scan adds one to the sale."}
+                </Sub>
+              </View>
+            ) : null}
           </>
         )}
       </View>

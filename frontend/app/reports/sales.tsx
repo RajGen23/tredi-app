@@ -1,24 +1,28 @@
 // Sales summary — the same figures grouped by day, customer, product or shop.
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
+import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
 import { AppBar, Card, Chip, Empty, H4, IconBtn, Kpi, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { ExportBar, useReportMeta } from "@/src/components/export";
 import { PeriodBar, PeriodSheet, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
-import { makeStyles } from "@/src/theme";
+import { makeStyles, useTheme } from "@/src/theme";
 
-type Group = "day" | "customer" | "product" | "shop";
-const GROUPS: [Group, string][] = [["day", "By day"], ["customer", "By customer"], ["product", "By product"], ["shop", "By shop"]];
+type Group = "day" | "customer" | "product" | "shop" | "rep";
+const GROUPS: [Group, string][] = [["day", "By day"], ["customer", "By customer"], ["product", "By product"], ["shop", "By shop"], ["rep", "By rep"]];
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
 export default function SalesSummary() {
   const s = useStyles();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [group, setGroup] = useState<Group>("day");
   const [sheet, setSheet] = useState(false);
   const { query, shortLabel } = usePeriod();
@@ -57,9 +61,13 @@ export default function SalesSummary() {
             {d.rows.length === 0 ? <Card style={{ marginTop: 9 }}><Empty icon="receipt-outline" title="No sales in this period" /></Card> : (
               <Card style={{ marginTop: 9, paddingVertical: 4 }}>
                 {d.rows.map((r: any, i: number) => (
-                  <Li key={`${r.label}-${i}`} last={i === d.rows.length - 1}>
-                    <View style={{ flex: 1 }}><H4>{r.label}</H4><Sub>{r.count} record{r.count === 1 ? "" : "s"}</Sub></View>
+                  <Li key={`${r.label}-${i}`} last={i === d.rows.length - 1} testID={`sales-row-${i}`}
+                    onPress={() => router.push(group === "day"
+                      ? `/reports/entries?kind=sales&start=${r.key}&end=${r.key}&title=${encodeURIComponent(r.label)}`
+                      : `/reports/entries?kind=${group}&key=${encodeURIComponent(r.key ?? r.label)}&title=${encodeURIComponent(r.label)}`)}>
+                    <View style={{ flex: 1 }}><H4>{r.label}</H4><Sub>{r.count} record{r.count === 1 ? "" : "s"} · tap for the entries</Sub></View>
                     <Money>{money(r.amount)}</Money>
+                    <Ionicons name="chevron-forward" size={15} color={colors.ink40} />
                   </Li>
                 ))}
               </Card>

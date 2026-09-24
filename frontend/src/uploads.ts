@@ -7,18 +7,48 @@ import { ApiError, TOKEN_KEY } from "@/src/api";
 
 const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
+/** A phone photo is 4–9 MB straight off the camera, which is slow on shop data
+ *  and can be refused outright. Shrink it on the device first — the screens all
+ *  promise "compressed for slow data". Falls back to the original if the
+ *  manipulator cannot read the file. */
+async function shrink(uri: string, name: string, type: string) {
+  try {
+    const { ImageManipulator, SaveFormat } = await import("expo-image-manipulator");
+    const ctx = ImageManipulator.manipulate(uri);
+    let ref = await ctx.renderAsync();
+    if (ref.width > 1600) ref = await ctx.resize({ width: 1600 }).renderAsync();
+    const out = await ref.saveAsync({ compress: 0.7, format: SaveFormat.JPEG });
+    return { uri: out.uri, name: name.replace(/\.[^.]+$/, "") + ".jpg", type: "image/jpeg" };
+  } catch {
+    return { uri, name, type };
+  }
+}
+
 export async function uploadPhoto(uri: string, name = `photo-${Date.now()}.jpg`, type = "image/jpeg"): Promise<{ path: string; url: string }> {
   const token = await storage.secureGet<string | null>(TOKEN_KEY, null);
+  const small = await shrink(uri, name, type);
   const form = new FormData();
   if (Platform.OS === "web") {
-    const blob = await (await fetch(uri)).blob();
-    form.append("file", blob, name);
+    const blob = await (await fetch(small.uri)).blob();
+    form.append("file", blob, small.name);
   } else {
-    form.append("file", { uri, name, type } as any);
+    form.append("file", { uri: small.uri, name: small.name, type: small.type } as any);
   }
-  const res = await fetch(`${BASE}/upload`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, typeof body.detail === "string" ? body.detail : "Upload failed");
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/upload`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
+  } catch {
+    throw new ApiError(0, "No connection — the photo will need another try");
+  }
+  const text = await res.text();
+  let body: any = {};
+  try { body = JSON.parse(text); } catch { /* an ingress error page, not our JSON */ }
+  if (!res.ok) {
+    throw new ApiError(res.status, typeof body.detail === "string" ? body.detail
+      : res.status === 413 ? "That photo is too large — try a smaller one"
+      : res.status === 401 ? "Please sign in again to upload"
+      : `Upload failed (${res.status})`);
+  }
   return body;
 }
 

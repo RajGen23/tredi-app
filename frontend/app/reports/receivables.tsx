@@ -1,11 +1,12 @@
 // Receivables & payables — the ageing buckets behind Summary's tap row.
+import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
-import { AppBar, Badge, Card, Empty, H4, Kpi, Lbl, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
+import { AppBar, Badge, Btn, Card, Empty, H4, Kpi, Lbl, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { ExportBar, useReportMeta } from "@/src/components/export";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
@@ -24,8 +25,11 @@ export default function Receivables() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const meta = useReportMeta();
+  const [all, setAll] = useState(false);
   const q = useQuery({ queryKey: ["reports-receivables"], queryFn: () => api("/reports/receivables") });
   const d = q.data;
+  const rows: any[] = d?.rows ?? [];
+  const shown = all ? rows : rows.slice(0, 40);
 
   const build = () => d && ({
     ...meta,
@@ -39,7 +43,8 @@ export default function Receivables() {
         total: ["Total owed to you", money(d.total)] },
       { heading: "Who owes what",
         columns: [{ label: "Customer" }, { label: "Invoice" }, { label: "Days late", right: true }, { label: "Due", right: true }],
-        rows: d.rows.map((r: any) => [r.customer, r.number, r.days_overdue > 0 ? r.days_overdue : "—", money(r.due)]) },
+        rows: rows.map((r: any) => [r.customer, r.number, r.days_overdue > 0 ? r.days_overdue : "—", money(r.due)]),
+        total: ["Total", "", "", money(d.total)] },
     ],
   });
 
@@ -50,9 +55,13 @@ export default function Receivables() {
         {!d ? <Loading /> : (
           <>
             <Row style={{ gap: 8 }}>
-              <View style={{ flex: 1 }}><Kpi label="Owed to you" value={money(d.total)} small={`${d.rows.length} open invoices`} tone="neg" /></View>
+              <View style={{ flex: 1 }}><Kpi label="Owed to you" value={money(d.total)} small={`${rows.length} open invoices`} tone="neg" /></View>
               <View style={{ flex: 1 }}><Kpi label="You owe" value={money(d.payables)} small="Suppliers" /></View>
             </Row>
+            <Li last style={{ marginTop: 9 }} testID="receivables-open-debtors" onPress={() => router.push("/reports/debtors")}>
+              <View style={{ flex: 1 }}><H4>Debtors report</H4><Sub>By customer, with the oldest unpaid invoice</Sub></View>
+              <Badge tone="info">Open</Badge>
+            </Li>
             <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Ageing</Lbl>
             <Card style={{ paddingVertical: 4 }} testID="receivables-buckets">
               {BUCKETS.map((b, i) => (
@@ -63,21 +72,28 @@ export default function Receivables() {
               ))}
             </Card>
             <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Who owes what</Lbl>
-            {d.rows.length === 0 ? <Card><Empty icon="checkmark-circle-outline" title="Nothing outstanding" sub="Every invoice is settled." /></Card> : (
-              <Card style={{ paddingVertical: 4 }}>
-                {d.rows.map((r: any, i: number) => (
-                  <Li key={r.id} last={i === d.rows.length - 1} testID={`receivable-${r.id}`} onPress={() => router.push(`/invoices/${r.id}`)}>
-                    <View style={{ flex: 1 }}>
-                      <H4>{r.customer}</H4>
-                      <Sub>{r.number}</Sub>
-                    </View>
-                    <View style={{ alignItems: "flex-end", gap: 3 }}>
-                      <Money tone="neg">{money(r.due)}</Money>
-                      {r.days_overdue > 0 ? <Badge tone="over">{r.days_overdue}d late</Badge> : <Badge tone="due">Due</Badge>}
-                    </View>
-                  </Li>
-                ))}
-              </Card>
+            {rows.length === 0 ? <Card><Empty icon="checkmark-circle-outline" title="Nothing outstanding" sub="Every invoice is settled." /></Card> : (
+              <>
+                <Card style={{ paddingVertical: 4 }}>
+                  {shown.map((r: any, i: number) => (
+                    <Li key={r.id} last={i === shown.length - 1} testID={`receivable-${r.id}`} onPress={() => router.push(`/invoices/${r.id}`)}>
+                      <View style={{ flex: 1 }}>
+                        <H4>{r.customer}</H4>
+                        <Sub>{r.number}</Sub>
+                      </View>
+                      <View style={{ alignItems: "flex-end", gap: 3 }}>
+                        <Money tone="neg">{money(r.due)}</Money>
+                        {r.days_overdue > 0 ? <Badge tone="over">{r.days_overdue}d late</Badge> : <Badge tone="due">Due</Badge>}
+                      </View>
+                    </Li>
+                  ))}
+                </Card>
+                {rows.length > shown.length ? (
+                  <Btn variant="ghost" small label={`Show all ${rows.length} invoices`} style={{ marginTop: 9 }} testID="receivables-show-all" onPress={() => setAll(true)} />
+                ) : (
+                  <Sub style={{ marginTop: 9 }}>All {rows.length} open invoices are listed — they add up to {money(d.total)}.</Sub>
+                )}
+              </>
             )}
           </>
         )}

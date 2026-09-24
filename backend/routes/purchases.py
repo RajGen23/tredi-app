@@ -5,8 +5,21 @@ from typing import List, Optional, Literal
 from bson import ObjectId
 
 from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, line_totals, log_activity, next_number, now, oid, writing_shop)
+from datetime import date as _date, datetime, timezone
 
 router = APIRouter(prefix="/api")
+
+
+def _on_date(value: Optional[str]) -> datetime:
+    """The date the trader put on the bill, not the moment they typed it."""
+    if not value:
+        return now()
+    try:
+        d0 = _date.fromisoformat(value[:10])
+    except ValueError:
+        return now()
+    n = now()
+    return datetime.combine(d0, n.timetz() if d0 == n.date() else datetime.min.time().replace(tzinfo=timezone.utc))
 
 
 class SupplierIn(BaseModel):
@@ -106,11 +119,16 @@ async def get_supplier(sid: str, user: CurrentUser):
         raise HTTPException(404, "Supplier not found")
     d = clean(s)
     d["owed"] = await supplier_owed(f, sid)
+    accounts = {str(a["_id"]): a["name"] async for a in db.accounts.find(f)}
     purchases = [clean(p) async for p in db.purchases.find({**f, "supplier_id": sid}).sort("created_at", -1)]
     for p in purchases:
         p["due"] = round((p.get("total") or 0) - (p.get("paid") or 0), 2)
+        p["account_name"] = accounts.get(p.get("account_id") or "", "Cash" if p.get("method") == "cash" else "On credit")
     d["purchases"] = purchases
-    d["payments"] = [clean(p) async for p in db.supplier_payments.find({**f, "supplier_id": sid}).sort("created_at", -1)]
+    payments = [clean(p) async for p in db.supplier_payments.find({**f, "supplier_id": sid}).sort("created_at", -1)]
+    for p in payments:
+        p["account_name"] = accounts.get(p.get("account_id") or "", "Cash")
+    d["payments"] = payments
     d["total_purchased"] = round(sum(p.get("total") or 0 for p in purchases), 2)
     d["items"] = [clean(i) async for i in db.items.find({**f, "supplier": s["name"]}).limit(20)]
     return d
@@ -128,7 +146,7 @@ async def create_purchase(data: PurchaseIn, user: CurrentUser):
     total = round(sum(l["total"] for l in lines), 2)
     number = await next_number(f["business_id"], "purchase", "PO", 400)
     shop = await writing_shop(user, data.shop)
-    created = now()
+    created = _on_date(data.date)
     doc = {**f, "supplier_id": data.supplier_id, "supplier_name": sup["name"], "number": number, "lines": lines, "total": total,
            "paid": min(data.paid, total), "account_id": data.account_id, "method": data.method, "due_date": data.due_date,
            "shop": shop, "note": data.note, "created_by": user.get("name", ""), "created_at": created}

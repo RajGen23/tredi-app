@@ -191,3 +191,40 @@ New screen **`/settings/plan`** (More → Plan & billing): current plan with sta
 **Tested** — `backend/tests/test_plans.py` 11/11 and `test_plans_extras_iter14.py` 4/4; full suite 220 passing; frontend verified on all of the above including a real currency switch to ₵ and back (iteration_14.json). The owner account was left on Pro, NGN, All shops, no pending request.
 
 **The full PDF checklist now lives in `/app/memory/pdf_fix_list.md`** with a status against each of the 97 numbered lines, so the remaining items (invoice page layout, payment page, supplier PO drill-down, bank account detail, expense editing, report drill-downs) are never lost again.
+
+## Pass 12 — Scan on invoices, Price check, Low stock alerts (June 2026)
+The three items left on the backlog, all approved by the user ("build all three in one pass"),
+plus the one thing he flagged in the preview.
+
+**Scan on invoices.** The Items step of a new invoice now scans: the barcode icon in the item
+search bar, the app-bar icon and the "Scan bar code" card in the Add item sheet all open the
+camera. A matched code drops the line in (or bumps its quantity) and the camera stays open for
+the next one; an unknown code raises the shared sheet with the code and **Create this item**,
+pre-filled. Real scanning needs a device build — the web preview stops at the permission screen.
+
+**Price check.** The user asked for it in both places, so it is in both: a switch inside the
+camera (**Add to invoice / Add to cart** ↔ **Price check**) on the invoice and on Quick sale, and
+its own screen at `/stock/price-check` (Stock app bar, pricetag icon) with a name-or-code search
+so the counter can use it without a camera. The result sheet (`src/components/scan-result.tsx`)
+shows the selling price, the wholesale price, what is on hand, stock per shop when there is more
+than one, and says plainly that nothing was added to a sale.
+
+**Low stock alerts.** New `GET /api/low-stock` lists every tracked item at or below its alert
+level (or finished), with units sold in the last 30 days, sales per day, days of cover left, a
+suggested order quantity that covers the next month and what that costs at the shop's own cost
+price. New `/stock/low` is the day's reorder list — Finished / Running low chips, an order
+quantity on every row, the total cost of the whole list and **Record a purchase**. Reached from a
+Home card ("N items about to run out") and a nudge on the Stock tab. In-app only, as the user
+chose — nothing is sent anywhere.
+
+**Simple vs Professional, told apart.** The user's report: "in invoice preview the simple and
+professional invoice looks same". It was true — only the printed HTML changed, the on-screen paper
+was one fixed layout. `src/components/invoice-paper.tsx` now draws each format the way it prints:
+Professional has the large INVOICE title, the 2×2 meta (issue/due, customer, business, branch +
+rep + TIN), a dark item table with an image column, right-hand totals and two-column terms and
+bank details; Simple keeps the chosen template's letterhead, one Bill-to block, a light table and
+stacked totals. A note above the paper spells out what changes, and the footer reads "Crafted
+with" against "Made with", exactly as the two documents print.
+
+**Tested** — `backend/tests/test_iter16_low_stock.py` 9/9 and the full frontend pass on all of the
+above (iteration_16), including the PDF toggle actually redrawing the paper.

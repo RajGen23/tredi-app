@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api/lookups")
 
 DEFAULTS = {
     "item_category": ["Grains", "Oils", "Building", "Home", "Drinks", "Services", "General"],
+    "brand": ["No brand"],
     "unit": ["Piece", "Bag", "Carton", "Litre", "Kg", "Metre", "Pack", "Dozen", "Service"],
     "expense_category": ["Transport & fuel", "Rent", "Salaries", "Utilities", "Repairs", "Supplies", "Purchases", "Other"],
     "location": ["Warehouse", "Shelf A", "Shelf B", "Yard", "Counter"],
@@ -41,9 +42,9 @@ async def values(business_id: str, kind: str) -> list[str]:
 async def get_lookup(kind: str, user: CurrentUser):
     check(kind)
     f = biz_filter(user)
-    if kind == "item_category":
+    if kind in ("item_category", "brand"):
         # categories already in use count too, so an import never hides a name
-        used = await db.items.distinct("category", f)
+        used = await db.items.distinct("category" if kind == "item_category" else "brand", f)
         extra = [u for u in used if u]
         merged = await values(f["business_id"], kind)
         for u in sorted(extra):

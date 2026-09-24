@@ -6,10 +6,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
-import { AppBar, Badge, Card, Empty, H4, Lbl, Li, Loading, Money, Prog, Row, Seg, Sub } from "@/src/components/ui";
+import { AppBar, Badge, Card, Empty, H4, IconBtn, Lbl, Li, Loading, Money, Prog, Row, Seg, Sub } from "@/src/components/ui";
 import { RankRow } from "@/src/components/charts";
 import { ExportBar, useReportMeta } from "@/src/components/export";
-import { PeriodSheet, usePeriod } from "@/src/period";
+import { PeriodBar, PeriodSheet, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
 
@@ -23,7 +23,7 @@ export default function Products() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("top");
   const [sheet, setSheet] = useState(false);
-  const { query } = usePeriod();
+  const { query, shortLabel } = usePeriod();
   const meta = useReportMeta();
   const q = useQuery({ queryKey: ["reports-products", query], queryFn: () => api(`/reports/products?${query}`) });
   const d = q.data;
@@ -51,14 +51,17 @@ export default function Products() {
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="products-screen">
-      <AppBar title="Product performance" back />
+      <AppBar title="Product performance" back right={<IconBtn name="calendar-outline" testID="products-period" onPress={() => setSheet(true)} />} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
-        <Seg
-          testID="products-seg"
-          value={tab}
-          onChange={setTab}
-          options={[{ key: "top", label: "Top sellers" }, { key: "slow", label: "Slow moving" }, { key: "profit", label: "Profit" }]}
-        />
+        <PeriodBar label={shortLabel} onPress={() => setSheet(true)} />
+        <View style={{ marginTop: 9 }}>
+          <Seg
+            testID="products-seg"
+            value={tab}
+            onChange={setTab}
+            options={[{ key: "top", label: "Top sellers" }, { key: "slow", label: "Slow moving" }, { key: "profit", label: "Profit" }]}
+          />
+        </View>
         {!d ? <Loading /> : (
           <>
             <Card style={{ marginTop: 10, paddingVertical: 4 }} testID={`products-list-${tab}`}>

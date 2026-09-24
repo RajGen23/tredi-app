@@ -10,7 +10,8 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { PickerField } from "@/src/components/picker";
 import { Photo } from "@/src/components/photo";
-import { Scanner } from "@/src/components/scanner";
+import { Scanner, ScanMode } from "@/src/components/scanner";
+import { ScanResultSheet } from "@/src/components/scan-result";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { money, parseNum } from "@/src/format";
 import { buildReceiptHtml, DEFAULT_BRAND } from "@/src/invoice-templates";
@@ -60,7 +61,9 @@ export default function QuickSale() {
   const [tendered, setTendered] = useState("");
   const [saved, setSaved] = useState<any | null>(null);
   const [scan, setScan] = useState(false);
-  const [unknown, setUnknown] = useState("");
+  const [scanMode, setScanMode] = useState<ScanMode>("add");
+  const [scanCode, setScanCode] = useState("");
+  const [scanItem, setScanItem] = useState<any | null>(null);
 
   const items = useMemo(() => itemsQ.data ?? [], [itemsQ.data]);
   const account = accounts.find((a: any) => a.id === accountId) ?? accounts.find((a: any) => (method === "cash" ? a.kind === "cash" : a.kind !== "cash")) ?? accounts[0];
@@ -72,7 +75,7 @@ export default function QuickSale() {
 
   const m = useMutation({
     mutationFn: () => api("/sales", { method: "POST", json: { lines: lines.map((l) => ({ item_id: l.item.id, name: l.item.name, quantity: l.q, unit_price: l.item.selling_price, unit: l.item.unit })), method, account_id: account?.id ?? null, tendered: method === "cash" ? parseNum(tendered) || total : total } }),
-    onSuccess: (sale) => { ["items", "dashboard", "accounts", "sales", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); setTender(false); setSaved(sale); },
+    onSuccess: (sale) => { ["items", "low-stock", "dashboard", "accounts", "sales", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); setTender(false); setSaved(sale); },
     onError: (e: Error) => toast.show(e.message),
   });
 
@@ -108,18 +111,22 @@ export default function QuickSale() {
     }
   };
 
-  // A scan is matched against the barcode the shop typed on the item; a code
-  // nobody has saved yet becomes a new item with the code already filled in.
+  // A scan is matched against the barcode the shop typed on the item. In Price
+  // check mode it only answers "how much is this?"; a code nobody has saved yet
+  // becomes a new item with the code already filled in.
   const onScan = (code: string) => {
-    const hit = items.find((i) => (i.barcode ?? "").trim() === code);
-    if (!hit) {
+    const hit = items.find((i) => (i.barcode ?? "").trim() === code) ?? null;
+    if (scanMode === "price" || !hit) {
       setScan(false);
-      setUnknown(code);
-      return toast.show("No item carries that bar code yet");
+      setScanCode(code);
+      setScanItem(hit);
+      if (!hit) toast.show("No item carries that bar code yet");
+      return;
     }
     addToCart(hit.id);
     toast.show(`${hit.name} added · ${money(hit.selling_price)}`);
   };
+  const closeScanResult = () => { setScanCode(""); setScanItem(null); };
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="quick-sale-screen">
@@ -176,21 +183,13 @@ export default function QuickSale() {
         <Btn label="Take payment" disabled={!lines.length} onPress={() => (method === "cash" ? setTender(true) : m.mutate())} loading={m.isPending && !tender} testID="quick-sale-take-payment" />
       </View>
 
-      <Scanner visible={scan} onClose={() => setScan(false)} onScan={onScan} title="Scan to sell" hint="Point at the bar code — each scan adds one" />
+      <Scanner visible={scan} onClose={() => setScan(false)} onScan={onScan} title="Scan to sell"
+        hint="Point at the bar code — each scan adds one" mode={scanMode} onMode={setScanMode} addLabel="Add to cart" />
 
-      <Sheet visible={!!unknown} onClose={() => setUnknown("")} testID="quick-sale-unknown-sheet">
-        <H4>No item with that code</H4>
-        <Sub style={{ marginTop: 3 }}>Nothing in your stock carries this bar code yet.</Sub>
-        <Card style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Av icon="barcode-outline" tone="sq" />
-          <View style={{ flex: 1 }}><Lbl>Scanned code</Lbl><Money size={13} testID="quick-sale-unknown-code">{unknown}</Money></View>
-        </Card>
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-          <View style={{ flex: 1 }}><Btn small variant="ghost" label="Scan again" onPress={() => { setUnknown(""); setScan(true); }} testID="quick-sale-unknown-retry" /></View>
-          <View style={{ flex: 1.4 }}><Btn small label="Create this item" testID="quick-sale-unknown-create"
-            onPress={() => { const code = unknown; setUnknown(""); router.push({ pathname: "/stock/new", params: { barcode: code } }); }} /></View>
-        </View>
-      </Sheet>
+      <ScanResultSheet testID="quick-sale-scan" code={scanCode} item={scanItem} onClose={closeScanResult}
+        onScanAgain={() => { closeScanResult(); setScan(true); }}
+        addLabel="Add to cart"
+        onAdd={(it) => { addToCart(it.id); closeScanResult(); toast.show(`${it.name} added · ${money(it.selling_price)}`); }} />
 
       <Sheet visible={tender} onClose={() => setTender(false)} testID="tender-sheet">
         <H4>Cash received</H4>
