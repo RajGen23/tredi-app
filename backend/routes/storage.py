@@ -1,5 +1,5 @@
 """Emergent managed object storage — receipt and bill photos."""
-from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Query, Request
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
@@ -61,6 +61,16 @@ def get_object(path: str) -> tuple[bytes, str]:
 async def upload(user: CurrentUser, file: UploadFile = File(...)):
     data = await file.read()
     return await _store(user, data, file.filename or "photo.jpg", file.content_type or "image/jpeg")
+
+
+@router.post("/upload-binary", status_code=201)
+async def upload_binary(request: Request, user: CurrentUser, x_filename: Optional[str] = Header(None)):
+    """The phone streams the file bytes as the raw request body via the native
+    upload task (OkHttp / NSURLSession): Content-Length is known, nothing is
+    base64-inflated and no multi-megabyte string crosses the JS bridge."""
+    data = await request.body()
+    ctype = (request.headers.get("content-type") or "image/jpeg").split(";")[0].strip()
+    return await _store(user, data, x_filename or "photo.jpg", ctype or "image/jpeg")
 
 
 class Base64In(BaseModel):

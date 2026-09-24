@@ -9,88 +9,126 @@ const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
 /** A phone photo is 4–9 MB straight off the camera, which is slow on shop data
  *  and can be refused outright. Shrink it on the device first — the screens all
- *  promise "compressed for slow data". Falls back to the original if the
- *  manipulator cannot read the file. */
+ *  promise "compressed for slow data". A second, harder pass runs if the first
+ *  result is still over ~900 KB. Falls back to the original if the manipulator
+ *  cannot read the file. */
 async function shrink(uri: string, name: string, type: string) {
+  const jpgName = name.replace(/\.[^.]+$/, "") + ".jpg";
   try {
     const { ImageManipulator, SaveFormat } = await import("expo-image-manipulator");
-    const ctx = ImageManipulator.manipulate(uri);
-    let ref = await ctx.renderAsync();
-    if (ref.width > 1400) ref = await ctx.resize({ width: 1400 }).renderAsync();
-    const out = await ref.saveAsync({ compress: 0.65, format: SaveFormat.JPEG });
-    return { uri: out.uri, name: name.replace(/\.[^.]+$/, "") + ".jpg", type: "image/jpeg" };
+    const render = async (width: number, compress: number) => {
+      const ctx = ImageManipulator.manipulate(uri);
+      const probe = await ctx.renderAsync();
+      const ref = probe.width > width ? await ctx.resize({ width }).renderAsync() : probe;
+      return ref.saveAsync({ compress, format: SaveFormat.JPEG });
+    };
+    let out = await render(1280, 0.6);
+    if ((await sizeOf(out.uri)) > 900_000) out = await render(1000, 0.5);
+    return { uri: out.uri, name: jpgName, type: "image/jpeg" };
   } catch {
     return { uri, name, type };
   }
 }
 
-type Payload = { path: string; init: RequestInit };
-
-/** On the phone we read the bytes ourselves and post them as base64. React
- *  Native streams a multipart file with chunked encoding and no content length,
- *  which proxies on a mobile network can drop halfway — that is what surfaced
- *  as "No connection" after the photo had already been picked. A base64 body
- *  has a known length and arrives in one piece. Multipart stays as a fallback
- *  in case the file cannot be read. */
-async function nativePayload(small: { uri: string; name: string; type: string }): Promise<Payload> {
+async function sizeOf(uri: string): Promise<number> {
+  if (Platform.OS === "web") return 0;
   try {
     const { File } = await import("expo-file-system");
-    const data = await new File(small.uri).base64();
-    if (!data) throw new Error("empty");
-    return { path: "/upload-base64", init: { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename: small.name, content_type: small.type, data }) } };
+    return new File(uri).size ?? 0;
   } catch {
-    const form = new FormData();
-    form.append("file", { uri: small.uri, name: small.name, type: small.type } as any);
-    return { path: "/upload", init: { method: "POST", body: form } };
+    return 0;
   }
 }
 
-async function webPayload(small: { uri: string; name: string }): Promise<Payload> {
+type Reply = { status: number; text: string };
+
+/** Phone: hand the file to the native upload task. OkHttp / NSURLSession stream
+ *  it with a known Content-Length straight from disk — no base64 inflation, no
+ *  multi-megabyte string over the JS bridge, and far fewer "Network request
+ *  failed" drops than JS fetch on a shaky mobile connection. */
+async function nativeBinary(small: { uri: string; name: string; type: string }, token: string | null, signal: AbortSignal): Promise<Reply> {
+  const { File, UploadType } = await import("expo-file-system");
+  const res = await new File(small.uri).upload(`${BASE}/upload-binary`, {
+    httpMethod: "POST",
+    uploadType: UploadType.BINARY_CONTENT,
+    mimeType: small.type,
+    signal,
+    headers: { "Content-Type": small.type, "X-Filename": small.name, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  return { status: res.status, text: res.body };
+}
+
+/** Phone without the native task (older runtime): read the bytes ourselves and
+ *  post them as base64 — a body with a known length that arrives in one piece. */
+async function nativeBase64(small: { uri: string; name: string; type: string }, token: string | null, signal: AbortSignal): Promise<Reply> {
+  const { File } = await import("expo-file-system");
+  const data = await new File(small.uri).base64();
+  if (!data) throw new Error("Could not read the photo file");
+  const res = await fetch(`${BASE}/upload-base64`, {
+    method: "POST", signal,
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ filename: small.name, content_type: small.type, data }),
+  });
+  return { status: res.status, text: await res.text() };
+}
+
+async function webMultipart(small: { uri: string; name: string }, token: string | null, signal: AbortSignal): Promise<Reply> {
   const blob = await (await fetch(small.uri)).blob();
   const form = new FormData();
   form.append("file", blob, small.name);
-  return { path: "/upload", init: { method: "POST", body: form } };
+  const res = await fetch(`${BASE}/upload`, { method: "POST", body: form, signal, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  return { status: res.status, text: await res.text() };
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const kb = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1000))} KB`);
 
 export async function uploadPhoto(uri: string, name = `photo-${Date.now()}.jpg`, type = "image/jpeg"): Promise<{ path: string; url: string }> {
   const token = await storage.secureGet<string | null>(TOKEN_KEY, null);
   const small = await shrink(uri, name, type);
-  const { path, init } = Platform.OS === "web" ? await webPayload(small) : await nativePayload(small);
+  const bytes = await sizeOf(small.uri);
 
-  // One silent retry: a dropped first attempt on shop data is common, and
-  // nobody should have to pick the same photo twice.
-  let res: Response | null = null;
+  let send: (s: typeof small, t: string | null, sig: AbortSignal) => Promise<Reply>;
+  if (Platform.OS === "web") send = webMultipart;
+  else {
+    const fs = await import("expo-file-system").catch(() => null as any);
+    send = fs && typeof fs.File?.prototype?.upload === "function" ? nativeBinary : nativeBase64;
+  }
+
+  // Three attempts, spaced out: a radio blip on shop data lasts a few seconds,
+  // so an instant retry just fails the same way. Nobody should have to pick
+  // the same photo twice.
+  const waits = [0, 2_000, 4_000];
+  let reply: Reply | null = null;
+  let lastErr = "";
   let slow = false;
-  for (let attempt = 0; attempt < 2 && !res; attempt++) {
+  for (let attempt = 0; attempt < waits.length && !reply; attempt++) {
+    if (waits[attempt]) await sleep(waits[attempt]);
     const ctrl = new AbortController();
     const timer = setTimeout(() => { slow = true; ctrl.abort(); }, 90_000);
     try {
-      res = await fetch(`${BASE}${path}`, {
-        ...init,
-        signal: ctrl.signal,
-        headers: { ...(init.headers as Record<string, string> | undefined), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      });
-    } catch {
+      reply = await send(small, token, ctrl.signal);
+    } catch (e: any) {
+      lastErr = String(e?.message ?? e ?? "").replace(/^\[?\w*Error:?\]?\s*/, "").slice(0, 80);
       if (slow) break;
     } finally {
       clearTimeout(timer);
     }
   }
-  if (!res) {
+  if (!reply) {
+    const why = `${lastErr || "network dropped"}${bytes ? `, ${kb(bytes)}` : ""}`;
     throw new ApiError(0, slow
-      ? "That photo took too long to send — try again where the signal is better"
-      : "No connection — tap the photo box to try again");
+      ? `That photo took too long to send (${why}) — try again where the signal is better`
+      : `Photo didn't go through after 3 tries (${why}) — tap the photo box to try again`);
   }
 
-  const text = await res.text();
   let body: any = {};
-  try { body = JSON.parse(text); } catch { /* an ingress error page, not our JSON */ }
-  if (!res.ok) {
-    throw new ApiError(res.status, typeof body.detail === "string" ? body.detail
-      : res.status === 413 ? "That photo is too large — try a smaller one"
-      : res.status === 401 ? "Please sign in again to upload"
-      : `Upload failed (${res.status})`);
+  try { body = JSON.parse(reply.text); } catch { /* an ingress error page, not our JSON */ }
+  if (reply.status < 200 || reply.status >= 300) {
+    throw new ApiError(reply.status, typeof body.detail === "string" ? body.detail
+      : reply.status === 413 ? "That photo is too large — try a smaller one"
+      : reply.status === 401 ? "Please sign in again to upload"
+      : `Upload failed (${reply.status})`);
   }
   return body;
 }

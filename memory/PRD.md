@@ -296,3 +296,21 @@ the page below visible, and a web photo upload that lands.
   now use the green logo on `#00C98D` (`splash-green.png` square for the manifest,
   `tredi-logo-green.png` for the native plugin) plus `expo.backgroundColor`. Note: Expo Go's
   own "Checking for new update…" strip is part of Expo Go and disappears in a real build.
+
+## Pass 12f — photo upload "No connection" on the phone (June 2026)
+- Symptom: red toast "No connection — tap the photo box to try again" on New/Edit item,
+  WhatsApp images and camera shots, intermittent, a retry sometimes works. Server side was
+  verified healthy from outside (login → /upload-base64 up to 8 MB → /files fetch-back all
+  pass), so the drop was between the phone and the ingress: JS `fetch` with a large JSON
+  string body over a shaky mobile radio, retried instantly (so the retry failed in the same
+  blip), and the toast hid the underlying error.
+- Fix (`src/uploads.ts` + `routes/storage.py`):
+  - New `POST /api/upload-binary` takes the raw file bytes (Content-Type + X-Filename).
+  - Phone uploads now go through the native `File.upload()` task (OkHttp/NSURLSession,
+    known Content-Length, streamed from disk, no base64 inflation, nothing big crossing the
+    JS bridge). Falls back to the base64 fetch only if the runtime lacks `File.upload`.
+  - Compression is harder (1280px @ 0.6, second pass 1000px @ 0.5 if still > 900 KB).
+  - Three attempts spaced 0 / 2 s / 4 s instead of two back-to-back.
+  - The failure toast now names the real cause and the size sent, e.g. "Photo didn't go
+    through after 3 tries (Network request failed, 240 KB)", so the next report is exact.
+- Web keeps the multipart `/upload` path (verified via file chooser on New item).
