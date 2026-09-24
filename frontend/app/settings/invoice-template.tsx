@@ -172,7 +172,7 @@ export default function InvoiceTemplates() {
       setF({ ...f, logo_url: up.url });
       toast.show("Logo uploaded — tap Save to apply it");
     } catch (e: any) {
-      toast.show(e.message ?? "Upload failed");
+      toast.show(e.message ?? "Upload failed", undefined, "bad");
     } finally {
       setBusy(false);
     }

@@ -228,3 +228,35 @@ with" against "Made with", exactly as the two documents print.
 
 **Tested** — `backend/tests/test_iter16_low_stock.py` 9/9 and the full frontend pass on all of the
 above (iteration_16), including the PDF toggle actually redrawing the paper.
+
+## Pass 12b — what the phone showed (June 2026)
+The owner ran the app on his own Android phone and sent screenshots. Three real faults, all fixed:
+
+**Footer buttons were sitting on the system buttons.** His phone has the three-button
+navigation bar and the app window stops above it, so `insets.bottom` is 0 and the old
+`Math.max(insets.bottom, 12)` left Save, Download, Share and Print twelve pixels from the
+Android Back button. `src/safe.ts` now exposes `useBottomPad()` — `max(insets.bottom + 8, 28)` —
+and every pinned footer, the report export bar, the scanner's mode switch and the photo grid read
+from it; the tab bar keeps at least 8. Measured at 28px on every footer.
+
+**A sheet let the screen underneath show through.** The bottom sheet was wrapped in a
+`KeyboardAvoidingView` with `behavior="height"`, which shrinks the whole modal container, so the
+invoice's own "Continue as cash sale" button appeared below the New customer sheet. The scrim is
+now a full-window view that never resizes, only the sheet rides the keyboard
+(`KeyboardStickyView`), the modal carries its own nested `KeyboardProvider` — a `Modal` is a
+separate Android window, so the root provider never sees its keyboard — `maxHeight: 88%` moved onto
+the sticky wrapper so a tall sheet is never cut off, and the nested `KeyboardAwareScrollView`
+inside the line-item sheet came out (it was compensating twice).
+
+**"No connection" when uploading a photo.** React Native streams a multipart file with chunked
+encoding and no content length, and a proxy on a mobile network can drop that mid-body — which is
+exactly what the toast was reporting. The phone now reads the bytes with `expo-file-system` and
+posts them as base64 to the new `POST /api/upload-base64` (a known content length, so it arrives
+in one piece), with multipart kept as a fallback if the file cannot be read, a 90-second timeout
+and one silent retry so nobody has to pick the same photo twice. Web still uses the blob +
+FormData path. Photos are shrunk to 1400px at 0.65 quality first, and an upload that does fail now
+shows an alert icon instead of a green tick.
+
+**Tested** — `backend/tests/test_iter17_upload_base64.py` 9/9 and a full frontend pass
+(iteration_17): 28px under every footer, four sheets covering the whole screen with nothing from
+the page below visible, and a web photo upload that lands.

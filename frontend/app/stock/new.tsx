@@ -18,6 +18,7 @@ import { Scanner } from "@/src/components/scanner";
 import { useToast } from "@/src/components/sheet";
 import { useLookup, useShops } from "@/src/lookups";
 import { money, parseNum, sym } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -33,6 +34,7 @@ export default function NewItem() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   // Arrives from a Quick sale scan that found nothing — the code is already known.
   const params = useLocalSearchParams<{ barcode?: string; edit?: string }>();
@@ -124,7 +126,7 @@ export default function NewItem() {
         toast.show(editId ? "Photo replaced — save to keep it" : "Photo added — it can print on invoices");
       }
     } catch (e: any) {
-      toast.show(e.message ?? "Upload failed");
+      toast.show(e.message ?? "Upload failed", undefined, "bad");
     } finally {
       setUploading(false);
     }
@@ -224,7 +226,7 @@ export default function NewItem() {
           </>
         )}
       </KeyboardAwareScrollView>
-      <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[s.footer, { paddingBottom: pad }]}>
         {step === 0
           ? <Btn testID="item-next" label={editId ? "Continue to prices" : "Continue to pricing"} onPress={() => (name.trim() ? setStep(1) : toast.show("Give the item a name first"))} />
           : <Btn testID="item-save" label={editId ? "Save changes" : "Save item"} onPress={() => m.mutate()} loading={m.isPending} disabled={!sell} />}

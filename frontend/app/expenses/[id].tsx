@@ -19,6 +19,7 @@ import { PickerField } from "@/src/components/picker";
 import { useAccounts, useLookup, useShops } from "@/src/lookups";
 import { pickAndUploadPhoto } from "@/src/uploads";
 import { money, parseNum, shortDate } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -33,6 +34,7 @@ export default function ExpenseDetail() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
@@ -117,7 +119,7 @@ export default function ExpenseDetail() {
       const url = await pickAndUploadPhoto();
       if (url) setReceipt(url);
     } catch (err: any) {
-      toast.show(err.message ?? "Could not attach that photo");
+      toast.show(err.message ?? "Could not attach that photo", undefined, "bad");
     } finally {
       setUploading(false);
     }
@@ -225,7 +227,7 @@ export default function ExpenseDetail() {
       </Body>
 
       {edit ? (
-        <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={[s.footer, { paddingBottom: pad }]}>
           <Btn label="Save changes" disabled={!parseNum(amount) || changes.length === 0} testID="expense-save-changes"
             onPress={() => setConfirm(true)} />
           <Btn variant="ghost" small label="Cancel" style={{ marginTop: 8 }} testID="expense-cancel-edit" onPress={() => { setEdit(false); load(); }} />

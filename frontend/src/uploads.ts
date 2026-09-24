@@ -16,30 +16,73 @@ async function shrink(uri: string, name: string, type: string) {
     const { ImageManipulator, SaveFormat } = await import("expo-image-manipulator");
     const ctx = ImageManipulator.manipulate(uri);
     let ref = await ctx.renderAsync();
-    if (ref.width > 1600) ref = await ctx.resize({ width: 1600 }).renderAsync();
-    const out = await ref.saveAsync({ compress: 0.7, format: SaveFormat.JPEG });
+    if (ref.width > 1400) ref = await ctx.resize({ width: 1400 }).renderAsync();
+    const out = await ref.saveAsync({ compress: 0.65, format: SaveFormat.JPEG });
     return { uri: out.uri, name: name.replace(/\.[^.]+$/, "") + ".jpg", type: "image/jpeg" };
   } catch {
     return { uri, name, type };
   }
 }
 
+type Payload = { path: string; init: RequestInit };
+
+/** On the phone we read the bytes ourselves and post them as base64. React
+ *  Native streams a multipart file with chunked encoding and no content length,
+ *  which proxies on a mobile network can drop halfway — that is what surfaced
+ *  as "No connection" after the photo had already been picked. A base64 body
+ *  has a known length and arrives in one piece. Multipart stays as a fallback
+ *  in case the file cannot be read. */
+async function nativePayload(small: { uri: string; name: string; type: string }): Promise<Payload> {
+  try {
+    const { File } = await import("expo-file-system");
+    const data = await new File(small.uri).base64();
+    if (!data) throw new Error("empty");
+    return { path: "/upload-base64", init: { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: small.name, content_type: small.type, data }) } };
+  } catch {
+    const form = new FormData();
+    form.append("file", { uri: small.uri, name: small.name, type: small.type } as any);
+    return { path: "/upload", init: { method: "POST", body: form } };
+  }
+}
+
+async function webPayload(small: { uri: string; name: string }): Promise<Payload> {
+  const blob = await (await fetch(small.uri)).blob();
+  const form = new FormData();
+  form.append("file", blob, small.name);
+  return { path: "/upload", init: { method: "POST", body: form } };
+}
+
 export async function uploadPhoto(uri: string, name = `photo-${Date.now()}.jpg`, type = "image/jpeg"): Promise<{ path: string; url: string }> {
   const token = await storage.secureGet<string | null>(TOKEN_KEY, null);
   const small = await shrink(uri, name, type);
-  const form = new FormData();
-  if (Platform.OS === "web") {
-    const blob = await (await fetch(small.uri)).blob();
-    form.append("file", blob, small.name);
-  } else {
-    form.append("file", { uri: small.uri, name: small.name, type: small.type } as any);
+  const { path, init } = Platform.OS === "web" ? await webPayload(small) : await nativePayload(small);
+
+  // One silent retry: a dropped first attempt on shop data is common, and
+  // nobody should have to pick the same photo twice.
+  let res: Response | null = null;
+  let slow = false;
+  for (let attempt = 0; attempt < 2 && !res; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => { slow = true; ctrl.abort(); }, 90_000);
+    try {
+      res = await fetch(`${BASE}${path}`, {
+        ...init,
+        signal: ctrl.signal,
+        headers: { ...(init.headers as Record<string, string> | undefined), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+    } catch {
+      if (slow) break;
+    } finally {
+      clearTimeout(timer);
+    }
   }
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}/upload`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
-  } catch {
-    throw new ApiError(0, "No connection — the photo will need another try");
+  if (!res) {
+    throw new ApiError(0, slow
+      ? "That photo took too long to send — try again where the signal is better"
+      : "No connection — tap the photo box to try again");
   }
+
   const text = await res.text();
   let body: any = {};
   try { body = JSON.parse(text); } catch { /* an ingress error page, not our JSON */ }

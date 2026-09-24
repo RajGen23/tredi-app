@@ -10,6 +10,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Field, H4, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { money, shortDate } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -24,6 +25,7 @@ export default function ReceiveTransfer() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const toast = useToast();
@@ -109,7 +111,7 @@ export default function ReceiveTransfer() {
               );
             })}
           </ScrollView>
-          <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={[s.bar, { paddingBottom: pad }]}>
             <Sub style={{ marginBottom: 8 }}>
               {Object.keys(checked).length} of {lines.length} lines checked · {t.to_shop} stock updates on confirm
             </Sub>

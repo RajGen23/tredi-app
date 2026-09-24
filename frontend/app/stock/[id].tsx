@@ -72,7 +72,7 @@ export default function ItemDetail() {
       fresh();
       toast.show("Photo saved — it prints beside this item on invoices");
     } catch (e: any) {
-      toast.show(e.message ?? "Upload failed");
+      toast.show(e.message ?? "Upload failed", undefined, "bad");
     } finally {
       setUploading(false);
     }

@@ -11,6 +11,7 @@ import { api } from "@/src/api";
 import { AppBar, Badge, Btn, Card, Divider, H4, IconBtn, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { longDate, money } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -45,6 +46,7 @@ function html(q: any) {
 export default function QuotePreview() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const toast = useToast();
@@ -101,7 +103,7 @@ export default function QuotePreview() {
             </View>
             <Sub style={{ marginTop: 10, textAlign: "center" }}>Viewed {d.views}× · nothing is deducted from stock</Sub>
           </ScrollView>
-          <Row style={{ position: "absolute", left: 14, right: 14, bottom: Math.max(insets.bottom, 12), gap: 8 }}>
+          <Row style={{ position: "absolute", left: 14, right: 14, bottom: pad, gap: 8 }}>
             <View style={{ flex: 1 }}><Btn label="Share PDF" variant="ghost" small loading={busy} testID="quote-share-pdf" onPress={share} /></View>
             <View style={{ flex: 1 }}><Btn label="Convert to invoice" small loading={convert.isPending} testID="quote-convert" onPress={() => convert.mutate()} /></View>
           </Row>

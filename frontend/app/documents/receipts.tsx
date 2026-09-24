@@ -86,7 +86,7 @@ export default function Receipts() {
       const up = await uploadPhoto(res.assets[0].uri, res.assets[0].fileName ?? undefined, res.assets[0].mimeType ?? "image/jpeg");
       setDraft({ url: up.url, title: "", amount: "" });
     } catch (e: any) {
-      toast.show(e.message ?? "Upload failed");
+      toast.show(e.message ?? "Upload failed", undefined, "bad");
     } finally {
       setBusy(false);
     }

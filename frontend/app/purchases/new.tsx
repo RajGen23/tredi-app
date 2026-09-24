@@ -13,6 +13,7 @@ import { DateField } from "@/src/components/date-field";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { useAccounts } from "@/src/lookups";
 import { initials, money, parseNum } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Line = { item_id: string | null; name: string; quantity: number; unit_cost: number; unit: string };
@@ -27,6 +28,7 @@ export default function NewPurchase() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const params = useLocalSearchParams<{ supplier?: string; item?: string }>();
   const toast = useToast();
@@ -138,7 +140,7 @@ export default function NewPurchase() {
         <Sub style={{ marginTop: 10 }}>Snap the supplier’s bill from Bills &amp; receipts and attach it to this purchase.</Sub>
       </ScrollView>
 
-      <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[s.bar, { paddingBottom: pad }]}>
         <Row between>
           <View><Lbl>Total · {parseNum(paid) >= total && total > 0 ? "paid" : "unpaid"}</Lbl><Text style={s.total} testID="purchase-total">{money(total)}</Text></View>
           <View style={{ flex: 1, marginLeft: 12 }}>

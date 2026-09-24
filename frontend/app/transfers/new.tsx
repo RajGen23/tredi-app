@@ -9,6 +9,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Btn, Card, Chip, Field, H4, Lbl, Li, Loading, Money, Row, Sub, Switch } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { money, parseNum } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles } from "@/src/theme";
 
 type Line = { item_id: string; name: string; quantity: number; unit: string };
@@ -22,6 +23,7 @@ const useStyles = makeStyles((c) => ({
 export default function NewTransfer() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -85,7 +87,7 @@ export default function NewTransfer() {
           </>
         )}
       </ScrollView>
-      <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[s.bar, { paddingBottom: pad }]}>
         <Row between>
           <View><Lbl>Value at cost</Lbl><Text style={s.total} testID="transfer-value">{money(value)}</Text></View>
           <View style={{ flex: 1, marginLeft: 12 }}>

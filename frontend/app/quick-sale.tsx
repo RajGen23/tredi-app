@@ -18,6 +18,7 @@ import { buildReceiptHtml, DEFAULT_BRAND } from "@/src/invoice-templates";
 import { useAccounts } from "@/src/lookups";
 import { pdfName, printHtml, sharePdf } from "@/src/pdf";
 import { photoDataUri } from "@/src/uploads";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Method = "cash" | "transfer" | "card" | "credit";
@@ -46,6 +47,7 @@ export default function QuickSale() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
@@ -171,7 +173,7 @@ export default function QuickSale() {
           </Card>
         ) : null}
       </ScrollView>
-      <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[s.footer, { paddingBottom: pad }]}>
         <Row between style={{ marginBottom: 7 }}><H4>Total</H4><Money size={17} testID="quick-sale-total">{money(total)}</Money></Row>
         <View style={{ flexDirection: "row", gap: 6, marginBottom: 8 }}>
           {(["cash", "transfer", "card", "credit"] as Method[]).map((k) => <Chip key={k} label={k === "credit" ? "On credit" : k[0].toUpperCase() + k.slice(1)} on={method === k} onPress={() => { setMethod(k); setAccountId(null); }} testID={`quick-sale-method-${k}`} />)}

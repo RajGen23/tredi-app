@@ -12,6 +12,7 @@ import { AppBar, Av, Badge, Btn, Card, Chip, Empty, H4, IconBtn, Li, Lbl, Loadin
 import { Photo } from "@/src/components/photo";
 import { SyncStamp } from "@/src/components/sync";
 import { money } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { makeStyles, useTheme } from "@/src/theme";
 
 type Filter = "all" | "out" | "low";
@@ -35,6 +36,7 @@ export default function LowStock() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [filter, setFilter] = useState<Filter>("all");
   const q = useQuery({ queryKey: ["low-stock"], queryFn: () => api<any>("/low-stock") });
@@ -108,7 +110,7 @@ export default function LowStock() {
         ) : null}
       </ScrollView>
       {list.length ? (
-        <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+        <View style={[s.footer, { paddingBottom: pad }]}>
           <Btn label="Record a purchase" icon="cart-outline" testID="low-stock-record-purchase" onPress={() => router.push("/purchases/new")} />
         </View>
       ) : null}

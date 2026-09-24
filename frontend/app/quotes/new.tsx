@@ -10,6 +10,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, Field, H4, Lbl, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { initials, money, parseNum } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles } from "@/src/theme";
 
 type Line = { item_id: string | null; name: string; quantity: number; unit_price: number; unit: string };
@@ -23,6 +24,7 @@ const useStyles = makeStyles((c) => ({
 export default function NewQuote() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -101,7 +103,7 @@ export default function NewQuote() {
         ) : null}
       </ScrollView>
 
-      <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[s.bar, { paddingBottom: pad }]}>
         <Row between>
           <View><Lbl>Quoted{vat ? ` · VAT ${vat}%` : ""}</Lbl><Text style={s.total} testID="quote-total">{money(total)}</Text></View>
           <View style={{ flex: 1, marginLeft: 12 }}>

@@ -51,7 +51,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
     );
   };
   return (
-    <View style={[s.bar, { paddingBottom: insets.bottom, height: 49 + insets.bottom + (Platform.OS === "web" ? 8 : 0) }]} testID="tab-bar">
+    <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 8), height: 49 + Math.max(insets.bottom, 8) + (Platform.OS === "web" ? 8 : 0) }]} testID="tab-bar">
       {TABS.slice(0, 2).map(render)}
       <Pressable testID="tab-fab" onPress={() => setOpen(true)} style={s.fab}>
         <Ionicons name="add" size={26} color={colors.onSurfaceInverse} />

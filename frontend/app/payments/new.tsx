@@ -13,6 +13,7 @@ import { Sheet, useToast } from "@/src/components/sheet";
 import { DateField } from "@/src/components/date-field";
 import { PickerField } from "@/src/components/picker";
 import { initials, money, parseNum, statusLabel, sym } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -36,6 +37,7 @@ export default function PaymentIn() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
@@ -144,7 +146,7 @@ export default function PaymentIn() {
         </Card>
         {parseNum(amount) > owed && owed >= 0 && c ? <Sub style={{ marginTop: 8, textAlign: "center" }}>{money(parseNum(amount) - owed)} extra becomes unused credit on {c.name}’s account.</Sub> : null}
       </KeyboardAwareScrollView>
-      <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[s.footer, { paddingBottom: pad }]}>
         <Btn testID="payment-record" label={`Record ${money(parseNum(amount))}`} onPress={() => m.mutate()} loading={m.isPending} disabled={!customerId || !parseNum(amount)} />
       </View>
 

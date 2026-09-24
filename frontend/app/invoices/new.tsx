@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 import dayjs from "dayjs";
@@ -19,6 +18,7 @@ import { PickerField } from "@/src/components/picker";
 import { Scanner, ScanMode } from "@/src/components/scanner";
 import { ScanResultSheet } from "@/src/components/scan-result";
 import { initials, money, parseNum, sym } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Line = { key: string; item_id?: string; name: string; quantity: number; unit_price: number; discount_type: "amount" | "percent"; discount_value: number; note: string; quick_add: boolean; unit: string; photo_url?: string; stock?: number; track?: boolean };
@@ -70,6 +70,7 @@ export default function NewInvoice() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
@@ -292,7 +293,7 @@ export default function NewInvoice() {
             </Card>
             <Card style={[s.mintCard, { marginTop: 12 }]}><Sub><Text style={{ fontFamily: fonts.bold }}>Walk-in?</Text> Skip this step and invoice to “Cash sale”. You can attach a customer later.</Sub></Card>
           </ScrollView>
-          <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={[s.footer, { paddingBottom: pad }]}>
             <Btn testID="invoice-continue-items" label={customerId ? "Continue to items" : "Continue as cash sale"} onPress={() => setStep(1)} />
           </View>
         </>
@@ -340,7 +341,7 @@ export default function NewInvoice() {
               {lines.length === 0 ? <Card style={{ borderStyle: "dashed", alignItems: "center", paddingVertical: 22 }}><Sub>No items yet. Tap the search bar to add one.</Sub></Card> : null}
             </View>
           </ScrollView>
-          <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={[s.footer, { paddingBottom: pad }]}>
             <Row between style={{ marginBottom: 3 }}><Sub>{lines.length} items · {totals.units} units</Sub><Money tone="mut" size={11.5}>{money(totals.gross)}</Money></Row>
             <Row between style={{ marginBottom: 8 }}><Sub>After discount</Sub><Money size={16} testID="items-after-discount">{money(totals.gross - totals.lineDisc)}</Money></Row>
             <Btn testID="invoice-review" label="Review invoice" onPress={() => (lines.length ? setStep(2) : setAddOpen(true))} />
@@ -448,7 +449,7 @@ export default function NewInvoice() {
               </Li>
             </Card>
           </ScrollView>
-          <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={[s.footer, { paddingBottom: pad }]}>
             {editId ? (
               <Btn label="Save changes" onPress={() => save.mutate(((editQ.data as any)?.status === "draft" ? "draft" : "issued"))} loading={save.isPending} testID="review-save-changes" />
             ) : (
@@ -631,7 +632,6 @@ function LineDiscount({ line, onChange }: { line: Line; onChange: (patch: Partia
 function LineEditor({ line, onClose, onSave, onRemove }: { line: Line; onClose: () => void; onSave: (l: Line) => void; onRemove: () => void }) {
   const s = useStyles();
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const [price, setPrice] = useState(String(line.unit_price));
   const [qty, setQty] = useState(String(line.quantity));
   const [dtype, setDtype] = useState<"amount" | "percent">(line.discount_type);
@@ -643,7 +643,9 @@ function LineEditor({ line, onClose, onSave, onRemove }: { line: Line; onClose: 
   return (
     <Sheet visible onClose={onClose} testID="line-item-sheet">
       <AppBar close title={line.name} onBack={onClose} rightText="Save" onRightText={() => onSave(draft)} testID="line-editor-appbar" />
-      <KeyboardAwareScrollView bottomOffset={24} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom }}>
+      {/* The sheet itself rides the keyboard now, so a nested keyboard-aware
+          scroll view would compensate twice. */}
+      <View>
         <Card style={[s.faint, { flexDirection: "row", alignItems: "center", gap: 8 }]}><Av icon="cube-outline" tone="sq" /><View><H4 style={{ fontSize: 12.5 }}>{line.unit || "Unit"}</H4><Tag>{line.track && line.stock !== undefined ? `${line.stock} in stock` : line.quick_add ? "quick add" : "not tracked"}</Tag></View></Card>
         <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}>
           <Field label="Selling price" value={price} onChangeText={setPrice} keyboardType="decimal-pad" mono style={{ flex: 1 }} testID="line-price" />
@@ -658,7 +660,7 @@ function LineEditor({ line, onClose, onSave, onRemove }: { line: Line; onClose: 
         <Sub style={{ marginTop: 7 }}>Notes print under the item name on the invoice.</Sub>
         <Btn label={`Update line — ${money(t.total)}`} onPress={() => onSave(draft)} style={{ marginTop: 12 }} testID="line-update" />
         <Pressable onPress={onRemove} style={{ alignSelf: "center", marginTop: 12, padding: 6 }} testID="line-remove"><Sub style={{ color: colors.coral, fontFamily: fonts.bold }}>Remove from invoice</Sub></Pressable>
-      </KeyboardAwareScrollView>
+      </View>
     </Sheet>
   );
 }

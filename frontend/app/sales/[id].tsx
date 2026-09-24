@@ -14,6 +14,7 @@ import { longDate, money } from "@/src/format";
 import { buildReceiptHtml, DEFAULT_BRAND } from "@/src/invoice-templates";
 import { pdfName, printHtml, sharePdf } from "@/src/pdf";
 import { photoDataUri } from "@/src/uploads";
+import { useBottomPad } from "@/src/safe";
 import { makeStyles, useTheme } from "@/src/theme";
 
 const METHOD: Record<string, string> = { cash: "Cash", transfer: "Bank transfer", card: "Card", credit: "On credit" };
@@ -28,6 +29,7 @@ export default function SaleDetail() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -105,7 +107,7 @@ export default function SaleDetail() {
           </Card>
         </ScrollView>
       )}
-      <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[s.bar, { paddingBottom: pad }]}>
         <Btn small variant="ghost" label="Print receipt" style={{ flex: 1 }} testID="sale-print-receipt" onPress={() => receipt(true)} />
         <Btn small label="Share receipt" icon="logo-whatsapp" style={{ flex: 1 }} testID="sale-share-receipt" onPress={() => receipt(false)} />
       </View>

@@ -8,6 +8,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Btn, H4, Seg, Sub } from "@/src/components/ui";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 export type ScanMode = "add" | "price";
@@ -40,6 +41,7 @@ export function Scanner({ visible, onClose, onScan, title = "Scan bar code", hin
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const [permission, request] = useCameraPermissions();
   const [asking, setAsking] = useState(false);
   const last = useRef(0);
@@ -87,7 +89,7 @@ export function Scanner({ visible, onClose, onScan, title = "Scan bar code", hin
               </View>
             </CameraView>
             {onMode && mode ? (
-              <View style={[s.modes, { paddingBottom: Math.max(insets.bottom, 12) }]} testID="scanner-modes">
+              <View style={[s.modes, { paddingBottom: pad }]} testID="scanner-modes">
                 <Seg testID="scanner-mode" value={mode} onChange={onMode}
                   options={[{ key: "add", label: addLabel }, { key: "price", label: "Price check" }]} />
                 <Sub style={{ marginTop: 6, textAlign: "center", fontSize: 11 }}>

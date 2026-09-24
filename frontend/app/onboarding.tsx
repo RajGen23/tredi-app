@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Badge, Btn, Card, Lbl, Money, Sub } from "@/src/components/ui";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles } from "@/src/theme";
 
 const STEPS = [
@@ -25,12 +26,13 @@ const useStyles = makeStyles((c) => ({
 export default function Onboarding() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [step, setStep] = useState(0);
   const next = () => (step < 2 ? setStep(step + 1) : router.replace("/sign-in"));
 
   return (
-    <View style={[s.root, { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) }]} testID="onboarding-screen">
+    <View style={[s.root, { paddingTop: insets.top + 16, paddingBottom: pad }]} testID="onboarding-screen">
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <Lbl>Step {step + 1} of 3</Lbl>
         <Pressable testID="onboarding-skip" onPress={() => router.replace("/sign-in")} hitSlop={8}><Text style={s.skip}>Skip</Text></Pressable>

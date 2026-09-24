@@ -15,6 +15,7 @@ import { InvoicePaper } from "@/src/components/invoice-paper";
 import { useToast } from "@/src/components/sheet";
 import { buildInvoiceHtml, DEFAULT_BRAND, TEMPLATES } from "@/src/invoice-templates";
 import { photoDataUri } from "@/src/uploads";
+import { useBottomPad } from "@/src/safe";
 import { makeStyles } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -26,6 +27,7 @@ const useStyles = makeStyles((c) => ({
 export default function PdfViewer() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useQuery({ queryKey: ["invoice", id], queryFn: () => api(`/invoices/${id}`) });
@@ -99,7 +101,7 @@ export default function PdfViewer() {
           <InvoicePaper inv={inv} format={format} brand={brand as any} linePhotos={linePhotos} logo={logo} />
         </ScrollView>
       )}
-      <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[s.bar, { paddingBottom: pad }]}>
         <Btn small variant="ghost" label="Download" style={{ flex: 1 }} testID="pdf-download" onPress={() => share()} />
         <Btn small label="Share" style={{ flex: 1 }} testID="pdf-share" onPress={() => share()} icon="logo-whatsapp" />
       </View>

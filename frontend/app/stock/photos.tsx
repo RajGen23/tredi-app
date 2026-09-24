@@ -12,6 +12,7 @@ import { AppBar, Av, Btn, Card, Empty, H4, Lbl, Li, Loading, Prog, Row, Seg, Sub
 import { Photo } from "@/src/components/photo";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { pickAndUploadPhoto } from "@/src/uploads";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Filter = "missing" | "all";
@@ -30,6 +31,7 @@ export default function StockPhotos() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const qc = useQueryClient();
   const toast = useToast();
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => api<any[]>("/items") });
@@ -52,7 +54,7 @@ export default function StockPhotos() {
       qc.invalidateQueries({ queryKey: ["item", item.id] });
       toast.show(`${item.name} now has a photo`);
     } catch (e: any) {
-      toast.show(e.message ?? "Upload failed");
+      toast.show(e.message ?? "Upload failed", undefined, "bad");
     } finally {
       setBusyId("");
     }
@@ -61,7 +63,7 @@ export default function StockPhotos() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="stock-photos-screen">
       <AppBar title="Add photos" back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: Math.max(insets.bottom, 20) }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         <Card testID="stock-photos-progress">
           <Row between>
             <View style={{ flex: 1 }}>

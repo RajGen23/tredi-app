@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomPad } from "@/src/safe";
 
 import { Btn, H4, Li, Loading, Row, Sub } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
@@ -19,6 +20,7 @@ export function useReportMeta() {
 
 export function ExportBar({ build, testID = "report" }: { build: () => ReportDoc | null | undefined; testID?: string }) {
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState("");
@@ -51,7 +53,7 @@ export function ExportBar({ build, testID = "report" }: { build: () => ReportDoc
 
   return (
     <>
-      <Row style={{ position: "absolute", left: 14, right: 14, bottom: Math.max(insets.bottom, 12), gap: 8 }}>
+      <Row style={{ position: "absolute", left: 14, right: 14, bottom: pad, gap: 8 }}>
         <View style={{ flex: 1 }}>
           <Btn small variant="ghost" label="Export" icon="download-outline" testID={`${testID}-export`} onPress={() => setOpen(true)} />
         </View>

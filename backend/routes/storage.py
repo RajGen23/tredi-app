@@ -2,7 +2,9 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
+from pydantic import BaseModel
 from typing import Optional
+import base64
 import logging
 import os
 import uuid
@@ -57,17 +59,40 @@ def get_object(path: str) -> tuple[bytes, str]:
 
 @router.post("/upload", status_code=201)
 async def upload(user: CurrentUser, file: UploadFile = File(...)):
-    f = biz_filter(user)
     data = await file.read()
+    return await _store(user, data, file.filename or "photo.jpg", file.content_type or "image/jpeg")
+
+
+class Base64In(BaseModel):
+    data: str
+    filename: str = "photo.jpg"
+    content_type: str = "image/jpeg"
+
+
+@router.post("/upload-base64", status_code=201)
+async def upload_base64(payload: Base64In, user: CurrentUser):
+    """The phone posts the bytes itself. React Native streams a multipart file
+    with chunked encoding and no content length, which a mobile network proxy
+    can drop halfway; a base64 body has a known length and always arrives."""
+    raw = payload.data.split(",", 1)[-1] if payload.data.startswith("data:") else payload.data
+    try:
+        data = base64.b64decode(raw + "=" * (-len(raw) % 4))
+    except Exception:
+        raise HTTPException(400, "That photo could not be read — try again")
+    return await _store(user, data, payload.filename, payload.content_type)
+
+
+async def _store(user: dict, data: bytes, filename: str, content_type: str) -> dict:
+    f = biz_filter(user)
     if not data:
         raise HTTPException(400, "That file is empty")
     if len(data) > MAX_BYTES:
         raise HTTPException(400, "Photos must be under 8 MB — try again with a smaller one")
-    ext = (file.filename or "photo.jpg").rsplit(".", 1)[-1].lower()[:5] or "jpg"
+    ext = (filename or "photo.jpg").rsplit(".", 1)[-1].lower()[:5] or "jpg"
     path = f"{APP_NAME}/uploads/{str(user['_id'])}/{uuid.uuid4().hex}.{ext}"
-    await run_in_threadpool(put_object, path, data, file.content_type or "image/jpeg")
-    await db.uploads.insert_one({**f, "storage_path": path, "filename": file.filename or "photo.jpg",
-                                 "content_type": file.content_type or "image/jpeg", "size": len(data),
+    await run_in_threadpool(put_object, path, data, content_type or "image/jpeg")
+    await db.uploads.insert_one({**f, "storage_path": path, "filename": filename or "photo.jpg",
+                                 "content_type": content_type or "image/jpeg", "size": len(data),
                                  "owner_id": str(user["_id"]), "created_at": now()})
     return {"path": path, "url": f"/api/files/{path}", "size": len(data)}
 

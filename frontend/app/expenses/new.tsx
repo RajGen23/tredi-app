@@ -19,6 +19,7 @@ import { PickerField } from "@/src/components/picker";
 import { useAccounts, useLookup, useShops } from "@/src/lookups";
 import { photoSource, pickAndUploadPhoto } from "@/src/uploads";
 import { money, parseNum, sym } from "@/src/format";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -33,6 +34,7 @@ export default function NewExpense() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
@@ -73,7 +75,7 @@ export default function NewExpense() {
         toast.show("Receipt attached — it stays with this expense");
       }
     } catch (e: any) {
-      toast.show(e.message ?? "Could not attach that photo");
+      toast.show(e.message ?? "Could not attach that photo", undefined, "bad");
     } finally {
       setUploading(false);
     }
@@ -129,7 +131,7 @@ export default function NewExpense() {
           </Card>
         </Pressable>
       </KeyboardAwareScrollView>
-      <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[s.footer, { paddingBottom: pad }]}>
         <Btn testID="expense-save" label="Save expense" onPress={() => m.mutate()} loading={m.isPending} disabled={!parseNum(amount) || !category} />
       </View>
       {m.error ? <Text style={{ display: "none" }}>{(m.error as Error).message}</Text> : null}
