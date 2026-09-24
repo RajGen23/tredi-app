@@ -13,6 +13,7 @@ import jwt
 
 from deps import (DUMMY_HASH, JWT_ALG, JWT_SECRET, clean, db, now, oid, verify_password)
 from admin_seed import FEATURE_GATES, PERMISSION_MATRIX, ROLE_TEMPLATES, seed_admin
+from plans import plan_by_key
 
 router = APIRouter(prefix="/api/admin")
 SESSION_MINUTES = 30
@@ -301,6 +302,55 @@ async def plans(admin: Admin):
     for p in rows:
         p["count"] = await db.admin_tenants.count_documents({"plan": p["key"]})
     return {"plans": rows, "gates": FEATURE_GATES}
+
+
+# ------------------------------------------------- real tenants asking to upgrade
+# The app has no card gateway yet, so a shop owner taps a plan and it lands here.
+class ApproveIn(BaseModel):
+    months: int = 1
+    note: str = ""
+
+
+@router.get("/plan-requests")
+async def plan_requests(admin: Admin):
+    rows = []
+    async for r in db.plan_requests.find({"status": "pending"}).sort("created_at", 1):
+        biz = await db.businesses.find_one({"_id": ObjectId(r["business_id"])}) if ObjectId.is_valid(r["business_id"]) else None
+        plan = plan_by_key(r["plan"])
+        rows.append({"id": str(r["_id"]), "business": r.get("business_name") or (biz or {}).get("name", ""),
+                     "business_id": r["business_id"], "plan": plan["key"], "plan_name": plan["name"],
+                     "amount": plan["price"], "current_plan": plan_by_key((biz or {}).get("plan")).get("name", "—"),
+                     "by": r.get("requested_by_name", ""), "note": r.get("note", ""),
+                     "asked_at": aw(r["created_at"]).isoformat(), "days_waiting": (now() - aw(r["created_at"])).days})
+    return {"rows": rows, "count": len(rows)}
+
+
+@router.post("/plan-requests/{rid}/approve")
+async def approve_plan_request(rid: str, body: ApproveIn, admin: Admin):
+    r = await db.plan_requests.find_one({"_id": oid(rid)})
+    if not r or r.get("status") != "pending":
+        raise HTTPException(404, "Request not found")
+    plan = plan_by_key(r["plan"])
+    months = max(1, body.months)
+    await db.businesses.update_one({"_id": ObjectId(r["business_id"])},
+                                  {"$set": {"plan": plan["key"], "renews_at": now() + timedelta(days=30 * months),
+                                            "plan_activated_at": now()}, "$unset": {"trial_ends_at": ""}})
+    await db.plan_requests.update_one({"_id": r["_id"]}, {"$set": {"status": "approved", "approved_at": now(),
+                                                                   "approved_by": admin.get("name", "admin"), "months": months}})
+    await audit(admin, r.get("business_name", ""), f"{plan['name']} activated", f"{months} month{'s' if months > 1 else ''} {body.note}".strip(), "billing")
+    return {"ok": True, "message": f"{r.get('business_name', 'Business')} is now on {plan['name']} for {months} month{'s' if months > 1 else ''}"}
+
+
+@router.post("/plan-requests/{rid}/decline")
+async def decline_plan_request(rid: str, body: ApproveIn, admin: Admin):
+    r = await db.plan_requests.find_one({"_id": oid(rid)})
+    if not r or r.get("status") != "pending":
+        raise HTTPException(404, "Request not found")
+    if not body.note.strip():
+        raise HTTPException(400, "Say why, the owner will be told")
+    await db.plan_requests.update_one({"_id": r["_id"]}, {"$set": {"status": "declined", "note": body.note, "closed_at": now()}})
+    await audit(admin, r.get("business_name", ""), "Plan request declined", body.note, "billing")
+    return {"ok": True, "message": "Request closed"}
 
 
 # ---------------------------------------------------------------- SA.8 users

@@ -6,7 +6,7 @@ from bson import ObjectId
 from datetime import timedelta, date
 
 from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, decorate_invoice, invoice_totals, line_totals,
-                  log_activity, next_number, now, oid, VAT_RATE)
+                  log_activity, next_number, now, oid, subscription_of, VAT_RATE)
 
 router = APIRouter(prefix="/api")
 
@@ -78,6 +78,14 @@ async def get_invoice_settings(user: CurrentUser):
     merged["next_number"] = 1001 + (counter["seq"] if counter else 0)
     merged["accounts"] = [{"id": str(a["_id"]), "name": a["name"], "detail": a.get("detail", ""), "kind": a.get("kind", "cash")} async for a in db.accounts.find(f)]
     merged["terms_sets"] = await db.terms.count_documents(f)
+    # Starter saves photos on items but does not print them (plan rule): the
+    # screens read this flag instead of hard-coding who is allowed.
+    sub = await subscription_of(f["business_id"])
+    merged["photos_allowed"] = bool(sub["features"].get("invoice_photos"))
+    merged["plan"] = sub["plan"]
+    merged["plan_name"] = sub["name"]
+    if not merged["photos_allowed"]:
+        merged["show_photos"] = False
     return merged
 
 

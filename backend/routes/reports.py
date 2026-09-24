@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
 from typing import Optional
 
-from deps import CurrentUser, biz_filter, date_query, db, invoice_paid, invoice_status, period_range
+from deps import CurrentUser, biz_filter, date_query, db, invoice_paid, invoice_status, period_range, scoped, shop_qty, shop_scope
 
 router = APIRouter(prefix="/api/reports")
 
@@ -45,11 +45,13 @@ def pct_change(cur: float, prev: float) -> Optional[int]:
 
 @router.get("/summary")
 async def summary(user: CurrentUser, period: str = "month", start: Optional[str] = None, end: Optional[str] = None):
-    f = biz_filter(user)
+    f = await scoped(user, "reports")
+    bf = biz_filter(user)
+    sc = await shop_scope(user, "stock")
     a, b, label = period_range(period, start, end)
     span = (b - a) if a else timedelta(days=30)
     pa, pb = (a - span if a else None), (a if a else b)
-    items = await item_costs(f)
+    items = await item_costs(bf)
 
     docs = await sale_docs(f, a, b)
     prev_docs = await sale_docs(f, pa, pb) if a else []
@@ -98,7 +100,9 @@ async def summary(user: CurrentUser, period: str = "month", start: Optional[str]
 
 @router.get("/cashflow")
 async def cashflow(user: CurrentUser, period: str = "month", start: Optional[str] = None, end: Optional[str] = None):
-    f = biz_filter(user)
+    f = await scoped(user, "reports")
+    bf = biz_filter(user)
+    sc = await shop_scope(user, "stock")
     a, b, label = period_range(period, start, end)
     win_start = a or (b - timedelta(days=30))
     money_in = await sum_field(db.payments, date_query(f, a, b))
@@ -106,12 +110,12 @@ async def cashflow(user: CurrentUser, period: str = "month", start: Optional[str
 
     accounts = []
     opening_total = 0.0
-    async for acc in db.accounts.find(f):
+    async for acc in db.accounts.find(bf):
         aid = str(acc["_id"])
-        inn = await sum_field(db.payments, {**f, "account_id": aid})
-        out = await sum_field(db.expenses, {**f, "account_id": aid}) + await sum_field(db.purchases, {**f, "account_id": aid}, "total")
+        inn = await sum_field(db.payments, {**bf, "account_id": aid})
+        out = await sum_field(db.expenses, {**bf, "account_id": aid}) + await sum_field(db.purchases, {**bf, "account_id": aid}, "total")
         bal = round((acc.get("opening_balance") or 0) + inn - out, 2)
-        entries = await db.payments.count_documents({**f, "account_id": aid}) + await db.expenses.count_documents({**f, "account_id": aid})
+        entries = await db.payments.count_documents({**bf, "account_id": aid}) + await db.expenses.count_documents({**bf, "account_id": aid})
         accounts.append({"id": aid, "name": acc["name"], "kind": acc.get("kind", "cash"), "detail": acc.get("detail", ""), "balance": bal, "entries": entries})
         opening_total += acc.get("opening_balance") or 0
     closing = round(sum(x["balance"] for x in accounts), 2)
@@ -134,9 +138,11 @@ async def cashflow(user: CurrentUser, period: str = "month", start: Optional[str
 
 @router.get("/products")
 async def products(user: CurrentUser, period: str = "month", start: Optional[str] = None, end: Optional[str] = None):
-    f = biz_filter(user)
+    f = await scoped(user, "reports")
+    bf = biz_filter(user)
+    sc = await shop_scope(user, "stock")
     a, b, label = period_range(period, start, end)
-    items = await item_costs(f)
+    items = await item_costs(bf)
     docs = await sale_docs(f, a, b)
 
     rows: dict = {}
@@ -161,16 +167,17 @@ async def products(user: CurrentUser, period: str = "month", start: Optional[str
     for iid, it in items.items():
         if not it.get("track_stock", True):
             continue
-        last = await db.movements.find_one({**f, "item_id": iid, "kind": "sale"}, sort=[("created_at", -1)])
+        last = await db.movements.find_one({**bf, "item_id": iid, "kind": "sale"}, sort=[("created_at", -1)])
         days_idle = (today - last["created_at"].replace(tzinfo=timezone.utc)).days if last else 999
-        tied = round((it.get("quantity") or 0) * (it.get("cost_price") or 0), 2)
+        qty_here = shop_qty(it, sc["shops"], sc["main"])
+        tied = round(qty_here * (it.get("cost_price") or 0), 2)
         if days_idle >= 7 and tied > 0:
-            slow.append({"id": iid, "name": it["name"], "days": days_idle, "tied": tied, "qty": it.get("quantity", 0),
+            slow.append({"id": iid, "name": it["name"], "days": days_idle, "tied": tied, "qty": qty_here,
                          "unit": it.get("unit", "unit"), "revenue": rows.get(iid, {}).get("revenue", 0)})
     slow.sort(key=lambda r: -r["days"])
 
     cogs = cogs_of(docs, items)
-    stock_value = round(sum((i.get("quantity") or 0) * (i.get("cost_price") or 0) for i in items.values() if i.get("track_stock", True)), 2)
+    stock_value = round(sum(shop_qty(i, sc["shops"], sc["main"]) * (i.get("cost_price") or 0) for i in items.values() if i.get("track_stock", True)), 2)
     turnover = round(cogs / stock_value, 1) if stock_value else 0
     return {"label": label, "top": top, "profit": by_profit, "slow": slow[:8], "turnover": turnover,
             "turnover_health": "Healthy" if turnover >= 2 else "Slow", "stock_value": stock_value}
@@ -178,9 +185,11 @@ async def products(user: CurrentUser, period: str = "month", start: Optional[str
 
 @router.get("/pnl")
 async def pnl(user: CurrentUser, period: str = "month", start: Optional[str] = None, end: Optional[str] = None):
-    f = biz_filter(user)
+    f = await scoped(user, "reports")
+    bf = biz_filter(user)
+    sc = await shop_scope(user, "stock")
     a, b, label = period_range(period, start, end)
-    items = await item_costs(f)
+    items = await item_costs(bf)
     docs = await sale_docs(f, a, b)
     revenue = round(sum(d["total"] for d in docs), 2)
     returns = await sum_field(db.returns, date_query(f, a, b), "total")
@@ -222,7 +231,9 @@ async def pnl(user: CurrentUser, period: str = "month", start: Optional[str] = N
 
 @router.get("/receivables")
 async def receivables(user: CurrentUser):
-    f = biz_filter(user)
+    f = await scoped(user, "reports")
+    bf = biz_filter(user)
+    sc = await shop_scope(user, "stock")
     buckets = {"current": 0.0, "1_30": 0.0, "31_60": 0.0, "60_plus": 0.0}
     rows = []
     async for inv in db.invoices.find({**f, "status": {"$nin": ["draft", "quote"]}}):
@@ -237,19 +248,21 @@ async def receivables(user: CurrentUser):
                      "due": st["due"], "days_overdue": d})
     rows.sort(key=lambda r: -r["days_overdue"])
     payables = 0.0
-    async for p in db.purchases.find(f):
+    async for p in db.purchases.find(bf):
         payables += round((p.get("total") or 0) - (p.get("paid") or 0), 2)
     return {"buckets": buckets, "total": round(sum(buckets.values()), 2), "rows": rows[:40], "payables": round(payables, 2)}
 
 
 @router.get("/stock-valuation")
 async def stock_valuation(user: CurrentUser):
-    f = biz_filter(user)
+    f = await scoped(user, "reports")
+    bf = biz_filter(user)
+    sc = await shop_scope(user, "stock")
     rows, total, retail, low, out = [], 0.0, 0.0, 0, 0
-    async for i in db.items.find(f).sort("name", 1):
+    async for i in db.items.find(bf).sort("name", 1):
         if not i.get("track_stock", True):
             continue
-        qty = i.get("quantity") or 0
+        qty = shop_qty(i, sc["shops"], sc["main"])
         val = round(qty * (i.get("cost_price") or 0), 2)
         total += val
         retail += qty * (i.get("selling_price") or 0)
@@ -264,7 +277,9 @@ async def stock_valuation(user: CurrentUser):
 
 @router.get("/sales-summary")
 async def sales_summary(user: CurrentUser, period: str = "month", group: str = "day", start: Optional[str] = None, end: Optional[str] = None):
-    f = biz_filter(user)
+    f = await scoped(user, "reports")
+    bf = biz_filter(user)
+    sc = await shop_scope(user, "stock")
     a, b, label = period_range(period, start, end)
     docs = await sale_docs(f, a, b)
     groups: dict = {}

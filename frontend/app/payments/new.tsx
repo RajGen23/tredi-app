@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/src/api";
 import { AppBar, Av, Btn, Card, Check, Chip, Field, H4, Li, Lbl, Money, Row, Sub, Switch, Tag } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
-import { initials, money, parseNum, slashDate, statusLabel } from "@/src/format";
+import { initials, money, parseNum, slashDate, statusLabel, sym } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -67,7 +67,7 @@ export default function PaymentIn() {
         </Card>
         <View style={s.amountBox}>
           <Lbl>Amount received</Lbl>
-          <TextInput testID="payment-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="₦ 0" placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus={!!customerId} />
+          <TextInput testID="payment-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder={`${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus={!!customerId} />
         </View>
         {owed > 0 ? (
           <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>

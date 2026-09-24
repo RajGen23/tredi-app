@@ -8,10 +8,15 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
+import { PickerField } from "@/src/components/picker";
 import { Photo } from "@/src/components/photo";
 import { Scanner } from "@/src/components/scanner";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { money, parseNum } from "@/src/format";
+import { buildReceiptHtml, DEFAULT_BRAND } from "@/src/invoice-templates";
+import { useAccounts } from "@/src/lookups";
+import { pdfName, printHtml, sharePdf } from "@/src/pdf";
+import { photoDataUri } from "@/src/uploads";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Method = "cash" | "transfer" | "card" | "credit";
@@ -30,6 +35,7 @@ const useStyles = makeStyles((c) => ({
   countText: { fontFamily: fonts.bold, fontSize: 12.5, color: c.onSurfaceInverse },
   footer: { paddingTop: 9, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surfaceSecondary },
   bigInput: { fontFamily: fonts.monoSemibold, fontSize: 28, color: c.onSurface, textAlign: "center", paddingVertical: 4 },
+  qty: { width: 54, minHeight: 34, borderWidth: 1, borderColor: c.border, borderRadius: 9, textAlign: "center", fontFamily: fonts.monoSemibold, fontSize: 13, color: c.onSurface, paddingVertical: 4 },
   amber: { backgroundColor: c.warning, borderColor: "#F3E2BE", paddingVertical: 9 },
 }));
 
@@ -43,17 +49,21 @@ export default function QuickSale() {
   const qc = useQueryClient();
   const toast = useToast();
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => api<any[]>("/items") });
+  const settings = useQuery({ queryKey: ["invoice-settings"], queryFn: () => api("/settings/invoice") });
+  const { accounts, options: accountOptions } = useAccounts();
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("Popular");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [method, setMethod] = useState<Method>("cash");
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [tender, setTender] = useState(false);
   const [tendered, setTendered] = useState("");
   const [saved, setSaved] = useState<any | null>(null);
   const [scan, setScan] = useState(false);
   const [unknown, setUnknown] = useState("");
 
-  const items = itemsQ.data ?? [];
+  const items = useMemo(() => itemsQ.data ?? [], [itemsQ.data]);
+  const account = accounts.find((a: any) => a.id === accountId) ?? accounts.find((a: any) => (method === "cash" ? a.kind === "cash" : a.kind !== "cash")) ?? accounts[0];
   const cats = useMemo(() => ["Popular", ...Array.from(new Set(items.map((i) => i.category)))], [items]);
   const grid = items.filter((i) => (cat === "Popular" || i.category === cat) && i.name.toLowerCase().includes(search.toLowerCase()));
   const lines = Object.entries(cart).map(([id, q]) => ({ item: items.find((i) => i.id === id)!, q })).filter((l) => l.item);
@@ -61,14 +71,42 @@ export default function QuickSale() {
   const change = Math.max(0, parseNum(tendered) - total);
 
   const m = useMutation({
-    mutationFn: () => api("/sales", { method: "POST", json: { lines: lines.map((l) => ({ item_id: l.item.id, name: l.item.name, quantity: l.q, unit_price: l.item.selling_price, unit: l.item.unit })), method, tendered: method === "cash" ? parseNum(tendered) || total : total } }),
-    onSuccess: (sale) => { ["items", "dashboard", "accounts"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); setTender(false); setSaved(sale); },
+    mutationFn: () => api("/sales", { method: "POST", json: { lines: lines.map((l) => ({ item_id: l.item.id, name: l.item.name, quantity: l.q, unit_price: l.item.selling_price, unit: l.item.unit })), method, account_id: account?.id ?? null, tendered: method === "cash" ? parseNum(tendered) || total : total } }),
+    onSuccess: (sale) => { ["items", "dashboard", "accounts", "sales", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); setTender(false); setSaved(sale); },
     onError: (e: Error) => toast.show(e.message),
   });
 
-  const reset = () => { setCart({}); setTendered(""); setSaved(null); setMethod("cash"); };
+  const reset = () => { setCart({}); setTendered(""); setSaved(null); setMethod("cash"); setAccountId(null); };
 
   const addToCart = (id: string) => setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
+  const setQty = (id: string, raw: string) => {
+    const n = parseNum(raw);
+    setCart((c) => {
+      const next = { ...c };
+      if (!raw.trim()) next[id] = 0;
+      else if (n <= 0) delete next[id];
+      else next[id] = n;
+      return next;
+    });
+  };
+
+  // The receipt for the sale just saved: printed or shared straight from the
+  // sheet, so the customer never waits for a second screen.
+  const receipt = async (print: boolean) => {
+    if (!saved?.id) return;
+    try {
+      const full = await api(`/sales/${saved.id}`);
+      const chosen: any = settings.data ?? {};
+      const logo = chosen.logo_url ? await photoDataUri(chosen.logo_url) : "";
+      const html = buildReceiptHtml(full, { ...DEFAULT_BRAND, ...chosen, logo_url: logo });
+      if (print) return await printHtml(html);
+      const name = pdfName([(full as any).business?.name, (full as any).customer_name, (full as any).number]);
+      const res = await sharePdf(html, name);
+      if (!res.shared) toast.show(`${name} is ready — sharing is not available in this preview`);
+    } catch (e: any) {
+      toast.show(e.message ?? "Could not build the receipt");
+    }
+  };
 
   // A scan is matched against the barcode the shop typed on the item; a code
   // nobody has saved yet becomes a new item with the code already filled in.
@@ -113,8 +151,13 @@ export default function QuickSale() {
           <Card style={{ marginTop: 9, paddingVertical: 4 }} testID="quick-sale-cart">
             {lines.map((l, i) => (
               <Li key={l.item.id} last={i === lines.length - 1} style={{ paddingVertical: 7 }}>
-                <Pressable onPress={() => setCart((c) => { const n = { ...c }; if (n[l.item.id] > 1) n[l.item.id] -= 1; else delete n[l.item.id]; return n; })} testID={`quick-sale-cart-minus-${l.item.id}`} hitSlop={6}><Ionicons name="remove-circle-outline" size={18} color={colors.ink40} /></Pressable>
-                <H4 style={{ flex: 1, fontSize: 12.5 }}>{l.item.name} × {l.q}</H4>
+                <Pressable onPress={() => setCart((c) => { const n = { ...c }; if (n[l.item.id] > 1) n[l.item.id] -= 1; else delete n[l.item.id]; return n; })} testID={`quick-sale-cart-minus-${l.item.id}`} hitSlop={6}><Ionicons name="remove-circle-outline" size={20} color={colors.ink40} /></Pressable>
+                {/* Tap to add one at a time, or type the number for a bulk buy. */}
+                <TextInput testID={`quick-sale-qty-${l.item.id}`} value={String(l.q)} onChangeText={(v) => setQty(l.item.id, v)}
+                  onBlur={() => { if (!l.q) setCart((c) => { const n = { ...c }; delete n[l.item.id]; return n; }); }}
+                  keyboardType="decimal-pad" selectTextOnFocus style={s.qty} />
+                <Pressable onPress={() => addToCart(l.item.id)} testID={`quick-sale-cart-plus-${l.item.id}`} hitSlop={6}><Ionicons name="add-circle-outline" size={20} color={colors.green700} /></Pressable>
+                <H4 style={{ flex: 1, fontSize: 12.5 }} numberOfLines={1}>{l.item.name}</H4>
                 <Money size={12}>{money(l.item.selling_price * l.q, { symbol: false })}</Money>
               </Li>
             ))}
@@ -124,8 +167,12 @@ export default function QuickSale() {
       <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <Row between style={{ marginBottom: 7 }}><H4>Total</H4><Money size={17} testID="quick-sale-total">{money(total)}</Money></Row>
         <View style={{ flexDirection: "row", gap: 6, marginBottom: 8 }}>
-          {(["cash", "transfer", "card", "credit"] as Method[]).map((k) => <Chip key={k} label={k === "credit" ? "On credit" : k[0].toUpperCase() + k.slice(1)} on={method === k} onPress={() => setMethod(k)} testID={`quick-sale-method-${k}`} />)}
+          {(["cash", "transfer", "card", "credit"] as Method[]).map((k) => <Chip key={k} label={k === "credit" ? "On credit" : k[0].toUpperCase() + k.slice(1)} on={method === k} onPress={() => { setMethod(k); setAccountId(null); }} testID={`quick-sale-method-${k}`} />)}
         </View>
+        {method !== "credit" && accountOptions.length ? (
+          <PickerField label="Money goes into" value={account?.id ?? null} options={accountOptions} onPick={setAccountId}
+            title="Which account takes this money?" style={{ marginBottom: 8, minHeight: 46 }} testID="quick-sale-account" />
+        ) : null}
         <Btn label="Take payment" disabled={!lines.length} onPress={() => (method === "cash" ? setTender(true) : m.mutate())} loading={m.isPending && !tender} testID="quick-sale-take-payment" />
       </View>
 
@@ -174,9 +221,12 @@ export default function QuickSale() {
             </Card>
             <Card style={[s.amber, { marginTop: 9, flexDirection: "row", alignItems: "center", gap: 8 }]}><Sub style={{ flex: 1 }}>Saved and synced to your book</Sub><Badge tone="paid">Synced</Badge></Card>
             <View style={{ flexDirection: "row", gap: 8, marginTop: 11 }}>
-              <Btn small variant="ghost" label="Print receipt" style={{ flex: 1 }} onPress={() => toast.show("Receipt printing arrives with the Documents pass")} testID="sale-saved-print" />
-              <Btn small label="New sale" style={{ flex: 1 }} onPress={reset} testID="sale-saved-new" />
+              <Btn small variant="ghost" label="Print receipt" style={{ flex: 1 }} onPress={() => receipt(true)} testID="sale-saved-print" />
+              <Btn small variant="deep" label="Share" icon="logo-whatsapp" style={{ flex: 1 }} onPress={() => receipt(false)} testID="sale-saved-share" />
             </View>
+            <Btn label="New sale" style={{ marginTop: 8 }} onPress={reset} testID="sale-saved-new" />
+            <Btn small variant="ghost" label="Open this sale" style={{ marginTop: 8 }} testID="sale-saved-open"
+              onPress={() => { const id = saved.id; setSaved(null); setCart({}); setTendered(""); router.push(`/sales/${id}`); }} />
           </>
         ) : null}
       </Sheet>

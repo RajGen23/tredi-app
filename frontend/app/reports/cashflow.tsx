@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/src/api";
 import { AppBar, Av, Card, H4, IconBtn, Kpi, Lbl, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { AreaSpark, Axis } from "@/src/components/charts";
+import { ExportBar, useReportMeta } from "@/src/components/export";
 import { PeriodBar, PeriodSheet, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
@@ -20,14 +21,32 @@ export default function CashFlow() {
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState(false);
   const { query, shortLabel } = usePeriod();
+  const meta = useReportMeta();
   const q = useQuery({ queryKey: ["reports-cashflow", query], queryFn: () => api(`/reports/cashflow?${query}`) });
   const d = q.data;
+
+  const build = () => d && ({
+    ...meta,
+    title: "Cash flow",
+    period: d.label,
+    kpis: [{ label: "Closing balance", value: money(d.closing) }, { label: "Money in", value: money(d.in) },
+           { label: "Money out", value: money(d.out) }, { label: "Net movement", value: money(d.net) }],
+    sections: [
+      { heading: "Where the money is sitting",
+        columns: [{ label: "Account" }, { label: "Type" }, { label: "Entries", right: true }, { label: "Balance", right: true }],
+        rows: d.accounts.map((a: any) => [a.name, a.detail || a.kind, a.entries, money(a.balance)]),
+        total: ["Total", "", "", money(d.closing)] },
+      { heading: "Day by day",
+        columns: [{ label: "Day" }, { label: "Balance", right: true }],
+        rows: d.series.map((x: any) => [x.label, money(x.value)]) },
+    ],
+  });
   const labels = d?.series?.length ? [d.series[0].label, d.series[Math.floor(d.series.length / 2)]?.label ?? "", d.series[d.series.length - 1].label] : [];
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="cashflow-screen">
       <AppBar title="Cash flow" back right={<IconBtn name="calendar-outline" testID="cashflow-period" onPress={() => setSheet(true)} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
         <PeriodBar label={d?.label ?? shortLabel} icon="▤" onPress={() => setSheet(true)} />
         {!d ? <Loading /> : (
           <>
@@ -62,6 +81,7 @@ export default function CashFlow() {
           </>
         )}
       </ScrollView>
+      <ExportBar build={build} testID="cashflow" />
       <PeriodSheet visible={sheet} onClose={() => setSheet(false)} />
     </View>
   );

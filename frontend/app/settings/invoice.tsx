@@ -102,8 +102,9 @@ export default function InvoiceSettings() {
         <Card>
           <Row between><View style={{ flex: 1 }}><H4>Attach terms by default</H4><Sub>On invoices and quotations</Sub></View>
             <Switch on={f.attach_terms} onChange={(v) => setF({ ...f, attach_terms: v })} testID="settings-attach-terms" /></Row>
-          <Row between style={{ marginTop: 12 }}><View style={{ flex: 1 }}><H4>Show item photos</H4><Sub>Can be switched off per invoice</Sub></View>
-            <Switch on={f.show_photos} onChange={(v) => setF({ ...f, show_photos: v })} testID="settings-show-photos" /></Row>
+          <Row between style={{ marginTop: 12 }}><View style={{ flex: 1 }}><H4>Show item photos</H4>
+            <Sub>{f.photos_allowed === false ? `${f.plan_name ?? "Your plan"} does not print photos — upgrade in Plan & billing` : "Can be switched off per invoice"}</Sub></View>
+            <Switch on={f.show_photos && f.photos_allowed !== false} onChange={f.photos_allowed === false ? undefined : (v) => setF({ ...f, show_photos: v })} testID="settings-show-photos" /></Row>
           <Row between style={{ marginTop: 12 }}><View style={{ flex: 1 }}><H4>tredi mark on invoices</H4><Sub>Appears in the footer of every document</Sub></View>
             <Switch on={f.tredi_mark} onChange={(v) => setF({ ...f, tredi_mark: v })} testID="settings-tredi-mark" /></Row>
         </Card>

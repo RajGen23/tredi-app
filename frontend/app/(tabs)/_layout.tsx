@@ -59,13 +59,18 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
       {TABS.slice(2).map(render)}
       <Sheet visible={open} onClose={() => setOpen(false)} testID="fab-sheet">
         <H4 style={{ marginBottom: 6 }}>What are you recording?</H4>
-        {ACTIONS.map((a, i) => (
-          <Li key={a.route} testID={a.testID} last={i === ACTIONS.length - 1} onPress={() => { setOpen(false); setTimeout(() => router.push(a.route as any), 150); }}>
+        {ACTIONS.map((a) => (
+          <Li key={a.route} testID={a.testID} onPress={() => { setOpen(false); setTimeout(() => router.push(a.route as any), 150); }}>
             <Av icon={a.icon} tone={a.green ? "green" : "mint"} />
             <View style={{ flex: 1 }}><H4>{a.label}</H4><Sub>{a.sub}</Sub></View>
             <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
           </Li>
         ))}
+        <Li last testID="fab-edit-shortcuts" onPress={() => { setOpen(false); setTimeout(() => router.push("/shortcuts"), 150); }}>
+          <Av icon="options-outline" tone="sq" />
+          <View style={{ flex: 1 }}><H4>Edit Home shortcuts</H4><Sub>Choose which of these sit on your Home screen</Sub></View>
+          <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
+        </Li>
       </Sheet>
     </View>
   );

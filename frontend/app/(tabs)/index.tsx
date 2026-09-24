@@ -34,6 +34,7 @@ export default function Home() {
   const shortcuts = useQuery({ queryKey: ["shortcuts"], queryFn: () => api("/shortcuts") });
   const notifications = useQuery({ queryKey: ["notifications"], queryFn: () => api("/notifications") });
   const shops = useQuery({ queryKey: ["shops"], queryFn: () => api("/shops") });
+  const plan = useQuery({ queryKey: ["subscription"], queryFn: () => api<any>("/subscription") });
   const d = q.data;
   const list = shortcuts.data?.on ?? [];
   const pct = d && d.total_sales ? (d.received / d.total_sales) * 100 : 0;
@@ -53,25 +54,46 @@ export default function Home() {
       </View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}>
         {!d ? <Card style={s.hero}><Loading /></Card> : (
-          <Card style={s.hero} testID="home-total-sales-card">
-            <Row between style={{ alignItems: "flex-start" }}>
-              <View style={{ flexShrink: 1, paddingRight: 10 }}>
-                <Lbl>Total sales</Lbl>
-                <Text style={s.big} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} testID="home-total-sales">{money(d.total_sales)}</Text>
-                <Sub style={{ marginTop: 1 }}>
-                  {d.month} ⌄{d.change_pct !== null ? <> · <Text style={{ color: d.change_pct >= 0 ? colors.green700 : colors.coral, fontFamily: fonts.bold }}>{d.change_pct >= 0 ? "▲" : "▼"} {Math.abs(d.change_pct)}%</Text> vs last month</> : null}
-                </Sub>
-              </View>
-              <View style={{ alignItems: "flex-end", flexShrink: 0 }}>
-                <Lbl numberOfLines={1}>Received</Lbl>
-                <Money tone="pos" numberOfLines={1} testID="home-received">{money(d.received)}</Money>
-                <Lbl style={{ marginTop: 5 }} numberOfLines={1}>Owed</Lbl>
-                <Money tone="neg" numberOfLines={1} testID="home-owed">{money(d.owed)}</Money>
-              </View>
-            </Row>
-            <View style={{ marginTop: 10 }}><Prog pct={pct} /></View>
-          </Card>
+          <Pressable testID="home-total-sales-open" onPress={() => router.push("/reports/sales")} style={({ pressed }) => pressed && { opacity: 0.85 }}>
+            <Card style={s.hero} testID="home-total-sales-card">
+              <Row between style={{ alignItems: "flex-start" }}>
+                <View style={{ flexShrink: 1, paddingRight: 10 }}>
+                  <Row style={{ gap: 5 }}><Lbl>Total sales</Lbl><Ionicons name="chevron-forward" size={12} color={colors.ink40} /></Row>
+                  <Text style={s.big} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} testID="home-total-sales">{money(d.total_sales)}</Text>
+                  <Sub style={{ marginTop: 1 }}>
+                    {d.month}{d.change_pct !== null ? <> · <Text style={{ color: d.change_pct >= 0 ? colors.green700 : colors.coral, fontFamily: fonts.bold }}>{d.change_pct >= 0 ? "▲" : "▼"} {Math.abs(d.change_pct)}%</Text> vs last month</> : null}
+                  </Sub>
+                </View>
+                <View style={{ alignItems: "flex-end", flexShrink: 0 }}>
+                  <Lbl numberOfLines={1}>Received</Lbl>
+                  <Money tone="pos" numberOfLines={1} testID="home-received">{money(d.received)}</Money>
+                  <Lbl style={{ marginTop: 5 }} numberOfLines={1}>Owed</Lbl>
+                  <Money tone="neg" numberOfLines={1} testID="home-owed">{money(d.owed)}</Money>
+                </View>
+              </Row>
+              <View style={{ marginTop: 10 }}><Prog pct={pct} /></View>
+              <Sub style={{ marginTop: 7, fontSize: 10.5 }}>Tap to see this month&rsquo;s sales, by day, customer or product</Sub>
+            </Card>
+          </Pressable>
         )}
+
+        {plan.data && plan.data.status !== "active" ? (
+          <Pressable testID="home-plan-banner" onPress={() => router.push("/settings/plan")} style={({ pressed }) => pressed && { opacity: 0.85 }}>
+            <Card style={{ marginTop: 12, backgroundColor: plan.data.status === "expired" ? colors.error : colors.warning, borderColor: "transparent" }}>
+              <Row between>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <H4>{plan.data.status === "expired"
+                    ? (plan.data.trialing ? "Your free trial has ended" : "Your subscription has lapsed")
+                    : `${Math.max(0, plan.data.days_left ?? 0)} day${plan.data.days_left === 1 ? "" : "s"} left in your free trial`}</H4>
+                  <Sub style={{ marginTop: 2 }}>{plan.data.status === "expired"
+                    ? "Your books are safe and readable — pick a plan to start saving again."
+                    : "Pick a plan whenever you are ready. Nothing is charged from the app."}</Sub>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.ink60} />
+              </Row>
+            </Card>
+          </Pressable>
+        ) : null}
 
         <Row between style={{ marginTop: 12, marginBottom: 8 }}>
           <Lbl>Shortcuts</Lbl>
@@ -89,11 +111,17 @@ export default function Home() {
         {d ? (
           <>
             <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-              <View style={{ flex: 1 }}><Kpi label="Stock at cost" value={money(d.purchases)} small={`${d.low_stock} low on stock`} /></View>
-              <View style={{ flex: 1 }}><Kpi label="Expenses" value={money(d.expenses)} small={`${d.expense_count} entries`} tone="neg" /></View>
+              <View style={{ flex: 1 }}>
+                <Kpi label="Stock at cost" value={money(d.purchases)} small={`${d.low_stock} low on stock`}
+                  testID="home-kpi-stock" onPress={() => router.push("/reports/stock")} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Kpi label="Expenses" value={money(d.expenses)} small={`${d.expense_count} entries`} tone="neg"
+                  testID="home-kpi-expenses" onPress={() => router.push("/expenses")} />
+              </View>
             </View>
             <Card style={{ marginTop: 9 }} testID="home-cashflow-card">
-              <Row between><Lbl>Cash flow</Lbl><Tag>Last 7 days ⌄</Tag></Row>
+              <Row between><Lbl>Cash flow</Lbl><Tag>Last 7 days</Tag></Row>
               <Row between style={{ marginTop: 5 }}>
                 <Money tone={d.net_week >= 0 ? "pos" : "neg"} size={16}>{d.net_week >= 0 ? "+ " : "− "}{money(d.net_week)}</Money>
                 <Tag>net this week</Tag>

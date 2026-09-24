@@ -22,7 +22,10 @@ export default function Subscriptions() {
   const [tab, setTab] = useState("7");
   const [extend, setExtend] = useState<any>(null);
   const [days, setDays] = useState("30");
+  const [decline, setDecline] = useState<any>(null);
+  const [why, setWhy] = useState("");
   const d = useQuery({ queryKey: ["admin-subscriptions", tab], queryFn: () => adminApi(`/subscriptions?tab=${tab}`) });
+  const reqs = useQuery({ queryKey: ["admin-plan-requests"], queryFn: () => adminApi("/plan-requests") });
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["admin-subscriptions"] });
@@ -33,10 +36,38 @@ export default function Subscriptions() {
     onSuccess: (res: any) => { toast.show(res.message, "Renewed ·"); setExtend(null); invalidate(); },
     onError: (e: any) => toast.show(e.message),
   });
+  const approve = useMutation({
+    mutationFn: (r: any) => adminApi(`/plan-requests/${r.id}/approve`, { method: "POST", json: { months: 1 } }),
+    onSuccess: (res: any) => { toast.show(res.message, "Activated ·"); qc.invalidateQueries({ queryKey: ["admin-plan-requests"] }); },
+    onError: (e: any) => toast.show(e.message),
+  });
+  const refuse = useMutation({
+    mutationFn: () => adminApi(`/plan-requests/${decline.id}/decline`, { method: "POST", json: { note: why } }),
+    onSuccess: (res: any) => { toast.show(res.message, "Closed ·"); setDecline(null); setWhy(""); qc.invalidateQueries({ queryKey: ["admin-plan-requests"] }); },
+    onError: (e: any) => toast.show(e.message),
+  });
   const batch = useMutation({
     mutationFn: () => adminApi("/subscriptions/reminders", { method: "POST", json: {} }),
     onSuccess: (res: any) => { toast.show(res.message, "Sent ·"); invalidate(); },
   });
+
+  const reqCols: Col<any>[] = [
+    { key: "biz", label: "Business", flex: 2, render: (r) => (
+      <View style={{ flexShrink: 1 }}>
+        <Text style={{ fontFamily: fonts.bold, fontSize: 12.5, color: colors.onSurface }} numberOfLines={1}>{r.business}</Text>
+        <Sub numberOfLines={1}>asked by {r.by || "owner"} · {r.days_waiting}d waiting</Sub>
+      </View>
+    ) },
+    { key: "from", label: "Now on", flex: 0.9, render: (r) => <Sub>{r.current_plan}</Sub> },
+    { key: "want", label: "Wants", flex: 0.9, render: (r) => <Pill label={r.plan_name} tone="ok" /> },
+    { key: "amt", label: "Per month", flex: 1, align: "right", render: (r) => <Fig>{money(r.amount)}</Fig> },
+    { key: "act", label: "", flex: 1.4, align: "right", render: (r) => (
+      <Row gap={6}>
+        <Btn label="Decline" onPress={() => { setDecline(r); setWhy(""); }} testID={`decline-${r.id}`} />
+        <Btn label="Activate 1 month" tone="primary" busy={approve.isPending} onPress={() => approve.mutate(r)} testID={`approve-${r.id}`} />
+      </Row>
+    ) },
+  ];
 
   const cols: Col<any>[] = [
     { key: "biz", label: "Business", flex: 2.2, render: (r) => (
@@ -74,6 +105,12 @@ export default function Subscriptions() {
           <Row gap={10} wrapped>
             <View style={{ flex: 1, minWidth: 280 }}><MetricsRow items={d.data.metrics} /></View>
           </Row>
+          {(reqs.data?.count ?? 0) > 0 ? (
+            <Panel pad={0} title="Plan requests from the app" sub="A shop owner tapped a plan — activating it changes their live limits"
+              testID="plan-requests">
+              <Table cols={reqCols} rows={reqs.data.rows} minWidth={900} empty="Nothing waiting" />
+            </Panel>
+          ) : null}
           <Panel pad={0} title="Renewal queue" sub="Grace period: 14 days after expiry"
             right={<Tabs items={[{ key: "7", label: "Next 7 days" }, { key: "30", label: "30 days" }, { key: "lapsed", label: "Lapsed" }]} value={tab} onChange={setTab} />}>
             <Table cols={cols} rows={d.data.rows} minWidth={1000} empty="Nothing due in this window" />
@@ -93,6 +130,15 @@ export default function Subscriptions() {
               <Input value={days} onChangeText={setDays} placeholder="Days" keyboardType="numeric" width={110} testID="extend-days" />
               <Sub>days from today or from the current expiry, whichever is later.</Sub>
             </Row>
+          </AdminModal>
+
+          <AdminModal visible={!!decline} onClose={() => setDecline(null)} title={`Decline ${decline?.business ?? ""}`}
+            sub="The owner is told why, so say something they can act on." testID="decline-modal"
+            footer={<Row gap={8}>
+              <Btn label="Cancel" onPress={() => setDecline(null)} />
+              <Btn label="Decline request" tone="primary" busy={refuse.isPending} onPress={() => refuse.mutate()} testID="decline-confirm" />
+            </Row>}>
+            <Input value={why} onChangeText={setWhy} placeholder="Reason" testID="decline-why" />
           </AdminModal>
         </>
       )}

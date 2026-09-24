@@ -6,7 +6,7 @@ from bson import ObjectId
 from datetime import timedelta, date, timezone
 import re
 
-from deps import (CurrentUser, biz_filter, clean, db, invoice_paid, invoice_status, now, oid, period_range)
+from deps import (CurrentUser, biz_filter, clean, db, invoice_paid, invoice_status, now, oid, period_range, scoped, shop_qty, shop_scope)
 
 router = APIRouter(prefix="/api")
 
@@ -72,7 +72,9 @@ async def search(user: CurrentUser, q: str = "", kind: str = "all"):
 # ---------------------------------------------------------------- 01.4 notifications
 @router.get("/notifications")
 async def notifications(user: CurrentUser):
-    f = biz_filter(user)
+    f = await scoped(user, "reports")
+    bf = biz_filter(user)
+    sc = await shop_scope(user, "stock")
     today_rows, earlier_rows = [], []
     overdue_count, overdue_amount = 0, 0.0
     async for inv in db.invoices.find({**f, "status": {"$nin": ["draft", "quote"]}}):
@@ -83,12 +85,13 @@ async def notifications(user: CurrentUser):
     if overdue_count:
         today_rows.append({"id": "overdue", "icon": "time-outline", "tone": "warn", "title": f"{overdue_count} invoice{'' if overdue_count == 1 else 's'} went overdue",
                            "sub": f"{round(overdue_amount, 2)} now past due date", "when": "2h", "route": "/(tabs)/sales", "action": "Chase"})
-    async for it in db.items.find(f):
-        if it.get("track_stock", True) and (it.get("quantity") or 0) <= (it.get("alert_below") or 0) and (it.get("alert_below") or 0) > 0:
+    async for it in db.items.find(bf):
+        qty = shop_qty(it, sc["shops"], sc["main"])
+        if it.get("track_stock", True) and qty <= (it.get("alert_below") or 0) and (it.get("alert_below") or 0) > 0:
             today_rows.append({"id": str(it["_id"]), "icon": "cube-outline", "tone": "warn", "title": f"{it['name']} is low",
-                               "sub": f"{it.get('quantity', 0):g} left · threshold is {it.get('alert_below', 0):g}", "when": "4h",
+                               "sub": f"{qty:g} left · threshold is {it.get('alert_below', 0):g}", "when": "4h",
                                "route": f"/stock/{str(it['_id'])}", "action": "Restock"})
-    async for t in db.transfers.find({**f, "state": "pending"}):
+    async for t in db.transfers.find({**bf, "state": "pending"}):
         today_rows.append({"id": str(t["_id"]), "icon": "swap-horizontal-outline", "tone": "info", "title": f"Transfer {t['number']} waiting",
                            "sub": f"{t['from_shop']} → {t['to_shop']} · needs your approval", "when": "5h",
                            "route": f"/transfers/{str(t['_id'])}", "action": "Approve"})
@@ -104,9 +107,55 @@ async def notifications(user: CurrentUser):
 
 
 # ---------------------------------------------------------------- 01.5 activity
+async def activity_route(f: dict, r: dict) -> str:
+    """Every line in the trail opens the thing it happened to."""
+    kind, ref = r.get("kind") or "", r.get("ref_id") or ""
+    valid = bool(ref) and ObjectId.is_valid(ref)
+    if kind in ("invoice", "discount") and valid:
+        return f"/invoices/{ref}"
+    if kind == "sale" and valid:
+        return f"/sales/{ref}"
+    if kind == "payment" and valid:
+        p = await db.payments.find_one({"_id": ObjectId(ref), "business_id": f["business_id"]})
+        cid = (p or {}).get("customer_id")
+        if cid and ObjectId.is_valid(cid):
+            return f"/customers/ledger/{cid}"
+        return "/accounts"
+    if kind == "payment_out" and valid:
+        sp = await db.supplier_payments.find_one({"_id": ObjectId(ref), "business_id": f["business_id"]})
+        sid = (sp or {}).get("supplier_id")
+        return f"/suppliers/{sid}" if sid and ObjectId.is_valid(sid) else "/suppliers"
+    if kind == "stock" and valid:
+        return f"/stock/{ref}"
+    if kind == "transfer" and valid:
+        return f"/transfers/{ref}"
+    if kind == "purchase" and valid:
+        return f"/purchases/{ref}"
+    if kind == "quote" and valid:
+        return f"/quotes/{ref}"
+    if kind == "supplier" and valid:
+        return f"/suppliers/{ref}"
+    if kind == "waybill" and valid:
+        return f"/documents/waybill/{ref}"
+    if kind == "reminder" and valid:
+        return f"/invoices/{ref}"
+    if kind in ("user", "role"):
+        return "/team"
+    if kind == "expense":
+        return "/expenses"
+    if kind == "return":
+        return "/reports/returns"
+    if kind in ("import", "backup"):
+        return "/settings/backup"
+    if kind == "shop":
+        return "/shops"
+    return f"/history/{ref}" if valid else ""
+
+
 @router.get("/activity")
 async def activity(user: CurrentUser, shop: str = "", who: str = "", kind: str = "", period: str = "all"):
-    f = biz_filter(user)
+    f = await scoped(user, "reports", own_field="by")
+    sc = await shop_scope(user, "reports")
     a, b, label = period_range(period)
     q = dict(f)
     if shop:
@@ -118,10 +167,11 @@ async def activity(user: CurrentUser, shop: str = "", who: str = "", kind: str =
     if a:
         q["created_at"] = {"$gte": a, "$lt": b}
     rows = [clean(r) async for r in db.activity.find(q).sort("created_at", -1).limit(120)]
-    biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})
+    for r in rows:
+        r["route"] = await activity_route(f, r)
     people = [u.get("name", "") async for u in db.users.find({"business_id": f["business_id"]})]
     kinds = sorted({r["kind"] for r in rows})
-    return {"rows": rows, "shops": [s["name"] for s in (biz.get("shops") or [])], "people": people, "kinds": kinds, "label": label}
+    return {"rows": rows, "shops": sc["visible"], "people": people, "kinds": kinds, "label": label}
 
 
 # ---------------------------------------------------------------- 01.6 record history

@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
 import { AppBar, Badge, Card, Empty, H4, Kpi, Lbl, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
+import { ExportBar, useReportMeta } from "@/src/components/export";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
 
@@ -22,13 +23,30 @@ export default function Receivables() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const meta = useReportMeta();
   const q = useQuery({ queryKey: ["reports-receivables"], queryFn: () => api("/reports/receivables") });
   const d = q.data;
+
+  const build = () => d && ({
+    ...meta,
+    title: "Receivables & payables",
+    kpis: [{ label: "Owed to you", value: money(d.total) }, { label: "You owe", value: money(d.payables) },
+           { label: "Open invoices", value: String(d.rows.length) }],
+    sections: [
+      { heading: "Ageing",
+        columns: [{ label: "Bucket" }, { label: "Amount", right: true }],
+        rows: BUCKETS.map((b) => [b.label, money(d.buckets[b.key])]),
+        total: ["Total owed to you", money(d.total)] },
+      { heading: "Who owes what",
+        columns: [{ label: "Customer" }, { label: "Invoice" }, { label: "Days late", right: true }, { label: "Due", right: true }],
+        rows: d.rows.map((r: any) => [r.customer, r.number, r.days_overdue > 0 ? r.days_overdue : "—", money(r.due)]) },
+    ],
+  });
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="receivables-screen">
       <AppBar title="Receivables & payables" back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
         {!d ? <Loading /> : (
           <>
             <Row style={{ gap: 8 }}>
@@ -64,6 +82,7 @@ export default function Receivables() {
           </>
         )}
       </ScrollView>
+      <ExportBar build={build} testID="receivables" />
     </View>
   );
 }

@@ -9,6 +9,8 @@ import { useMutation } from "@tanstack/react-query";
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { Av, Btn, Card, Field, H4, Lbl, Sub, Switch } from "@/src/components/ui";
+import { PickerField } from "@/src/components/picker";
+import { CURRENCIES, setCurrency } from "@/src/format";
 import { fonts, makeStyles } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -28,13 +30,15 @@ export default function SetupBusiness() {
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [shop, setShop] = useState("Main branch");
+  const [cur, setCur] = useState("NGN");
   const [track, setTrack] = useState(true);
   const [demo, setDemo] = useState(true);
 
   const m = useMutation({
     mutationFn: async () => {
-      await api("/business", { method: "POST", json: { name, type, currency: "NGN", tin, address, phone, track_stock: track, shop_name: shop } });
+      await api("/business", { method: "POST", json: { name, type, currency: cur, tin, address, phone, track_stock: track, shop_name: shop } });
       if (demo) await api("/seed/demo", { method: "POST" });
+      setCurrency(cur);
       await refresh();
     },
     onSuccess: () => router.replace("/(tabs)"),
@@ -55,7 +59,8 @@ export default function SetupBusiness() {
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <Field testID="biz-type" label="Type" value={type} onPress={() => setType(type === "Retail" ? "Wholesale" : type === "Wholesale" ? "Services" : "Retail")} style={{ flex: 1 }} right={<Sub>⌄</Sub>} />
-            <Field label="Currency" value="₦ NGN" onPress={() => {}} style={{ flex: 1 }} right={<Sub>⌄</Sub>} />
+            <PickerField label="Currency" testID="biz-currency" style={{ flex: 1 }} searchable title="Which currency do you sell in?"
+              value={cur} options={CURRENCIES.map((c) => ({ key: c.code, label: `${c.symbol} ${c.code}`, sub: c.name }))} onPick={setCur} />
           </View>
           <Field testID="biz-tin" label="TIN" value={tin} onChangeText={setTin} placeholder="12345678-0001" mono />
           <Field testID="biz-address" label="Address on invoices" value={address} onChangeText={setAddress} placeholder="14 Awolowo Way, Ikeja, Lagos" />

@@ -256,16 +256,21 @@ export function Divider() {
   return <View style={s.divider} />;
 }
 
-export function Kpi({ label, value, small, tone }: { label: string; value: string; small?: string; tone?: "pos" | "neg" }) {
+export function Kpi({ label, value, small, tone, onPress, footer, testID }: { label: string; value: string; small?: string; tone?: "pos" | "neg"; onPress?: () => void; footer?: React.ReactNode; testID?: string }) {
   const s = useStyles();
   const { colors } = useTheme();
-  return (
+  const body = (
     <View style={s.kpi}>
-      <Lbl>{label}</Lbl>
+      <Row between style={{ alignItems: "flex-start" }}>
+        <Lbl>{label}</Lbl>
+        {onPress ? <Ionicons name="chevron-forward" size={13} color={colors.ink40} /> : null}
+      </Row>
       <Text style={[s.kpiValue, tone === "neg" && { color: colors.coral }, tone === "pos" && { color: colors.green700 }]}>{value}</Text>
       {small ? <Text style={s.kpiSmall}>{small}</Text> : null}
+      {footer}
     </View>
   );
+  return onPress ? <Pressable testID={testID} onPress={onPress} style={({ pressed }) => pressed && { opacity: 0.7 }}>{body}</Pressable> : <View testID={testID}>{body}</View>;
 }
 
 export function Bars({ values, height = 40 }: { values: { v: number; on?: boolean }[]; height?: number }) {

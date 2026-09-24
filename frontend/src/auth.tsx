@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { useQueryClient } from "@tanstack/react-query";
 
 import { api, loginRequest, registerRequest, TOKEN_KEY } from "@/src/api";
+import { setCurrency } from "@/src/format";
 import { storage } from "@/src/utils/storage";
 
 export type User = { id: string; name: string; email: string; business_id: string | null };
@@ -29,7 +30,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const u = await api<User>("/auth/me");
       setUser(u);
-      setBusiness(u.business_id ? await api<Business | null>("/business") : null);
+      const b = u.business_id ? await api<Business | null>("/business") : null;
+      setCurrency(b?.currency);
+      setBusiness(b);
     } catch {
       setUser(null);
       setBusiness(null);

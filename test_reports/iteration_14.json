@@ -1,0 +1,38 @@
+{
+  "summary": "Phase 8 — subscriptions, multi-currency display and report exports all tested end-to-end. BACKEND: test_plans.py 11/11 green (fresh-trial catalogue, 402 on 2nd shop / 3rd team member / 2nd business / transfer / custom role, read-only when renews_at is past while GETs + subscription/request keep working, admin approve flips tenant to Starter with limits {shops:2,users:4} + photos_allowed=false, and owner@tredi.app is grandfathered onto Pro). Added tests/test_plans_extras_iter14.py 4/4 green (DELETE /api/subscription/request clears pending, admin decline without a note = 400, plan matrix well-formed, starter show_photos forced false after activation). Full regression 217 passed + 4 skipped + 3 failures in test_duplicate_invoice.py that only surface when the suite runs sequentially — every one passes in isolation (11.07s green run of that file alone); root cause is test-data contention (they rely on tracked items with stock >= 5 that earlier tests consume), not a plans regression. Pre-existing TEST_ImportItem_iter10_B item swept before regression as instructed. FRONTEND: signed in as owner@tredi.app, /settings/plan shows plan-screen with plan-current-name='Pro', plan-when='Renews in 364 days', all three usage bars, plan-card-{trial,starter,pro}, plan-matrix — zero console errors. Tapped plan-choose-starter, plan-pending appeared ('Starter requested — We are activating it — you keep working in the meantime.'), then plan-withdraw made it disappear. Multi-currency: /settings/business profile-currency opened profile-currency-sheet, picking picker-option-GHS + profile-save persisted, Home rendered ₵ 14,625,085 (no ₦) and every card followed suit; profile-country opened a picker and Ghana option is present. Restored the owner to NGN — Home is back to ₦ 14,625,085. Report exports: on all 8 report screens (/reports/summary, /reports/sales, /reports/pnl, /reports/cashflow, /reports/receivables, /reports/stock, /reports/products, /reports/returns) the {id}-export + {id}-print buttons render, {id}-export-sheet opens, tapping {id}-export-pdf and {id}-export-csv surfaces a green 'file ready' toast with no 'Could not build the file' anywhere and no console exception. Super Admin /admin (desktop 1440x900): superadmin@tredi.app / tredi1234 logs in, /admin/subscriptions renders 'Plan requests from the app' (testID plan-requests) with the seeded pending row plus 6 approve-<id> and 6 decline-<id> buttons. Owner is left on plan=Pro, status=active, currency=NGN, country=NG, active shop='' (All shops), no pending plan request — clean handoff for the user.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_plans.py",
+    "/app/backend/tests/test_plans_extras_iter14.py",
+    "/app/test_reports/pytest/plans_iter14.xml",
+    "/app/test_reports/pytest/plans_extras_iter14.xml",
+    "/app/test_reports/pytest/regression_iter14.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: /app/backend/tests/test_duplicate_invoice.py currently fails when the full suite runs sequentially because it needs a tracked item with quantity >= 5 that earlier tests (like test_pass2_api / test_invoice_money_model) can leave below the threshold. Passes in isolation and does NOT affect the Phase 8 feature. Consider either seeding a dedicated 'DuplicateTest' item with restock >= 10 in the test fixture, or restocking within the fixture before the assertion. Non-blocking for this iteration."
+  ],
+  "critical_code_review_comments": [
+    "plans.py + deps.py cleanly separate the plan catalogue from the enforcement path; the 402 messages always name the current plan + the plan to upgrade to, matching the PDF fix list.",
+    "The read-only-on-lapse guard correctly whitelists POST /api/subscription/request so an owner can never be locked out of paying — verified by test_an_expired_subscription_is_read_only_but_never_hidden.",
+    "Approve flow uses months=max(1, body.months) and 30*months days for renews_at; decline requires body.note.strip() and 400s otherwise — both covered.",
+    "invoice settings correctly force show_photos=false whenever photos_allowed is false, so a tenant that had photos on during trial cannot keep them printing after Starter kicks in — covered by test_starter_photo_flag_is_persisted."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_plans_extras_iter14.py (new)"
+  ],
+  "success_rate": {"backend": "100% for feature scope (11/11 test_plans + 4/4 extras + expired regression); 217/220 in full suite with 3 pre-existing test-data contentions unrelated to plans", "frontend": "100% for tested flows (plan screen, request/withdraw, currency swap + restore, 8 report exports x PDF+CSV, admin plan-requests panel)"},
+  "seed_data_creation": "Registered 1 fresh @example.com owner + business for test_plans_extras_iter14.py (module-scoped, isolated by timestamp). One fresh @example.com tenant seeded via API to give the admin subscriptions panel a live plan request row. All test tenants live outside the demo business and never touched owner@tredi.app.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 8 is fully working. Owner is restored to Pro/NGN/All-shops with no pending request. If future rounds regress the plans path, start with /app/backend/tests/test_plans.py (needs -o addopts= to disable xdist loadscope since the fresh-trial fixture is module-scoped and tests mutate the same tenant). The 3 test_duplicate_invoice.py failures in the full suite are pre-existing seed-data contention (fixture assumes stock >= 5) and pass cleanly in isolation — do not chase them as plans bugs. On the frontend, all report screens use the shared src/report-export.ts + components/export.tsx pair with the {id}-export / {id}-export-sheet / {id}-export-pdf / {id}-export-csv testID convention — reuse those selectors.",
+  "rca_of_issue": "N/A — no functional bugs in the feature under review."
+}

@@ -1,11 +1,53 @@
 import dayjs from "dayjs";
 
-export const NAIRA = "₦";
+// The shop's own currency. Every screen, invoice and receipt reads the symbol
+// from here, so a Ghanaian or Kenyan trader never sees a naira sign.
+export type Currency = { code: string; symbol: string; name: string };
+
+export const CURRENCIES: Currency[] = [
+  { code: "NGN", symbol: "₦", name: "Nigerian naira" },
+  { code: "GHS", symbol: "₵", name: "Ghanaian cedi" },
+  { code: "KES", symbol: "KSh", name: "Kenyan shilling" },
+  { code: "ZAR", symbol: "R", name: "South African rand" },
+  { code: "USD", symbol: "$", name: "US dollar" },
+  { code: "GBP", symbol: "£", name: "British pound" },
+  { code: "EUR", symbol: "€", name: "Euro" },
+  { code: "XOF", symbol: "CFA", name: "West African CFA franc" },
+  { code: "XAF", symbol: "FCFA", name: "Central African CFA franc" },
+  { code: "TZS", symbol: "TSh", name: "Tanzanian shilling" },
+  { code: "UGX", symbol: "USh", name: "Ugandan shilling" },
+  { code: "RWF", symbol: "FRw", name: "Rwandan franc" },
+  { code: "ZMW", symbol: "ZK", name: "Zambian kwacha" },
+  { code: "EGP", symbol: "E£", name: "Egyptian pound" },
+  { code: "CAD", symbol: "C$", name: "Canadian dollar" },
+  { code: "INR", symbol: "₹", name: "Indian rupee" },
+];
+
+let active: Currency = CURRENCIES[0];
+
+/** Called once the business loads, and again whenever the owner changes it. */
+export function setCurrency(code?: string | null) {
+  active = CURRENCIES.find((c) => c.code === String(code ?? "").toUpperCase()) ?? CURRENCIES[0];
+}
+
+export function currency(): Currency {
+  return active;
+}
+
+/** The symbol on its own — for input placeholders and ₦/% toggles. */
+export function sym(): string {
+  return active.symbol;
+}
+
+export function currencyLabel(code?: string | null): string {
+  const c = CURRENCIES.find((x) => x.code === String(code ?? "").toUpperCase()) ?? CURRENCIES[0];
+  return `${c.symbol} ${c.code}`;
+}
 
 export function money(n: number | undefined | null, opts: { symbol?: boolean; decimals?: boolean } = {}): string {
   const v = Math.abs(Number(n) || 0);
   const s = v.toLocaleString("en-NG", { minimumFractionDigits: opts.decimals ? 2 : 0, maximumFractionDigits: opts.decimals ? 2 : 0 });
-  return opts.symbol === false ? s : `${NAIRA} ${s}`;
+  return opts.symbol === false ? s : `${active.symbol} ${s}`;
 }
 
 export function compact(n: number): string {

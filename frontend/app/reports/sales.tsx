@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
-import { AppBar, Card, Chip, Empty, H4, IconBtn, Kpi, Lbl, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
+import { AppBar, Card, Chip, Empty, H4, IconBtn, Kpi, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
+import { ExportBar, useReportMeta } from "@/src/components/export";
 import { PeriodBar, PeriodSheet, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
@@ -21,8 +22,21 @@ export default function SalesSummary() {
   const [group, setGroup] = useState<Group>("day");
   const [sheet, setSheet] = useState(false);
   const { query, shortLabel } = usePeriod();
+  const meta = useReportMeta();
   const q = useQuery({ queryKey: ["reports-sales", query, group], queryFn: () => api(`/reports/sales-summary?${query}&group=${group}`) });
   const d = q.data;
+
+  const build = () => d && ({
+    ...meta,
+    title: `Sales summary — ${GROUPS.find(([k]) => k === group)?.[1].toLowerCase()}`,
+    period: d.label,
+    kpis: [{ label: "Total sales", value: money(d.total) }, { label: "Records", value: String(d.count) }],
+    sections: [{
+      columns: [{ label: GROUPS.find(([k]) => k === group)?.[1] ?? "Line" }, { label: "Records", right: true }, { label: "Amount", right: true }],
+      rows: d.rows.map((r: any) => [r.label, r.count, money(r.amount)]),
+      total: ["Total", d.count, money(d.total)],
+    }],
+  });
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="sales-summary-screen">
@@ -32,7 +46,7 @@ export default function SalesSummary() {
           {GROUPS.map(([k, l]) => <Chip key={k} label={l} on={group === k} onPress={() => setGroup(k)} testID={`sales-group-${k}`} />)}
         </ScrollView>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
         <PeriodBar label={d?.label ?? shortLabel} onPress={() => setSheet(true)} />
         {!d ? <Loading /> : (
           <>
@@ -53,6 +67,7 @@ export default function SalesSummary() {
           </>
         )}
       </ScrollView>
+      <ExportBar build={build} testID="sales-summary" />
       <PeriodSheet visible={sheet} onClose={() => setSheet(false)} />
     </View>
   );

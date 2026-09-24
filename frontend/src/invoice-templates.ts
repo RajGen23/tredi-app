@@ -269,3 +269,60 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   <div class="foot"><span>${esc(brand.footer || "Thank you for your business")}</span>${brand.tredi_mark === false ? "" : madeWith("Made with")}</div>
   </body></html>`;
 }
+
+/** Counter receipt for a quick sale — the paper a walk-in customer takes away.
+ *  Deliberately narrow so it prints on A4 or on an 80mm roll. */
+export function buildReceiptHtml(sale: any, brandIn?: Partial<Brand>): string {
+  const brand = { ...DEFAULT_BRAND, ...(brandIn ?? {}) } as Brand;
+  const c = brand.brand_color || DEFAULT_BRAND.brand_color;
+  const on = readable(c);
+  const b = sale.business ?? {};
+  const t = sale.totals ?? {};
+  const method: Record<string, string> = { cash: "Cash", transfer: "Bank transfer", card: "Card", credit: "On credit" };
+  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;padding:18px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#06241F;background:#fff}
+    .paper{max-width:420px;margin:0 auto}
+    .head{text-align:center;border-bottom:2px solid ${c};padding-bottom:10px}
+    .biz{font-size:18px;font-weight:800;color:${c};letter-spacing:-0.3px}
+    .meta{font-size:11px;color:#6B807D;margin-top:3px;line-height:1.5}
+    .tag{display:inline-block;margin-top:8px;background:${c};color:${on};font-size:11px;font-weight:700;padding:3px 9px;border-radius:5px;letter-spacing:.6px}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th{font-size:9.5px;text-transform:uppercase;letter-spacing:.7px;color:#6B807D;text-align:right;padding:6px 0;border-bottom:1px solid #E3EAE8}
+    th.l,td.l{text-align:left}
+    td{font-size:12px;padding:7px 0;border-bottom:1px dashed #E3EAE8;text-align:right;font-variant-numeric:tabular-nums}
+    .tot{display:flex;justify-content:space-between;font-size:12px;padding:4px 0}
+    .grand{display:flex;justify-content:space-between;background:${c};color:${on};font-size:14px;font-weight:800;padding:9px 10px;border-radius:7px;margin-top:8px}
+    .foot{margin-top:14px;padding-top:9px;border-top:1px solid #E3EAE8;font-size:10.5px;color:#6B807D;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  </style></head><body><div class="paper">
+    <div class="head">
+      ${logoTag(brand, 46)}
+      <div class="biz">${esc(b.name)}</div>
+      <div class="meta">${esc(b.address)}${b.phone ? `<br/>${esc(b.phone)}` : ""}${b.tin ? `<br/>TIN ${esc(b.tin)}` : ""}</div>
+      <div class="tag">SALES RECEIPT</div>
+    </div>
+    <div class="meta" style="margin-top:10px">
+      Receipt <b>${esc(sale.number)}</b><br/>
+      ${longDate(sale.created_at)}${sale.shop ? ` · ${esc(sale.shop)}` : ""}<br/>
+      Customer: ${esc(sale.customer_name || "Cash sale")}${sale.created_by ? `<br/>Served by ${esc(sale.created_by)}` : ""}
+    </div>
+    <table>
+      <thead><tr><th class="l">Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
+      <tbody>${(sale.lines ?? []).map((l: any) => `<tr>
+        <td class="l">${esc(l.name)}${l.unit ? `<div style="font-size:10px;color:#6B807D">${esc(l.unit)}</div>` : ""}</td>
+        <td>${l.quantity}</td><td>${money(l.unit_price, { symbol: false })}</td><td>${money(l.total, { symbol: false })}</td>
+      </tr>`).join("")}</tbody>
+    </table>
+    <div style="margin-top:10px">
+      <div class="tot"><span>Gross total</span><span>${money(t.gross, { symbol: false })}</span></div>
+      ${t.line_discount ? `<div class="tot"><span>Discount</span><span>${money(t.line_discount, { symbol: false })}</span></div>` : ""}
+      ${t.vat ? `<div class="tot"><span>VAT</span><span>${money(t.vat, { symbol: false })}</span></div>` : ""}
+      <div class="grand"><span>Total paid</span><span>${money(t.total)}</span></div>
+      <div class="tot" style="margin-top:6px"><span>Paid by</span><span><b>${method[sale.method] ?? esc(sale.method)}</b>${sale.account_name ? ` · ${esc(sale.account_name)}` : ""}</span></div>
+      ${sale.method === "cash" && sale.tendered ? `<div class="tot"><span>Cash received</span><span>${money(sale.tendered, { symbol: false })}</span></div>
+      <div class="tot"><span>Change given</span><span>${money(sale.change, { symbol: false })}</span></div>` : ""}
+    </div>
+    <div class="foot"><span>Thank you for your business.</span>${brand.tredi_mark === false ? "" : madeWith("Made with")}</div>
+  </div></body></html>`;
+}

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Literal
 from bson import ObjectId
 
-from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, line_totals, log_activity, next_number, now, oid)
+from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, line_totals, log_activity, next_number, now, oid, writing_shop)
 
 router = APIRouter(prefix="/api")
 
@@ -127,16 +127,17 @@ async def create_purchase(data: PurchaseIn, user: CurrentUser):
     lines = [{**l.model_dump(), "total": round(l.quantity * l.unit_cost, 2)} for l in data.lines]
     total = round(sum(l["total"] for l in lines), 2)
     number = await next_number(f["business_id"], "purchase", "PO", 400)
+    shop = await writing_shop(user, data.shop)
     created = now()
     doc = {**f, "supplier_id": data.supplier_id, "supplier_name": sup["name"], "number": number, "lines": lines, "total": total,
            "paid": min(data.paid, total), "account_id": data.account_id, "method": data.method, "due_date": data.due_date,
-           "shop": data.shop, "note": data.note, "created_by": user.get("name", ""), "created_at": created}
+           "shop": shop, "note": data.note, "created_by": user.get("name", ""), "created_at": created}
     res = await db.purchases.insert_one(doc)
     for l in lines:
-        await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "purchase", number, user, sup["name"], data.shop)
+        await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "purchase", number, user, sup["name"], shop)
         if data.update_cost and l.get("item_id") and ObjectId.is_valid(l["item_id"]) and l["unit_cost"]:
             await db.items.update_one({"_id": ObjectId(l["item_id"]), **f}, {"$set": {"cost_price": l["unit_cost"], "updated_at": now()}})
-    await log_activity(f["business_id"], user, "purchase", f"Purchase {number}", sup["name"], total, str(res.inserted_id), data.shop)
+    await log_activity(f["business_id"], user, "purchase", f"Purchase {number}", sup["name"], total, str(res.inserted_id), shop)
     return clean(await db.purchases.find_one({"_id": res.inserted_id}))
 
 
@@ -149,6 +150,32 @@ async def list_purchases(user: CurrentUser):
         d["due"] = round((p.get("total") or 0) - (p.get("paid") or 0), 2)
         out.append(d)
     return {"purchases": out, "total": round(sum(p.get("total") or 0 for p in out), 2), "owed": round(sum(p["due"] for p in out), 2)}
+
+
+@router.get("/purchases/{pid}")
+async def get_purchase(pid: str, user: CurrentUser):
+    """A purchase order opened up: what came in, at what cost, paid from where."""
+    f = biz_filter(user)
+    p = await db.purchases.find_one({"_id": oid(pid), **f})
+    if not p:
+        raise HTTPException(404, "Purchase not found")
+    d = clean(p)
+    d["due"] = round((p.get("total") or 0) - (p.get("paid") or 0), 2)
+    acc = await db.accounts.find_one({"_id": ObjectId(p["account_id"])}) if p.get("account_id") and ObjectId.is_valid(p.get("account_id") or "") else None
+    d["account_name"] = acc["name"] if acc else ("Cash till" if p.get("method") == "cash" else "On credit")
+    sup = await db.suppliers.find_one({"_id": ObjectId(p["supplier_id"])}) if ObjectId.is_valid(p.get("supplier_id") or "") else None
+    d["supplier"] = {"id": str(sup["_id"]), "name": sup.get("name", ""), "phone": sup.get("phone", ""), "email": sup.get("email", "")} if sup else None
+    d["payments"] = []
+    async for sp in db.supplier_payments.find({**f, "supplier_id": p.get("supplier_id")}).sort("created_at", -1):
+        pacc = await db.accounts.find_one({"_id": ObjectId(sp["account_id"])}) if sp.get("account_id") and ObjectId.is_valid(sp.get("account_id") or "") else None
+        d["payments"].append({"id": str(sp["_id"]), "amount": sp["amount"], "account_name": pacc["name"] if pacc else "Cash",
+                              "note": sp.get("note", ""), "date": sp["created_at"].isoformat()})
+    for l in d.get("lines", []):
+        if l.get("item_id") and ObjectId.is_valid(l["item_id"]):
+            it = await db.items.find_one({"_id": ObjectId(l["item_id"])})
+            l["photo_url"] = (it or {}).get("photo_url", "")
+            l["on_hand"] = (it or {}).get("quantity", 0)
+    return d
 
 
 @router.post("/supplier-payments", status_code=201)

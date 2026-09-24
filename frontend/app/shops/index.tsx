@@ -25,7 +25,12 @@ export default function Shops() {
 
   const pick = useMutation({
     mutationFn: (shop: string) => api("/shops/active", { method: "POST", json: { shop } }),
-    onSuccess: (r: any) => { qc.invalidateQueries(); toast.show(r.shop ? `Now working ${r.shop}` : "Showing all shops"); router.back(); },
+    onSuccess: (r: any) => {
+      qc.invalidateQueries();
+      toast.show(r.shop ? `Now working ${r.shop}` : "Showing all shops");
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)");
+    },
     onError: (e: any) => toast.show(e.message),
   });
 
@@ -36,11 +41,13 @@ export default function Shops() {
         {!d ? <Loading /> : (
           <>
             <Card style={{ paddingVertical: 4 }}>
-              <Li testID="shop-all" onPress={() => pick.mutate("")}>
-                <Radio on={!d.active} />
-                <View style={{ flex: 1 }}><H4>All shops</H4><Sub>Combined view · {d.count} branch{d.count === 1 ? "" : "es"}</Sub></View>
-                <Money>{money(d.total)}</Money>
-              </Li>
+              {d.can_see_all ? (
+                <Li testID="shop-all" onPress={() => pick.mutate("")}>
+                  <Radio on={!d.active} />
+                  <View style={{ flex: 1 }}><H4>All shops</H4><Sub>Combined view · {d.count} branch{d.count === 1 ? "" : "es"}</Sub></View>
+                  <Money>{money(d.total)}</Money>
+                </Li>
+              ) : null}
               {d.shops.map((sh: any, i: number) => (
                 <Li key={sh.name} last={i === d.shops.length - 1} testID={`shop-${sh.name}`} onPress={() => pick.mutate(sh.name)}>
                   <Av text={initials(sh.name)} tone={d.active === sh.name ? "green" : "sq"} />
@@ -52,13 +59,19 @@ export default function Shops() {
                 </Li>
               ))}
             </Card>
-            <Btn label="Add a shop" variant="ghost" style={{ marginTop: 12 }} testID="shops-add" onPress={() => router.push("/shops/new")} />
-            <Li last style={{ marginTop: 12 }} testID="shops-overview" onPress={() => router.push("/shops/overview")}>
-              <Av icon="stats-chart-outline" tone="sq" />
-              <View style={{ flex: 1 }}><H4>Compare all shops</H4><Sub>Sales, stock and transfers side by side</Sub></View>
-              <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
-            </Li>
-            <Sub style={{ marginTop: 12 }}>A warehouse is a shop with sales turned off, so permissions and transfers work the same way everywhere.</Sub>
+            {d.can_see_all ? <Btn label="Add a shop" variant="ghost" style={{ marginTop: 12 }} testID="shops-add" onPress={() => router.push("/shops/new")} /> : null}
+            {d.can_see_all ? (
+              <Li last style={{ marginTop: 12 }} testID="shops-overview" onPress={() => router.push("/shops/overview")}>
+                <Av icon="stats-chart-outline" tone="sq" />
+                <View style={{ flex: 1 }}><H4>Compare all shops</H4><Sub>Sales, stock and transfers side by side</Sub></View>
+                <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
+              </Li>
+            ) : null}
+            <Sub style={{ marginTop: 12 }}>
+              {d.can_see_all
+                ? "Sales, stock, expenses and reports all follow the shop you pick here. A warehouse is a shop with sales turned off."
+                : "You work in the shops your owner assigned to you, so every figure you see belongs to them."}
+            </Sub>
           </>
         )}
       </ScrollView>

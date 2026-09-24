@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
 import { AppBar, Card, Empty, H4, Kpi, Lbl, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
+import { ExportBar, useReportMeta } from "@/src/components/export";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
 
@@ -15,13 +16,27 @@ export default function StockReport() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const meta = useReportMeta();
   const q = useQuery({ queryKey: ["reports-stock"], queryFn: () => api("/reports/stock-valuation") });
   const d = q.data;
+
+  const build = () => d && ({
+    ...meta,
+    title: "Stock summary & valuation",
+    kpis: [{ label: "At cost", value: money(d.total) }, { label: "At retail", value: money(d.retail) },
+           { label: "Items", value: String(d.count) }, { label: "Low / out", value: `${d.low} / ${d.out}` }],
+    sections: [{
+      heading: "Valuation",
+      columns: [{ label: "Item" }, { label: "Qty", right: true }, { label: "Unit" }, { label: "Cost each", right: true }, { label: "Value", right: true }],
+      rows: d.rows.map((r: any) => [r.name, r.qty, r.unit, money(r.cost), money(r.value)]),
+      total: ["Total at cost", "", "", "", money(d.total)],
+    }],
+  });
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="stock-report-screen">
       <AppBar title="Stock summary" back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
         {!d ? <Loading /> : (
           <>
             <Row style={{ gap: 8 }}>
@@ -42,6 +57,7 @@ export default function StockReport() {
           </>
         )}
       </ScrollView>
+      <ExportBar build={build} testID="stock-report" />
     </View>
   );
 }

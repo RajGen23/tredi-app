@@ -1,5 +1,5 @@
 """Shared database handle, auth and money helpers used by every router."""
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -11,6 +11,8 @@ from bson import ObjectId
 from pathlib import Path
 import jwt
 import os
+
+import plans as plan_rules
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -64,7 +66,7 @@ def create_access_token(user_id: str) -> str:
     return jwt.encode({"sub": user_id, "iat": n, "exp": n + timedelta(minutes=TOKEN_MINUTES)}, JWT_SECRET, algorithm=JWT_ALG)
 
 
-async def current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> dict:
+async def current_user(request: Request, token: Annotated[str, Depends(oauth2_scheme)]) -> dict:
     unauthorized = HTTPException(401, "Could not validate credentials", headers={"WWW-Authenticate": "Bearer"})
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
@@ -76,10 +78,71 @@ async def current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> dict:
     user = await db.users.find_one({"_id": ObjectId(uid)})
     if not user:
         raise unauthorized
+    await guard_writes(request, user)
     return user
 
 
 CurrentUser = Annotated[dict, Depends(current_user)]
+
+
+# ---------------------------------------------------------------- subscription
+# A lapsed subscription never hides anybody's books: reading stays open, only
+# saving stops. These paths keep working so the owner can always get back in.
+WRITE_ALWAYS_OK = ("/api/auth", "/api/admin", "/api/plans", "/api/subscription",
+                   "/api/shops/active", "/api/businesses/", "/api/settings/lock")
+
+
+def aware(d):
+    """Mongo hands back naive datetimes; every comparison here is in UTC."""
+    if isinstance(d, datetime) and d.tzinfo is None:
+        return d.replace(tzinfo=timezone.utc)
+    return d
+
+
+def subscription_state(biz: dict) -> dict:
+    plan = plan_rules.plan_by_key(biz.get("plan"))
+    trialing = plan["key"] == "trial"
+    started = aware(biz.get("created_at")) or now()
+    if trialing:
+        ends = aware(biz.get("trial_ends_at")) or (started + timedelta(days=plan_rules.TRIAL_DAYS))
+    else:
+        ends = aware(biz.get("renews_at"))
+    days_left = None if ends is None else (ends - now()).days
+    expired = ends is not None and ends <= now()
+    return {"plan": plan["key"], "name": plan["name"], "price": plan["price"], "price_label": plan["price_label"],
+            "cadence": plan["cadence"], "tagline": plan["tagline"], "perks": plan["perks"],
+            "limits": plan["limits"], "features": plan["features"], "trialing": trialing,
+            "status": "expired" if expired else ("trialing" if trialing else "active"),
+            "days_left": days_left, "ends_at": ends.isoformat() if ends else None}
+
+
+async def subscription_of(business_id: str) -> dict:
+    biz = await db.businesses.find_one({"_id": ObjectId(business_id)}) if ObjectId.is_valid(business_id) else None
+    return subscription_state(biz or {})
+
+
+async def guard_writes(request: Request, user: dict):
+    if request.method in ("GET", "HEAD", "OPTIONS") or not user.get("business_id"):
+        return
+    if request.url.path.startswith(WRITE_ALWAYS_OK):
+        return
+    sub = await subscription_of(str(user["business_id"]))
+    if sub["status"] == "expired":
+        raise HTTPException(402, plan_rules.expired_message(plan_rules.plan_by_key(sub["plan"]), sub["trialing"]))
+
+
+async def ensure_limit(user: dict, kind: str, current: int):
+    """Block the create that would take a business past its plan's ceiling."""
+    sub = await subscription_of(str(user["business_id"]))
+    cap = sub["limits"].get(kind)
+    if cap is not None and current >= cap:
+        raise HTTPException(402, plan_rules.limit_message(sub["plan"], kind, cap))
+
+
+async def ensure_feature(user: dict, feature: str):
+    sub = await subscription_of(str(user["business_id"]))
+    if not sub["features"].get(feature):
+        raise HTTPException(402, plan_rules.feature_message(sub["plan"], feature))
 
 
 def public_user(u: dict) -> dict:
@@ -92,6 +155,90 @@ def biz_filter(user: dict) -> dict:
     if not user.get("business_id"):
         raise HTTPException(400, "Set up your business first")
     return {"business_id": str(user["business_id"]), "deleted_at": None}
+
+
+# ---------------------------------------------------------------- shop scoping
+# Every figure in the app belongs to a shop. The owner can look at one shop or
+# at all of them; a rep only ever sees the shops they were given. Records saved
+# before shops existed carry no tag, so they count as the main branch.
+async def business_shops(business_id: str) -> List[str]:
+    biz = await db.businesses.find_one({"_id": ObjectId(business_id)})
+    names = [s.get("name", "") for s in ((biz or {}).get("shops") or []) if s.get("name")]
+    return names or ["Main branch"]
+
+
+async def shop_scope(user: dict, area: str = "sales") -> dict:
+    """Resolve what this user is allowed to see, and what they picked.
+
+    `shops` is None when every shop is in view, otherwise the list to filter on.
+    """
+    f = biz_filter(user)
+    all_shops = await business_shops(f["business_id"])
+    main = all_shops[0]
+    role = user.get("role", "owner")
+    sc = "all" if role == "owner" else ((user.get("scopes") or {}).get(area) or "shop")
+    assigned = [s for s in (user.get("shops") or []) if s in all_shops]
+    locked = sc != "all" and bool(assigned)
+    allowed = assigned if locked else None
+    active = user.get("shop") or ""
+    if active and (allowed is None or active in allowed):
+        sel = [active]
+    else:
+        sel = list(allowed) if allowed else None
+    return {"business_id": f["business_id"], "shops": sel, "main": main, "all": all_shops,
+            "own": sc == "own", "locked": locked, "active": active,
+            "visible": allowed if allowed else all_shops}
+
+
+def scope_clause(sc: dict, user: Optional[dict] = None, own_field: str = "created_by") -> dict:
+    ands = []
+    if sc["shops"] is not None:
+        alts: List[dict] = [{"shop": {"$in": sc["shops"]}}]
+        if sc["main"] in sc["shops"]:
+            alts += [{"shop": {"$in": ["", None]}}, {"shop": {"$exists": False}}]
+        ands.append({"$or": alts})
+    if sc["own"] and user is not None:
+        ands.append({own_field: user.get("name", "")})
+    return {"$and": ands} if ands else {}
+
+
+async def scoped(user: dict, area: str = "sales", own_field: str = "created_by") -> dict:
+    """biz_filter plus the shop (and own-records) clause for this user."""
+    sc = await shop_scope(user, area)
+    return {**biz_filter(user), **scope_clause(sc, user, own_field)}
+
+
+async def writing_shop(user: dict, given: str = "") -> str:
+    """Which shop a new record belongs to."""
+    if given:
+        return given
+    if user.get("shop"):
+        return str(user["shop"])
+    assigned = user.get("shops") or []
+    if len(assigned) == 1:
+        return str(assigned[0])
+    return (await business_shops(str(user["business_id"])))[0]
+
+
+def stock_map(item: dict, main: str) -> dict:
+    """Quantity per shop. Items saved before shops existed sit at the main branch."""
+    rows = item.get("stock")
+    if isinstance(rows, list):
+        return {r.get("shop", ""): (r.get("qty") or 0) for r in rows if r.get("shop")}
+    if isinstance(rows, dict):
+        return {k: (v or 0) for k, v in rows.items() if k}
+    return {main: item.get("quantity", 0) or 0}
+
+
+def stock_rows(m: dict) -> List[dict]:
+    return [{"shop": k, "qty": round(v, 3)} for k, v in m.items()]
+
+
+def shop_qty(item: dict, shops: Optional[List[str]], main: str) -> float:
+    if shops is None:
+        return round(item.get("quantity", 0) or 0, 3)
+    m = stock_map(item, main)
+    return round(sum(m.get(s, 0) for s in shops), 3)
 
 
 # ---------------------------------------------------------------- money math
@@ -145,10 +292,15 @@ async def apply_stock(business_id: str, item_id: Optional[str], qty_delta: float
     item = await db.items.find_one({"_id": ObjectId(item_id), "business_id": business_id})
     if not item or not item.get("track_stock", True):
         return
-    new_qty = round(item.get("quantity", 0) + qty_delta, 3)
-    await db.items.update_one({"_id": item["_id"]}, {"$set": {"quantity": new_qty, "updated_at": now()}})
+    all_shops = await business_shops(business_id)
+    main = all_shops[0]
+    where = shop or user.get("shop") or main
+    m = stock_map(item, main)
+    m[where] = round((m.get(where) or 0) + qty_delta, 3)
+    new_qty = round(sum(m.values()), 3)
+    await db.items.update_one({"_id": item["_id"]}, {"$set": {"quantity": new_qty, "stock": stock_rows(m), "updated_at": now()}})
     await db.movements.insert_one({"business_id": business_id, "item_id": item_id, "kind": kind, "delta": qty_delta, "balance": new_qty, "ref": ref, "note": note,
-                                   "shop": shop, "by": user.get("name", ""), "created_at": now(), "deleted_at": None})
+                                   "shop": where, "by": user.get("name", ""), "created_at": now(), "deleted_at": None})
 
 
 async def customer_balance(business_id: str, customer_id: str) -> float:

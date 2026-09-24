@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Empty, Field, H4, IconBtn, Lbl, Li, Loading, Money, Row, Sub, Switch } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
+import { ExportBar, useReportMeta } from "@/src/components/export";
 import { money, parseNum, shortDate } from "@/src/format";
 import { makeStyles } from "@/src/theme";
 
@@ -25,9 +26,22 @@ export default function Returns() {
   const [reason, setReason] = useState(REASONS[0]);
   const [restock, setRestock] = useState(true);
 
+  const meta = useReportMeta();
   const list = useQuery({ queryKey: ["returns"], queryFn: () => api("/returns") });
   const invoices = useQuery({ queryKey: ["invoices"], queryFn: () => api("/invoices") });
   const invoice = invoices.data?.find((i: any) => i.id === invoiceId);
+
+  const build = () => list.data && ({
+    ...meta,
+    title: "Sales returns",
+    kpis: [{ label: "Returns", value: String(list.data.length) },
+           { label: "Credited back", value: money(list.data.reduce((a: number, r: any) => a + r.total, 0)) }],
+    sections: [{
+      columns: [{ label: "Credit note" }, { label: "Date" }, { label: "Reason" }, { label: "Restocked" }, { label: "Amount", right: true }],
+      rows: list.data.map((r: any) => [r.number, shortDate(r.created_at), r.reason, r.restock ? "Yes" : "No", money(r.total)]),
+      total: ["Total", "", "", "", money(list.data.reduce((a: number, r: any) => a + r.total, 0))],
+    }],
+  });
 
   const save = useMutation({
     mutationFn: () => api("/returns", {
@@ -55,7 +69,7 @@ export default function Returns() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="returns-screen">
       <AppBar title="Sales returns" back right={<IconBtn name="add" testID="returns-add" onPress={() => setOpen(true)} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
         {!list.data ? <Loading /> : list.data.length === 0 ? (
           <Card><Empty icon="return-down-back-outline" title="No returns yet" sub="A return puts stock back and credits the customer." action={<Btn label="Record a return" testID="returns-empty-add" onPress={() => setOpen(true)} />} /></Card>
         ) : (
@@ -74,6 +88,7 @@ export default function Returns() {
         )}
       </ScrollView>
 
+      <ExportBar build={build} testID="returns" />
       <Sheet visible={open} onClose={() => setOpen(false)} testID="return-sheet">
         <H4>Record a return</H4>
         {!invoiceId ? (

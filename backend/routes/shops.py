@@ -2,9 +2,13 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Literal
+from datetime import timedelta
 from bson import ObjectId
 
-from deps import (CurrentUser, apply_stock, biz_filter, clean, db, log_activity, next_number, now, oid, period_range, date_query)
+from plans import TRIAL_DAYS
+
+from deps import (CurrentUser, apply_stock, biz_filter, clean, db, ensure_feature, ensure_limit, log_activity, next_number, now, oid,
+                  period_range, date_query, shop_qty, shop_scope, stock_map)
 
 router = APIRouter(prefix="/api")
 
@@ -62,11 +66,14 @@ class ReceiveIn(BaseModel):
     lines: List[ReceiveLine]
 
 
-async def shop_sales(f: dict, shop: str, a, b) -> float:
+async def shop_sales(f: dict, shop: str, a, b, is_main: bool = False) -> float:
+    """Rows saved before shops existed carry no tag — they belong to the main branch."""
+    names: list = [shop, shop] if not is_main else [shop, "", None]
+    clause = {"shop": {"$in": list(dict.fromkeys(names))}}
     total = 0.0
-    async for inv in db.invoices.find(date_query({**f, "status": {"$nin": ["draft", "quote"]}, "shop": shop}, a, b)):
+    async for inv in db.invoices.find(date_query({**f, "status": {"$nin": ["draft", "quote"]}, **clause}, a, b)):
         total += inv["totals"]["total"]
-    async for s in db.sales.find(date_query({**f, "shop": shop}, a, b)):
+    async for s in db.sales.find(date_query({**f, **clause}, a, b)):
         total += s["totals"]["total"]
     return round(total, 2)
 
@@ -85,18 +92,15 @@ async def list_shops(user: CurrentUser, period: str = "month"):
     f = biz_filter(user)
     biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})
     a, b, label = period_range(period)
-    shops = shop_list(biz)
+    sc = await shop_scope(user, "sales")
+    shops = [s for s in shop_list(biz) if s["name"] in sc["visible"]]
     out = []
-    for sh in shops:
-        sales = await shop_sales(f, sh["name"], a, b)
+    for i, sh in enumerate(shops):
+        sales = await shop_sales(f, sh["name"], a, b, is_main=sh["name"] == sc["main"])
         out.append({**sh, "sales": sales})
-    if out and all(x["sales"] == 0 for x in out):
-        # legacy rows saved without a shop tag belong to the main branch
-        legacy = await shop_sales(f, "", a, b)
-        if legacy:
-            out[0]["sales"] = legacy
     total = round(sum(x["sales"] for x in out), 2)
-    return {"shops": out, "total": total, "label": label, "active": user.get("shop") or "", "count": len(out)}
+    return {"shops": out, "total": total, "label": label, "active": user.get("shop") or "", "count": len(out),
+            "locked": sc["locked"], "can_see_all": not sc["locked"]}
 
 
 @router.post("/shops", status_code=201)
@@ -106,6 +110,7 @@ async def add_shop(data: ShopIn, user: CurrentUser):
     shops = shop_list(biz)
     if any(s["name"].lower() == data.name.lower() for s in shops):
         raise HTTPException(409, "A shop with that name already exists")
+    await ensure_limit(user, "shops", len(shops))
     shops.append(data.model_dump())
     await db.businesses.update_one({"_id": biz["_id"]}, {"$set": {"shops": shops}})
     await log_activity(f["business_id"], user, "shop", f"Shop {data.name} added")
@@ -129,6 +134,11 @@ async def update_shop(name: str, data: ShopIn, user: CurrentUser):
 async def set_active_shop(body: dict, user: CurrentUser):
     biz_filter(user)
     shop = body.get("shop", "")
+    sc = await shop_scope(user, "sales")
+    if shop and shop not in sc["visible"]:
+        raise HTTPException(403, "You are not assigned to that shop")
+    if not shop and sc["locked"]:
+        raise HTTPException(403, "You can only work in the shops you are assigned to")
     await db.users.update_one({"_id": user["_id"]}, {"$set": {"shop": shop}})
     return {"shop": shop}
 
@@ -138,14 +148,12 @@ async def shops_overview(user: CurrentUser, period: str = "month"):
     f = biz_filter(user)
     biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})
     a, b, label = period_range(period)
-    shops = shop_list(biz)
+    sc = await shop_scope(user, "sales")
+    shops = [s for s in shop_list(biz) if s["name"] in sc["visible"]]
     rows = []
     for sh in shops:
-        rows.append({"name": sh["name"], "sells": sh.get("sells", True), "sales": await shop_sales(f, sh["name"], a, b)})
-    if rows and all(r["sales"] == 0 for r in rows):
-        legacy = await shop_sales(f, "", a, b)
-        if legacy:
-            rows[0]["sales"] = legacy
+        rows.append({"name": sh["name"], "sells": sh.get("sells", True),
+                     "sales": await shop_sales(f, sh["name"], a, b, is_main=sh["name"] == sc["main"])})
     total = round(sum(r["sales"] for r in rows), 2)
     stock_value, stock_count = 0.0, 0
     async for i in db.items.find(f):
@@ -187,9 +195,12 @@ async def list_businesses(user: CurrentUser):
 
 @router.post("/businesses", status_code=201)
 async def add_business(data: BusinessCreateIn, user: CurrentUser):
+    await ensure_feature(user, "multi_business")
+    await ensure_limit(user, "businesses",
+                       await db.businesses.count_documents({"owner_id": str(user["_id"]), "deleted_at": None, "archived": {"$ne": True}}))
     doc = {**data.model_dump(exclude={"shop_name", "copy_settings_from"}), "owner_id": str(user["_id"]),
            "shops": [{"name": data.shop_name, "address": data.address, "phone": data.phone, "sells": True, "is_main": True}],
-           "plan": "Free", "created_at": now()}
+           "plan": "trial", "trial_ends_at": now() + timedelta(days=TRIAL_DAYS), "created_at": now()}
     if data.copy_settings_from and ObjectId.is_valid(data.copy_settings_from):
         src = await db.businesses.find_one({"_id": ObjectId(data.copy_settings_from), "owner_id": str(user["_id"])})
         if src:
@@ -247,6 +258,7 @@ async def list_transfers(user: CurrentUser):
 @router.post("/transfers", status_code=201)
 async def create_transfer(data: TransferIn, user: CurrentUser):
     f = biz_filter(user)
+    await ensure_feature(user, "transfers")
     if not data.lines:
         raise HTTPException(400, "Add at least one item")
     if data.from_shop == data.to_shop:

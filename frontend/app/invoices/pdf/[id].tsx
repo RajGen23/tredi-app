@@ -41,7 +41,7 @@ export default function PdfViewer() {
   const chosen: any = settings.data ?? {};
   // The invoice's own photo switch wins over the global default.
   const brand = { ...DEFAULT_BRAND, ...chosen, logo_url: logo,
-    show_photos: q.data?.show_photos ?? chosen.show_photos ?? false,
+    show_photos: chosen.photos_allowed === false ? false : (q.data?.show_photos ?? chosen.show_photos ?? false),
     template: format === "professional" ? "t7" : (chosen.template === "t7" ? "t3" : chosen.template ?? "t3") };
 
   useEffect(() => {

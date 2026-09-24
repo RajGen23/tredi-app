@@ -1,12 +1,15 @@
 // 01.5 Activity — shop · person above every action, the time below it.
 import { useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import dayjs from "dayjs";
 
 import { api } from "@/src/api";
-import { AppBar, Av, Card, Chip, Empty, H4, IonName, Lbl, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
+import Ionicons from "@react-native-vector-icons/ionicons";
+
+import { AppBar, Av, Card, Chip, Empty, H4, IonName, Li, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -24,6 +27,7 @@ export default function Activity() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [shop, setShop] = useState("");
   const [who, setWho] = useState("");
   const [kind, setKind] = useState("");
@@ -59,18 +63,21 @@ export default function Activity() {
         ) : (
           <Card style={{ paddingVertical: 4 }}>
             {d.rows.map((r: any, i: number) => (
-              <Row key={r.id} style={{ gap: 10, paddingVertical: 10, borderBottomWidth: i === d.rows.length - 1 ? 0 : 1, borderBottomColor: colors.border, alignItems: "flex-start" }} testID={`activity-${r.id}`}>
+              <Li key={r.id} last={i === d.rows.length - 1} testID={`activity-${r.id}`}
+                onPress={r.route ? () => router.push(r.route as any) : undefined}
+                style={{ alignItems: "flex-start" }}>
                 <Av icon={ICON[r.kind] ?? "ellipse-outline"} tone="sq" />
                 <View style={{ flex: 1 }}>
                   <Tag>{(r.shop || "Head office")} · {r.by || "—"}</Tag>
                   <Row between><H4 style={{ flex: 1 }}>{r.title}</H4>{r.amount ? <Money tone={r.amount < 0 ? "neg" : undefined}>{money(r.amount)}</Money> : null}</Row>
                   <Sub>{dayjs(r.created_at).format("DD/MM/YYYY, HH:mm")}{r.reason ? ` · ${r.reason}` : r.sub ? ` · ${r.sub}` : ""}</Sub>
                 </View>
-              </Row>
+                {r.route ? <Ionicons name="chevron-forward" size={15} color={colors.ink40} style={{ marginTop: 10 }} /> : null}
+              </Li>
             ))}
           </Card>
         )}
-        <Sub style={{ marginTop: 12 }}>Filters run on all three: shop, person and type.</Sub>
+        <Sub style={{ marginTop: 12 }}>Tap any line to open the invoice, sale, payment or item it happened to.</Sub>
       </ScrollView>
     </View>
   );

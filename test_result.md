@@ -277,3 +277,34 @@ agent_communication:
       - working: true
         agent: "main"
         comment: "Follow-up from the user: the attached professional invoice shows product images. Added item photos end to end — ItemIn/LineIn photo_url, decorate_invoice back-fills from the item, upload on New item and Item detail, tokenised URLs for print, per-invoice photo switch overriding the global default. Verified: uploaded a photo to Adeba Rice via /api/upload + PUT /api/items/{id}, raised an invoice with show_photos, and the PDF screen rendered the thumbnail with correct maths (124,000 gross − 6,200 discount, VAT 8,835, +15,000 shipping = 141,635). Test business profile/footer values left by the testing agent were restored."
+
+  - task: "Phase 8 — subscription plans (pricing screen + real limit enforcement)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/plans.py, /app/backend/routes/billing.py, /app/backend/deps.py, /app/backend/routes/admin.py, /app/frontend/app/settings/plan.tsx, /app/frontend/app/(tabs)/index.tsx, /app/frontend/app/admin/subscriptions/index.tsx"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Three plans in one place (backend/plans.py): Free trial (14 days, 1 shop, 2 users, 1 business, photos print), Starter ₦12,000 (2 shops, 4 users, transfers, photos saved but NOT printed — PDF item 94), Pro ₦38,000 (unlimited shops/users, custom roles, photos, 3 businesses). Enforcement is real: ensure_limit on POST /shops, POST /team, POST /businesses and ensure_feature on POST /transfers, POST /roles, all answering 402 with an actionable sentence. An expired subscription makes the app read-only (guard inside current_user; GET always works, and /auth, /admin, /plans, /subscription, /shops/active, /businesses/{id}/switch, /settings/lock stay writable). No card gateway: POST /api/subscription/request records the ask, and the Super Admin panel (GET/POST /api/admin/plan-requests) activates it, which flips the tenant's live limits. Every existing business was grandfathered onto Pro for a year (scripts/backfill_plans.py) so nothing locked. New screen /settings/plan (current plan, usage bars, plan cards, side-by-side matrix), a Home banner while trialing or expired, and the photo switches on Invoice settings / Templates / invoice review are disabled with the upgrade reason when the plan does not print photos. 11/11 new tests in backend/tests/test_plans.py."
+
+  - task: "Multi-currency display (₦ $ £ ₵ KSh …)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/format.ts, /app/frontend/src/auth.tsx, /app/frontend/app/settings/business.tsx, /app/frontend/app/setup-business.tsx"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "16 currencies in src/format.ts with setCurrency/sym(); AuthProvider sets it from business.currency on load, so money() everywhere (screens, invoices, receipts, exports) prints the shop's own symbol with comma grouping. The dead currency field is now a real searchable picker on Business profile and on Set up business, and picking a country pre-selects its currency (PDF items 96 and 97). Amount placeholders and the ₦/% discount toggles follow the symbol."
+
+  - task: "Report Print + Export (PDF and CSV) on every report"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/report-export.ts, /app/frontend/src/components/export.tsx, /app/frontend/app/reports/*.tsx"
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "One document shape (ReportDoc) renders to a printable A4 HTML or a CSV. Shared <ExportBar /> (Export + Print, with a PDF/CSV sheet) wired into Summary, Sales summary, Profit & loss, Cash flow, Receivables, Stock valuation, Product performance and Returns; each screen maps its own figures into sections with totals. Filenames read Business-Report-Period. Replaces the old placeholder 'Use Print full report for now' toast on P&L (PDF item 92)."
+
+agent_communication:
+  - agent: "main"
+    message: "Pass 10: subscriptions with real enforcement, multi-currency display and report exports. Phase 7 shop separation was verified first (iteration_13, 24/25 backend + frontend). Needs: (1) plan limits on a fresh trial account, (2) the read-only block and that reads still work, (3) the Super Admin activation flow, (4) currency switch reflected across screens and PDFs, (5) Export/Print on all 8 reports."

@@ -1,0 +1,39 @@
+{
+  "summary": "Phase 7 (shop data separation) and print-receipt flow tested end-to-end. Backend: 24/25 phase7 tests pass, 1 skipped (/api/documents 404 — endpoint does not exist, only /api/receipts + /api/waybills live under the documents router). Existing test_shop_scope.py still 5/5 green. Owner switching shops updates dashboard/sales/invoices/expenses/purchases/activity/items correctly with no cross-shop bleed. Writing (sale, expense, invoice) tags the record with the active shop and it is invisible from the other shop. Rep amina@tredi.app is fully boundary-locked: GET /api/shops returns only Surulere with locked=true/can_see_all=false, POST /api/shops/active with 'Ikeja branch' or a non-existent shop returns 403, and her sales/invoices/dashboard only carry Surulere or untagged data. GET /api/sales/{id} returns every field the receipt template needs (lines, totals, method, shop, created_by, business). Frontend: /shops screen exposes shop-all + shop-<name> testIDs, owner sees ₦12,707,300 (Ikeja) / ₦223,233 (Surulere) after switching and totals sum to the All-shops figure ₦12,930,533. Quick sale save flow works: sale-saved-print, sale-saved-share, sale-saved-open all present and tappable with no 'Could not build the receipt' toast and no console exception. /sales/{id} detail screen renders sale-detail-screen, sale-hero, sale-lines, sale-total, sale-print-receipt, sale-share-receipt cleanly. Amina's /shops shows only shop-Surulere (no shop-all, no shop-Ikeja branch, no shops-add) and her home total is ₦223,233, correctly different from owner's All-shops total. Owner left on 'All shops' at end of run.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/documents", "issue": "Returns 404. The review spec lists /api/documents as a scope-target list endpoint, but the documents router only exposes /api/receipts, /api/waybills and /api/business/card. If a unified /api/documents feed is intended it needs to be implemented; otherwise the spec item should be updated to test /api/receipts and /api/waybills instead."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/shops (web)", "issues": ["Tapping a shop tile triggers an in-app 'GO_BACK not handled by any navigator' warning on the web preview because /shops auto-router.back()s after selection but the tab entry has no back stack. Non-blocking, dev-only warning, shop selection still persists correctly. Would produce a poor UX on web deep-links; consider router.replace('/(tabs)/') as fallback when there is no back entry."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase7_shop_scope.py",
+    "/app/test_reports/pytest/phase7_results.xml"
+  ],
+  "action_items": [
+    "Decide whether /api/documents should exist as a unified feed (receipts + waybills + business card) that respects shop scope, or update the Phase 7 spec to point at /api/receipts and /api/waybills.",
+    "On web preview, /shops uses router.back() after picking a shop and prints a dev warning when there is no back stack — replace with a fallback such as router.replace('/(tabs)/') when router.canGoBack() is false."
+  ],
+  "critical_code_review_comments": [
+    "deps.scope_clause is well-designed: untagged records ({shop: '', null, missing}) are only union'd in when the main branch is in the selected list, which correctly makes the main branch the home of pre-shops legacy data without leaking it to non-main shops.",
+    "shop_scope.locked = sc != 'all' and bool(assigned) — a rep with no assigned shops and role != owner would end up with sel=None (all shops) but with `locked=False`. Currently defensive since seeded reps always have at least one assigned shop, but worth guarding to fail closed if scopes[area] is set but shops[] is empty.",
+    "writing_shop falls back to the first business shop when nothing else applies, so an owner writing while on 'All shops' correctly tags the record with the main branch (confirmed by the /sales/{id} detail screen showing 'Recorded at Ikeja branch')."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase7_shop_scope.py (new)"
+  ],
+  "success_rate": {"backend": "96% (24/25 phase7 + 5/5 shop_scope; 1 skip for missing /api/documents)", "frontend": "100% for tested flows"},
+  "seed_data_creation": "Created and self-cleaned 1 sale, 1 expense, 1 invoice, 1 receipt-flow sale via API + UI (deleted after each assertion). One residual TEST_scope_cat expense of ₦500 from a pre-fix run remained in the DB (delete was attempted but not verified — main agent may want to sweep it if strict cleanliness matters).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 7 shop data separation and print-receipt flow are working end-to-end for both owner and rep. The Phase 7 pytest file /app/backend/tests/test_phase7_shop_scope.py MUST be run with -o addopts= (or export PYTEST_ADDOPTS='') to disable the xdist loadscope from pytest.ini — the active shop is server-side state on the user doc, so tests run against it in parallel will corrupt each other. On the frontend, shop switcher lives at /shops (not on the Home header); Home has no shop-* testID, only a business-switcher. If future stories require a Home-header shop label, it will need to be added. Amina is boundary-locked exactly as spec requires. /api/documents is 404 — see minor issue.",
+  "rca_of_issue": "N/A — no functional bugs found. The only red-flag item was the /api/documents 404 which is a spec/implementation mismatch, not a regression: the documents router mounts /api/receipts, /api/waybills, /api/business/card and never a bare /api/documents. Either the spec should say 'receipts + waybills' or the backend should introduce a unified /api/documents endpoint that composes both under the same shop-scope helpers already used by invoicing/purchases."
+}

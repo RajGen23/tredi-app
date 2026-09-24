@@ -1,6 +1,7 @@
 // Charts drawn exactly as in the HTML: paired in/out bars with an axis, a
 // green area spark for cash flow, and the ranked progress rows on 02.3.
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import Ionicons from "@react-native-vector-icons/ionicons";
 import Svg, { Circle, Defs, LinearGradient, Path, Polyline, Stop } from "react-native-svg";
 
 import { Lbl, Money, Prog, Row, Sub } from "@/src/components/ui";
@@ -29,18 +30,33 @@ export function InOutBars({ data, height = 56 }: { data: { label: string; in: nu
   const s = useStyles();
   const { colors } = useTheme();
   const max = Math.max(1, ...data.flatMap((d) => [d.in, d.out]));
+  const totalIn = data.reduce((a, d) => a + d.in, 0);
+  const totalOut = data.reduce((a, d) => a + d.out, 0);
   return (
     <View>
+      <Row between style={{ marginBottom: 8 }}>
+        <View><Lbl>In</Lbl><Money tone="pos" size={13}>{`+ ${compact(totalIn)}`}</Money></View>
+        <View style={{ alignItems: "flex-end" }}><Lbl>Out</Lbl><Money tone="neg" size={13}>{`− ${compact(totalOut)}`}</Money></View>
+      </Row>
       <View style={[s.bars, { height }]} testID="inout-bars">
         {data.flatMap((d, i) => [
-          <View key={`i${i}`} style={[s.bar, s.barOn, { height: `${Math.max(6, (d.in / max) * 100)}%` }]} />,
-          <View key={`o${i}`} style={[s.bar, { height: `${Math.max(6, (d.out / max) * 100)}%` }]} />,
+          <View key={`i${i}`} style={[s.bar, s.barOn, { height: `${d.in > 0 ? Math.max(8, (d.in / max) * 100) : 2}%` }]} />,
+          <View key={`o${i}`} style={[s.bar, { height: `${d.out > 0 ? Math.max(8, (d.out / max) * 100) : 2}%` }]} />,
         ])}
       </View>
-      <Axis labels={data.map((d) => d.label)} />
+      {/* The figure behind each pair, because a short bar on its own says nothing. */}
+      <View style={s.axis}>
+        {data.map((d, i) => (
+          <View key={`${d.label}-${i}`} style={{ flex: 1, alignItems: "center" }}>
+            <Text style={s.axisText}>{d.label}</Text>
+            <Text style={[s.axisText, { color: colors.green700 }]}>{compact(d.in)}</Text>
+            <Text style={[s.axisText, { color: colors.ink60 }]}>{compact(d.out)}</Text>
+          </View>
+        ))}
+      </View>
       <Row style={{ marginTop: 8, gap: 12 }}>
-        <Row style={{ gap: 5 }}><View style={[s.legendDot, { backgroundColor: colors.brandPrimary }]} /><Sub style={{ fontSize: 9.5 }}>In</Sub></Row>
-        <Row style={{ gap: 5 }}><View style={[s.legendDot, { backgroundColor: colors.mint2 }]} /><Sub style={{ fontSize: 9.5 }}>Out</Sub></Row>
+        <Row style={{ gap: 5 }}><View style={[s.legendDot, { backgroundColor: colors.brandPrimary }]} /><Sub style={{ fontSize: 9.5 }}>Money in</Sub></Row>
+        <Row style={{ gap: 5 }}><View style={[s.legendDot, { backgroundColor: colors.mint2 }]} /><Sub style={{ fontSize: 9.5 }}>Money out</Sub></Row>
       </Row>
     </View>
   );
@@ -85,11 +101,11 @@ export function AreaSpark({ points, width = 264, height = 80 }: { points: number
   );
 }
 
-export function RankRow({ rank, name, pct, primary, secondary, tone }: {
-  rank?: number; name: string; pct: number; primary: string; secondary?: string; tone?: "warn" | "bad";
+export function RankRow({ rank, name, pct, primary, secondary, tone, onPress, testID }: {
+  rank?: number; name: string; pct: number; primary: string; secondary?: string; tone?: "warn" | "bad"; onPress?: () => void; testID?: string;
 }) {
   const { colors } = useTheme();
-  return (
+  const body = (
     <Row style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 10 }}>
       {rank ? <Text style={{ fontFamily: fonts.mono, fontSize: 10.5, color: colors.ink40, width: 14 }}>{rank}</Text> : null}
       <View style={{ flex: 1 }}>
@@ -100,8 +116,10 @@ export function RankRow({ rank, name, pct, primary, secondary, tone }: {
         <Money size={11.5}>{primary}</Money>
         {secondary ? <Sub style={{ fontFamily: fonts.mono, fontSize: 10.5, color: colors.ink40 }}>{secondary}</Sub> : null}
       </View>
+      {onPress ? <Ionicons name="chevron-forward" size={14} color={colors.ink40} /> : null}
     </Row>
   );
+  return onPress ? <Pressable testID={testID} onPress={onPress} style={({ pressed }) => pressed && { opacity: 0.7 }}>{body}</Pressable> : body;
 }
 
 export function Ring({ slices, size = 78 }: { slices: { value: number; color: string }[]; size?: number }) {

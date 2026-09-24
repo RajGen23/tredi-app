@@ -12,7 +12,7 @@ import { photoSource, pickAndUploadPhoto } from "@/src/uploads";
 import { AppBar, Av, Btn, Card, Divider, Field, H4, Lbl, Money, Seg, Sub, Switch, Tag } from "@/src/components/ui";
 import { Scanner } from "@/src/components/scanner";
 import { useToast } from "@/src/components/sheet";
-import { money, parseNum, slashDate } from "@/src/format";
+import { money, parseNum, slashDate, sym } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const CATS = ["Grains", "Oils", "Home", "Building", "Drinks", "General"];
@@ -126,8 +126,8 @@ export default function NewItem() {
         ) : (
           <>
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <Field testID="item-cost" label="Cost price" value={cost} onChangeText={setCost} keyboardType="decimal-pad" mono placeholder="₦ 0" style={{ flex: 1 }} />
-              <Field testID="item-sell" label="Selling price" value={sell} onChangeText={setSell} keyboardType="decimal-pad" mono placeholder="₦ 0" style={{ flex: 1 }} autoFocus />
+              <Field testID="item-cost" label="Cost price" value={cost} onChangeText={setCost} keyboardType="decimal-pad" mono placeholder={`${sym()} 0`} style={{ flex: 1 }} />
+              <Field testID="item-sell" label="Selling price" value={sell} onChangeText={setSell} keyboardType="decimal-pad" mono placeholder={`${sym()} 0`} style={{ flex: 1 }} autoFocus />
             </View>
             <Card style={[s.mint, { marginTop: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}>
               <Sub>Margin on retail</Sub><Money tone={margin >= 0 ? "pos" : "neg"} testID="item-margin">{marginPct.toFixed(1)}% · {money(margin)}</Money>
@@ -135,7 +135,7 @@ export default function NewItem() {
             <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Other prices</Lbl>
             <Card style={{ paddingVertical: 9, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 8 }}>
               <View style={{ flex: 1 }}><H4>Wholesale</H4><Tag>Applied to wholesale customers</Tag></View>
-              <Field testID="item-wholesale" value={wholesale} onChangeText={setWholesale} keyboardType="decimal-pad" mono placeholder="₦ 0" style={{ width: 120, minHeight: 40 }} />
+              <Field testID="item-wholesale" value={wholesale} onChangeText={setWholesale} keyboardType="decimal-pad" mono placeholder={`${sym()} 0`} style={{ width: 120, minHeight: 40 }} />
             </Card>
             <Card style={{ marginTop: 6, paddingVertical: 12, paddingHorizontal: 11, borderStyle: "dashed", flexDirection: "row", justifyContent: "space-between" }}><H4 style={{ color: colors.ink60 }}>Add customer-specific price</H4><Text style={{ color: colors.green700, fontFamily: fonts.extrabold }}>＋</Text></Card>
             <Divider />

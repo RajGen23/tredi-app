@@ -12,7 +12,7 @@ import dayjs from "dayjs";
 import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Check, Chip, Divider, Field, H4, IconBtn, Li, Lbl, Money, Prog, Row, Seg, Sub, Switch, Tag } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
-import { initials, money, parseNum } from "@/src/format";
+import { initials, money, parseNum, sym } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Line = { key: string; item_id?: string; name: string; quantity: number; unit_price: number; discount_type: "amount" | "percent"; discount_value: number; note: string; quick_add: boolean; unit: string; photo_url?: string; stock?: number; track?: boolean };
@@ -94,6 +94,7 @@ export default function NewInvoice() {
   const [termsOpen, setTermsOpen] = useState(false);
   const [useCredit, setUseCredit] = useState(false);
   const [showPhotos, setShowPhotos] = useState(false);
+  const photosAllowed = (settingsQ.data as any)?.photos_allowed;
 
   useEffect(() => {
     const st: any = settingsQ.data;
@@ -277,7 +278,7 @@ export default function NewInvoice() {
               <Row between style={{ marginBottom: 5, alignItems: "center" }}>
                 <View style={{ flex: 1 }}><Sub>Shipping fee</Sub><Tag>Delivery or logistics — not taxed</Tag></View>
                 <TextInput testID="review-shipping" value={shipping} onChangeText={setShipping} keyboardType="decimal-pad"
-                  placeholder="₦ 0" placeholderTextColor={colors.ink40}
+                  placeholder={`${sym()} 0`} placeholderTextColor={colors.ink40}
                   style={{ width: 96, textAlign: "right", fontFamily: fonts.monoSemibold, fontSize: 13, color: colors.onSurface, borderWidth: 1, borderColor: ship > 0 ? colors.brandPrimary : colors.border, borderRadius: 9, paddingVertical: 6, paddingHorizontal: 8 }} />
               </Row>
               <Divider />
@@ -321,8 +322,9 @@ export default function NewInvoice() {
               </Li>
               <Li last>
                 <Av icon="image-outline" tone="sq" size={24} />
-                <View style={{ flex: 1 }}><H4 style={{ fontSize: 12.5 }}>Show item photos</H4><Tag>{showPhotos ? "Photos print beside each item" : "Off"}</Tag></View>
-                <Switch on={showPhotos} onChange={setShowPhotos} testID="review-photos" />
+                <View style={{ flex: 1 }}><H4 style={{ fontSize: 12.5 }}>Show item photos</H4>
+                  <Tag>{photosAllowed === false ? "Not on your plan" : showPhotos ? "Photos print beside each item" : "Off"}</Tag></View>
+                <Switch on={showPhotos && photosAllowed !== false} onChange={photosAllowed === false ? undefined : setShowPhotos} testID="review-photos" />
               </Li>
             </Card>
           </ScrollView>
@@ -411,10 +413,10 @@ export default function NewInvoice() {
       {/* 04.20 Discount on whole invoice */}
       <Sheet visible={discOpen} onClose={() => setDiscOpen(false)} testID="invoice-discount-sheet">
         <Row between><H4>Discount on whole invoice</H4><Tag>{customer?.name ?? "Cash sale"}</Tag></Row>
-        <View style={{ marginTop: 11 }}><Seg testID="disc-mode" value={discMode} onChange={(m) => { setDiscMode(m); setDiscDraft(""); }} options={[{ key: "amount", label: "₦ off" }, { key: "percent", label: "% off" }, { key: "final", label: "Final total" }]} /></View>
+        <View style={{ marginTop: 11 }}><Seg testID="disc-mode" value={discMode} onChange={(m) => { setDiscMode(m); setDiscDraft(""); }} options={[{ key: "amount", label: `${sym()} off` }, { key: "percent", label: "% off" }, { key: "final", label: "Final total" }]} /></View>
         <View style={{ marginTop: 10, borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: 11, padding: 12, alignItems: "center" }}>
           <Lbl>{discMode === "final" ? "Make the total" : "Take off"}</Lbl>
-          <TextInput testID="disc-input" value={discDraft} onChangeText={setDiscDraft} keyboardType="decimal-pad" placeholder={discMode === "percent" ? "0 %" : "₦ 0"} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
+          <TextInput testID="disc-input" value={discDraft} onChangeText={setDiscDraft} keyboardType="decimal-pad" placeholder={discMode === "percent" ? "0 %" : `${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
         </View>
         <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
           {(discMode === "percent" ? ["5", "10", "15"] : discMode === "final" ? [String(Math.floor(totals.total / 10000) * 10000), String(Math.floor(totals.total / 1000) * 1000)] : ["5000", "10000", "20000"]).map((v) => <Chip key={v} label={discMode === "percent" ? `${v}%` : money(Number(v))} on={discDraft === v} onPress={() => setDiscDraft(v)} testID={`disc-preset-${v}`} />)}
@@ -464,7 +466,7 @@ function LineDiscount({ line, onChange }: { line: Line; onChange: (patch: Partia
         />
         <Pressable testID={`line-disc-type-${line.key}`} onPress={() => onChange({ discount_type: line.discount_type === "amount" ? "percent" : "amount" })}
           hitSlop={6} style={{ paddingHorizontal: 8, paddingVertical: 5, borderLeftWidth: 1, borderLeftColor: on ? colors.mint2 : colors.border }}>
-          <Text style={{ fontFamily: fonts.bold, fontSize: 12, color: on ? colors.green700 : colors.ink60 }}>{line.discount_type === "percent" ? "%" : "₦"}</Text>
+          <Text style={{ fontFamily: fonts.bold, fontSize: 12, color: on ? colors.green700 : colors.ink60 }}>{line.discount_type === "percent" ? "%" : sym()}</Text>
         </Pressable>
       </View>
     </Row>
@@ -493,7 +495,7 @@ function LineEditor({ line, onClose, onSave, onRemove }: { line: Line; onClose: 
           <Field label="Quantity" value={qty} onChangeText={setQty} keyboardType="decimal-pad" mono style={{ flex: 1 }} testID="line-qty" />
         </View>
         <Card style={{ marginTop: 9 }}>
-          <Row between><Lbl>Discount</Lbl><View style={{ width: 100 }}><Seg testID="line-disc-type" value={dtype} onChange={setDtype} options={[{ key: "amount", label: "₦" }, { key: "percent", label: "%" }]} /></View></Row>
+          <Row between><Lbl>Discount</Lbl><View style={{ width: 100 }}><Seg testID="line-disc-type" value={dtype} onChange={setDtype} options={[{ key: "amount", label: sym() }, { key: "percent", label: "%" }]} /></View></Row>
           <Field value={dval} onChangeText={setDval} keyboardType="decimal-pad" mono placeholder="0" style={{ marginTop: 7 }} testID="line-disc-value" />
           <Row between style={{ marginTop: 7 }}><Sub>That is {pct}% off the line</Sub><Money tone="pos">{money(t.total)}</Money></Row>
         </Card>
@@ -534,7 +536,7 @@ function QuickAdd({ visible, onClose, onAdd }: { visible: boolean; onClose: () =
       <View style={{ gap: 9, marginTop: 9 }}>
         <Field label="Item name" value={name} onChangeText={setName} placeholder="Roofing sheet cutting" autoFocus testID="quick-name" />
         <View style={{ flexDirection: "row", gap: 8 }}>
-          <Field label="Price" value={price} onChangeText={setPrice} keyboardType="decimal-pad" mono placeholder="₦ 0" style={{ flex: 1 }} testID="quick-price" />
+          <Field label="Price" value={price} onChangeText={setPrice} keyboardType="decimal-pad" mono placeholder={`${sym()} 0`} style={{ flex: 1 }} testID="quick-price" />
           <Field label="Quantity" value={qty} onChangeText={setQty} keyboardType="decimal-pad" mono style={{ flex: 1 }} testID="quick-qty" />
         </View>
         <View style={{ flexDirection: "row", gap: 8 }}>

@@ -63,7 +63,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <Ctx.Provider value={value}>
       {children}
       {toast ? (
-        <View style={[s.toast, { bottom: 72 + insets.bottom }]} testID="toast" pointerEvents="none">
+        <View style={[s.toast, { bottom: 72 + insets.bottom, pointerEvents: "none" }]} testID="toast">
           <Ionicons name="checkmark-circle" size={16} color={colors.brandPrimary} />
           <Text style={s.toastText}>
             {toast.accent ? <Text style={{ color: colors.brandPrimary, fontFamily: fonts.bold }}>{toast.accent} </Text> : null}

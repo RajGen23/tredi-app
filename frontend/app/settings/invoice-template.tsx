@@ -257,8 +257,11 @@ export default function InvoiceTemplates() {
 
         <Card style={{ marginTop: 14 }}>
           <Row between>
-            <View style={{ flex: 1 }}><H4>Show product image on invoice</H4><Sub>Item photos print beside each line</Sub></View>
-            <Switch on={!!f.show_photos} onChange={(v) => setF({ ...f, show_photos: v })} testID="templates-show-photos" />
+            <View style={{ flex: 1 }}>
+              <H4>Show product image on invoice</H4>
+              <Sub>{f.photos_allowed === false ? `Photos stay saved on your items, but ${f.plan_name ?? "your plan"} does not print them — upgrade in Plan & billing` : "Item photos print beside each line"}</Sub>
+            </View>
+            <Switch on={!!f.show_photos && f.photos_allowed !== false} onChange={f.photos_allowed === false ? undefined : (v) => setF({ ...f, show_photos: v })} testID="templates-show-photos" />
           </Row>
         </Card>
 

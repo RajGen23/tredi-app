@@ -33,7 +33,17 @@ def _create_seed_invoice_for_duplicate(owner_headers):
     """Idempotent-ish seed invoice used across the duplicate suite."""
     items = requests.get(f"{BASE}/api/items", headers=owner_headers).json()
     tracked = [it for it in items if it.get("track_stock", True) and (it.get("quantity") or 0) >= 5]
-    assert tracked, "Need at least one tracked item with stock >= 5"
+    if not tracked:
+        # A full-suite run sells the demo stock down, so top one item back up
+        # instead of failing on state another test created.
+        any_tracked = [it for it in items if it.get("track_stock", True)]
+        assert any_tracked, "Need at least one tracked item"
+        top = any_tracked[0]
+        tid = top["_id"] if "_id" in top else top.get("id")
+        r = requests.post(f"{BASE}/api/items/{tid}/adjust", headers=owner_headers,
+                          json={"mode": "add", "quantity": 50, "reason": "Test top-up", "note": "duplicate suite"})
+        assert r.status_code in (200, 201), r.text
+        tracked = [{**top, "quantity": (top.get("quantity") or 0) + 50}]
     it = tracked[0]
     custs = requests.get(f"{BASE}/api/customers", headers=owner_headers).json()
     assert custs, "Need at least one customer"

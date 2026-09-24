@@ -11,7 +11,7 @@ import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { AppBar, Btn, Card, Chip, Field, H4, Lbl, Sub, Tag } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
-import { money, parseNum, slashDate } from "@/src/format";
+import { money, parseNum, slashDate, sym } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const CATS = ["Transport & fuel", "Rent", "Salaries", "Utilities", "Repairs", "Supplies", "Other"];
@@ -52,7 +52,7 @@ export default function NewExpense() {
       <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }} bottomOffset={80} keyboardShouldPersistTaps="handled">
         <View style={s.amountBox}>
           <Lbl>Amount</Lbl>
-          <TextInput testID="expense-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="₦ 0" placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
+          <TextInput testID="expense-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder={`${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
         </View>
         <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Category</Lbl>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{CATS.map((c) => <Chip key={c} label={c} on={category === c} onPress={() => setCategory(c)} testID={`expense-cat-${c}`} />)}</View>

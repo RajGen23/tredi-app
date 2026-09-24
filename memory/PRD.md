@@ -169,3 +169,25 @@ User picked each behaviour explicitly:
 - **Bulk photos** (`/stock/photos`): progress card ("N of M items have a photo"), Missing/All filter, tap a tile → camera or gallery → uploads and saves on the spot through the new `PATCH /api/items/{id}/photo` (photo only, so the screen never has to send a whole item). Entry points: the Stock app bar and a nudge card counting items without photos.
 - **Photo-first Quick sale grid**: 2 tiles per row, 118px photo, larger name/price; items without a photo keep the pastel block with a cube glyph. Shared `Photo` component in `src/components/photo.tsx`.
 - **Excel import**: `.xlsx/.xls/.xlsm` read on the phone with SheetJS (first sheet, loose header matching) plus the existing CSV and paste paths — only rows travel to the server, so one validator covers all three. Items accept a `photo_url` column (`ITEM_COLS`, template and commit updated).
+
+## Pass 10 — Subscriptions, multi-currency, report exports
+The user ranked the PDF work himself: shop separation first (done in pass 9b, verified in iteration_13), then subscriptions, then multi-currency, then the quick-sale receipt, then report exports. He chose **"pricing screen + limits only, no payment gateway yet"** and asked me to run straight through all four without stopping.
+
+**Subscription plans (PDF items 93–94).** One catalogue in `/app/backend/plans.py` that the tenant app, every create endpoint and the Super Admin panel all read:
+- **Free trial** — 14 days, 1 shop, 2 people, 1 business, photos print on invoices.
+- **Starter ₦12,000/month** — 2 shops, 4 people, stock transfers; photos stay saved on items but **do not print** (exactly as the PDF asks).
+- **Pro ₦38,000/month** — unlimited shops and people, custom roles, photos, up to 3 businesses.
+
+The ceilings are real, not decoration: `ensure_limit` guards `POST /shops`, `POST /team`, `POST /businesses`; `ensure_feature` guards `POST /transfers`, `POST /roles`. Each refusal is a 402 that names the plan, the ceiling and the plan that lifts it. A lapsed subscription turns the app **read-only** (guard inside `current_user`): every GET keeps working — nobody's books are ever hidden — while writes answer 402, except `/auth`, `/admin`, `/plans`, `/subscription`, `/shops/active`, `/businesses/{id}/switch` and `/settings/lock`, so the owner can always get back in and pay.
+
+No card gateway: `POST /api/subscription/request` records the ask, and the Super Admin panel activates it (`GET/POST /api/admin/plan-requests`, new "Plan requests from the app" panel on SA.6), which flips the tenant's live limits immediately. Every business that already existed was grandfathered onto Pro for a year (`scripts/backfill_plans.py`) so nothing locked; businesses created from now on start the 14-day trial.
+
+New screen **`/settings/plan`** (More → Plan & billing): current plan with status and days left, usage bars for shops/team/businesses that turn red at the ceiling, the three plan cards with perks, and a side-by-side matrix. Home shows a banner while trialing or once expired. The item-photo switches on Invoice settings, Invoice templates and the invoice review step are disabled with the upgrade reason when the plan does not print photos.
+
+**Multi-currency (PDF items 96–97).** 16 currencies in `src/format.ts` with `setCurrency()` / `sym()`; `AuthProvider` sets it from `business.currency`, so `money()` — every screen, every invoice template, every receipt, every export — prints the shop's own symbol with comma grouping. The dead currency field is now a searchable picker on Business profile and on Set up business, and choosing a country pre-selects its currency. Amount placeholders and the ₦/% discount toggles follow the symbol.
+
+**Report exports (PDF item 92).** One document shape (`ReportDoc` in `src/report-export.ts`) renders either a printable A4 HTML or a CSV; the shared `<ExportBar />` (Export + Print, with a PDF/CSV sheet) is wired into all eight reports — Summary, Sales summary, Profit & loss, Cash flow, Receivables, Stock valuation, Product performance, Returns — each mapping its own figures into sections with totals. Files are named `Business-Report-Period`.
+
+**Tested** — `backend/tests/test_plans.py` 11/11 and `test_plans_extras_iter14.py` 4/4; full suite 220 passing; frontend verified on all of the above including a real currency switch to ₵ and back (iteration_14.json). The owner account was left on Pro, NGN, All shops, no pending request.
+
+**The full PDF checklist now lives in `/app/memory/pdf_fix_list.md`** with a status against each of the 97 numbered lines, so the remaining items (invoice page layout, payment page, supplier PO drill-down, bank account detail, expense editing, report drill-downs) are never lost again.

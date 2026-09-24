@@ -11,14 +11,28 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
 import { AppBar, Av, Btn, Card, Chip, Field, H4, Lbl, Li, Loading, Row, Sub } from "@/src/components/ui";
+import { PickerField } from "@/src/components/picker";
 import { useToast } from "@/src/components/sheet";
+import { CURRENCIES, setCurrency } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
 
 const COUNTRIES = [
-  { key: "NG", label: "Nigeria · ₦" },
-  { key: "GH", label: "Ghana · ₵" },
-  { key: "KE", label: "Kenya · KSh" },
-  { key: "ZA", label: "South Africa · R" },
+  { key: "NG", label: "Nigeria", currency: "NGN" },
+  { key: "GH", label: "Ghana", currency: "GHS" },
+  { key: "KE", label: "Kenya", currency: "KES" },
+  { key: "ZA", label: "South Africa", currency: "ZAR" },
+  { key: "TZ", label: "Tanzania", currency: "TZS" },
+  { key: "UG", label: "Uganda", currency: "UGX" },
+  { key: "RW", label: "Rwanda", currency: "RWF" },
+  { key: "ZM", label: "Zambia", currency: "ZMW" },
+  { key: "CI", label: "Côte d’Ivoire", currency: "XOF" },
+  { key: "CM", label: "Cameroon", currency: "XAF" },
+  { key: "EG", label: "Egypt", currency: "EGP" },
+  { key: "GB", label: "United Kingdom", currency: "GBP" },
+  { key: "US", label: "United States", currency: "USD" },
+  { key: "CA", label: "Canada", currency: "CAD" },
+  { key: "IN", label: "India", currency: "INR" },
+  { key: "OT", label: "Somewhere else", currency: "USD" },
 ];
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
@@ -40,7 +54,11 @@ export default function BusinessProfile() {
       tin: f.tin ?? "", address: f.address ?? "", phone: f.phone ?? "", email: f.email ?? "",
       phones: (f.phones ?? []).filter((x: string) => x.trim()), emails: (f.emails ?? []).filter((x: string) => x.trim()),
     } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["business"] }); toast.show("Profile saved — it heads every invoice", "Saved"); },
+    onSuccess: () => {
+      setCurrency(f.currency ?? "NGN");
+      qc.invalidateQueries();
+      toast.show("Profile saved — it heads every invoice", "Saved");
+    },
     onError: (e: any) => toast.show(e.message),
   });
 
@@ -75,12 +93,20 @@ export default function BusinessProfile() {
         <Card>
           <Field label="Business name" value={f.name ?? ""} onChangeText={(v) => setF({ ...f, name: v })} testID="profile-name" />
           <Field label="Tax ID (TIN)" value={f.tin ?? ""} onChangeText={(v) => setF({ ...f, tin: v })} placeholder="12345678-0001" mono style={{ marginTop: 8 }} testID="profile-tin" />
-          <Field label="Country" value={COUNTRIES.find((c) => c.key === (f.country ?? "NG"))?.label ?? "Nigeria · ₦"} style={{ marginTop: 8 }} testID="profile-country"
-            right={<Sub>⌄</Sub>}
-            onPress={() => {
-              const i = COUNTRIES.findIndex((c) => c.key === (f.country ?? "NG"));
-              setF({ ...f, country: COUNTRIES[(i + 1) % COUNTRIES.length].key });
-            }} />
+          <Row style={{ gap: 8, marginTop: 8 }}>
+            <PickerField label="Country" style={{ flex: 1 }} testID="profile-country" searchable
+              value={f.country ?? "NG"}
+              options={COUNTRIES.map((c) => ({ key: c.key, label: c.label }))}
+              onPick={(key) => {
+                const c = COUNTRIES.find((x) => x.key === key);
+                setF({ ...f, country: key, currency: c?.currency ?? f.currency });
+              }} />
+            <PickerField label="Currency" style={{ flex: 1 }} testID="profile-currency" searchable title="Which currency do you sell in?"
+              value={f.currency ?? "NGN"}
+              options={CURRENCIES.map((c) => ({ key: c.code, label: `${c.symbol} ${c.code}`, sub: c.name }))}
+              onPick={(code) => setF({ ...f, currency: code })} />
+          </Row>
+          <Sub style={{ marginTop: 6 }}>Every amount in the app, on your invoices and on your receipts prints in this currency.</Sub>
           <Field label="Registered address" value={f.address ?? ""} onChangeText={(v) => setF({ ...f, address: v })} multiline style={{ marginTop: 8 }} testID="profile-address" />
         </Card>
 

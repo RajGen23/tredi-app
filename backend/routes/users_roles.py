@@ -4,8 +4,8 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Dict, List, Optional, Literal
 from bson import ObjectId
 
-from deps import (CurrentUser, biz_filter, clean, db, hash_password, invoice_paid, invoice_status, log_activity, now, oid,
-                  period_range, date_query, public_user)
+from deps import (CurrentUser, biz_filter, clean, db, ensure_feature, ensure_limit, hash_password, invoice_paid, invoice_status,
+                  log_activity, now, oid, period_range, date_query, public_user)
 
 router = APIRouter(prefix="/api")
 
@@ -134,6 +134,7 @@ async def invite(data: InviteIn, user: CurrentUser):
     email = data.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(409, "Someone already uses that email")
+    await ensure_limit(user, "users", await db.users.count_documents({"business_id": f["business_id"]}))
     base = await resolve_role(f["business_id"], data.role)
     res = await db.users.insert_one({"name": data.name, "email": email, "phone": data.phone, "password_hash": hash_password(data.password),
                                      "business_id": f["business_id"], "role": data.role, "shops": data.shops, "can": base["can"],
@@ -180,6 +181,7 @@ async def roles(user: CurrentUser):
 @router.post("/roles", status_code=201)
 async def create_role(data: RoleIn, user: CurrentUser):
     f = biz_filter(user)
+    await ensure_feature(user, "custom_roles")
     base = await resolve_role(f["business_id"], data.start_from)
     can = {**base["can"], **data.can}
     scopes = {**base["scopes"], **data.scopes}
