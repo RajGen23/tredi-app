@@ -1,5 +1,5 @@
 """Emergent managed object storage — receipt and bill photos."""
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Query
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
@@ -98,8 +98,9 @@ async def _store(user: dict, data: bytes, filename: str, content_type: str) -> d
 
 
 @router.get("/files/{path:path}")
-async def download(path: str, token: Optional[str] = Query(None), authorization: Optional[str] = None):
-    """Reads are authenticated; the web <img> tag can only pass a token in the query string."""
+async def download(path: str, token: Optional[str] = Query(None), authorization: Optional[str] = Header(None)):
+    """Reads are authenticated; an <img> tag can only pass a token in the query
+    string, native <Image> can also send the Authorization header."""
     raw = token or (authorization or "").replace("Bearer ", "")
     if not raw:
         raise HTTPException(401, "Not allowed")

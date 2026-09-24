@@ -42,6 +42,7 @@ type SaleRow = {
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   overdue: { backgroundColor: c.error, borderColor: "#F7D6D7", paddingVertical: 10 },
+  drafts: { backgroundColor: c.warning, borderColor: "#F3E2BE", paddingVertical: 10, marginBottom: 9 },
   num: { fontFamily: fonts.monoSemibold, fontSize: 12.5 },
 }));
 
@@ -113,9 +114,9 @@ export default function Sales() {
     { k: "all", label: `All ${counts.all}` },
     { k: "overdue", label: `Overdue ${counts.overdue}`, dot: colors.coral },
     { k: "unpaid", label: `Unpaid ${counts.unpaid}` },
+    { k: "draft", label: `Drafts ${counts.draft}`, dot: counts.draft ? colors.amber : undefined },
     { k: "paid", label: "Paid" },
     { k: "quick", label: `Quick sale ${counts.quick}` },
-    { k: "draft", label: `Draft ${counts.draft}` },
     { k: "cancelled", label: `Cancelled ${counts.cancelled}` },
     { k: "duplicate", label: `Repeat ${counts.duplicate}` },
   ];
@@ -139,6 +140,18 @@ export default function Sales() {
             {rep ? <Chip label={`Rep: ${rep}`} on onPress={() => setRep("")} testID="invoices-clear-rep" /> : null}
             {shop ? <Chip label={shop} on onPress={() => setShop("")} testID="invoices-clear-shop" /> : null}
           </Row>
+        ) : null}
+        {counts.draft > 0 && filter !== "draft" ? (
+          <Card style={s.drafts} testID="invoices-drafts-card">
+            <Row between>
+              <View style={{ flex: 1 }}>
+                <Lbl style={{ color: colors.amber }}>{counts.draft} draft{counts.draft === 1 ? "" : "s"} waiting</Lbl>
+                <Sub>Saved but not issued — nothing has left your stock yet</Sub>
+              </View>
+              <Btn small variant="ghost" label="Open drafts" testID="invoices-open-drafts" style={{ paddingHorizontal: 12, minHeight: 36, paddingVertical: 8 }}
+                onPress={() => setFilter("draft")} />
+            </Row>
+          </Card>
         ) : null}
         {overdueTotal > 0 ? (
           <Card style={s.overdue} testID="invoices-overdue-card">

@@ -36,6 +36,9 @@ export default function NewPurchase() {
 
   const [supplierId, setSupplierId] = useState<string | null>(params.supplier ?? null);
   const [pickSupplier, setPickSupplier] = useState(!params.supplier);
+  const [newSupplier, setNewSupplier] = useState(false);
+  const [supName, setSupName] = useState("");
+  const [supPhone, setSupPhone] = useState("");
   const [pickItem, setPickItem] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
   const [draft, setDraft] = useState<{ item_id: string | null; name: string; unit: string; qty: string; cost: string } | null>(null);
@@ -76,6 +79,21 @@ export default function NewPurchase() {
       qc.invalidateQueries();
       toast.show(`${money(r.total)} recorded`, r.number);
       router.replace(`/purchases/${r.id}`);
+    },
+    onError: (e: any) => toast.show(e.message),
+  });
+
+  // Add a supplier in the middle of a purchase and come straight back to it.
+  const addSupplier = useMutation({
+    mutationFn: (data: { name: string; phone: string }) => api("/suppliers", { method: "POST", json: data }),
+    onSuccess: (sup: any) => {
+      qc.invalidateQueries({ queryKey: ["suppliers"] });
+      setSupplierId(sup.id);
+      setNewSupplier(false);
+      setPickSupplier(false);
+      setSupName("");
+      setSupPhone("");
+      toast.show(`${sup.name} added — carry on with the purchase`, "Saved.");
     },
     onError: (e: any) => toast.show(e.message),
   });
@@ -149,17 +167,38 @@ export default function NewPurchase() {
         </Row>
       </View>
 
-      <Sheet visible={pickSupplier} onClose={() => setPickSupplier(false)} testID="purchase-supplier-sheet">
-        <H4>Who did you buy from?</H4>
-        {!suppliers.data ? <Loading /> : (suppliers.data.suppliers ?? []).map((x: any, i: number, arr: any[]) => (
-          <Li key={x.id} last={i === arr.length - 1} testID={`purchase-supplier-${x.id}`} onPress={() => { setSupplierId(x.id); setPickSupplier(false); }}>
-            <Av text={initials(x.name)} tone="sq" />
-            <View style={{ flex: 1 }}><H4>{x.name}</H4><Sub>{x.category}</Sub></View>
-            <Money tone={x.owed > 0 ? "neg" : "mut"}>{money(x.owed)}</Money>
-          </Li>
-        ))}
-        <Btn label="Add a new supplier" variant="ghost" small style={{ marginTop: 10 }} testID="purchase-new-supplier"
-          onPress={() => { setPickSupplier(false); router.push("/suppliers/new"); }} />
+      <Sheet visible={pickSupplier} onClose={() => { setPickSupplier(false); setNewSupplier(false); }} testID="purchase-supplier-sheet">
+        {newSupplier ? (
+          <>
+            <H4>New supplier</H4>
+            <Sub style={{ marginTop: 3 }}>Just the name is enough. You come back to this purchase the moment it saves.</Sub>
+            <View style={{ gap: 9, marginTop: 11 }}>
+              <Field label="Supplier name" value={supName} onChangeText={setSupName} placeholder="Dangote Distributors" autoFocus testID="purchase-new-supplier-name" />
+              <Field label="Phone" value={supPhone} onChangeText={setSupPhone} placeholder="+234 803 000 0000" keyboardType="phone-pad" testID="purchase-new-supplier-phone" />
+            </View>
+            <Sub style={{ marginTop: 9 }}>Address, email and opening balance can be filled in later on their profile.</Sub>
+            <Row style={{ gap: 8, marginTop: 12 }}>
+              <Btn small variant="ghost" label="Back" style={{ flex: 1 }} testID="purchase-new-supplier-back" onPress={() => setNewSupplier(false)} />
+              <Btn small label="Save and use on this purchase" style={{ flex: 2 }} disabled={!supName.trim()} loading={addSupplier.isPending} testID="purchase-new-supplier-save"
+                onPress={() => addSupplier.mutate({ name: supName.trim(), phone: supPhone.trim() })} />
+            </Row>
+          </>
+        ) : (
+          <>
+            <H4>Who did you buy from?</H4>
+            {!suppliers.data ? <Loading /> : (suppliers.data.suppliers ?? []).map((x: any, i: number, arr: any[]) => (
+              <Li key={x.id} last={i === arr.length - 1} testID={`purchase-supplier-${x.id}`} onPress={() => { setSupplierId(x.id); setPickSupplier(false); }}>
+                <Av text={initials(x.name)} tone="sq" />
+                <View style={{ flex: 1 }}><H4>{x.name}</H4><Sub>{x.category}</Sub></View>
+                <Money tone={x.owed > 0 ? "neg" : "mut"}>{money(x.owed)}</Money>
+              </Li>
+            ))}
+            <Li last testID="purchase-new-supplier" onPress={() => setNewSupplier(true)}>
+              <Av icon="add" tone="green" />
+              <View style={{ flex: 1 }}><H4>New supplier</H4><Sub>Name and phone only — you stay on this purchase</Sub></View>
+            </Li>
+          </>
+        )}
       </Sheet>
 
       <Sheet visible={pickItem} onClose={() => { setPickItem(false); setDraft(null); }} testID="purchase-item-sheet">

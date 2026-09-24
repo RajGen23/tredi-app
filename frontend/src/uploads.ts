@@ -95,13 +95,12 @@ export async function uploadPhoto(uri: string, name = `photo-${Date.now()}.jpg`,
   return body;
 }
 
-/** Source for <Image>: native sends the header, web needs the token in the query. */
+/** Source for <Image>. The token rides in the query on every platform: several
+ *  screens keep only `src.uri`, which silently dropped the Authorization header
+ *  on the phone and the freshly uploaded photo came back 401 — the upload had
+ *  worked, but the box showed nothing, which read as "upload failed". */
 export async function photoSource(url: string) {
-  const token = await storage.secureGet<string | null>(TOKEN_KEY, null);
-  const absolute = url.startsWith("http") ? url : `${process.env.EXPO_PUBLIC_BACKEND_URL}${url}`;
-  return Platform.OS === "web"
-    ? { uri: `${absolute}${absolute.includes("?") ? "&" : "?"}token=${token ?? ""}` }
-    : { uri: absolute, headers: token ? { Authorization: `Bearer ${token}` } : undefined };
+  return { uri: await photoUrl(url) };
 }
 
 /** Printable URL: generated HTML cannot send a header, so the token rides along. */export async function photoUrl(url: string) {

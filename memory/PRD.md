@@ -260,3 +260,9 @@ shows an alert icon instead of a green tick.
 **Tested** — `backend/tests/test_iter17_upload_base64.py` 9/9 and a full frontend pass
 (iteration_17): 28px under every footer, four sheets covering the whole screen with nothing from
 the page below visible, and a web photo upload that lands.
+
+## Pass 12c — photo display root cause, inline supplier, drafts card (June 2026)
+- **Photos "not uploading"**: the upload itself was landing (201). The failure was on display: `GET /api/files/{path}` declared `authorization` as a plain parameter (a query param, never the header), and `photoSource()` on the phone returned a header-based source that several screens dropped (`setPhotoUri(src.uri)`), so the fresh photo came back 401 and the box stayed empty. Fixed both: `Header(None)` on the backend and `photoSource()` now returns a token-in-query URL on every platform.
+- **New supplier inline on Record purchase**: the supplier sheet has a "New supplier" row that swaps to a name + phone form inside the same sheet; saving selects the supplier and keeps the user on the purchase (was a navigation away to /suppliers/new).
+- **Drafts findable**: Sales tab shows an amber "N drafts waiting" card with "Open drafts" that activates the Drafts chip (now 4th, after Unpaid). Drafts are saved via "Save draft" (step 1 app bar) or "Save as draft" on Review; a draft's detail page has Edit + Confirm & issue.
+- Tested: `backend/tests/test_iter18_photos_auth.py` 8/8, frontend pass (iteration_18).
