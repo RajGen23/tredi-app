@@ -10,6 +10,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Btn, Card, H4, IonName, Lbl, Li, Loading, Row, Sub } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
@@ -17,6 +18,7 @@ export default function Shortcuts() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -42,7 +44,7 @@ export default function Shortcuts() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="shortcuts-screen">
       <AppBar title="Edit shortcuts" close rightText="Done" onRightText={() => save.mutate()} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         <Sub>Up to eight appear on Home. Use the arrows to reorder.</Sub>
         <Lbl style={{ marginTop: 14, marginBottom: 6 }}>On Home</Lbl>
         {!q.data ? <Loading /> : (

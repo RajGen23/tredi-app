@@ -11,6 +11,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Btn, Card, H4, Lbl, Li, Loading, Row, Sub, Switch } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 dayjs.extend(relativeTime);
 
@@ -20,6 +21,7 @@ export default function Backup() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["sync-status"], queryFn: () => api("/sync/status") });
@@ -38,7 +40,7 @@ export default function Backup() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="backup-screen">
       <AppBar title="Backup & sync" back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!d ? <Loading /> : (
           <>
             <Card style={{ alignItems: "center" }} testID="backup-status">

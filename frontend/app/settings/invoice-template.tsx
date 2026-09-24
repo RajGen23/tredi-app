@@ -14,6 +14,7 @@ import { useToast } from "@/src/components/sheet";
 import { LOGO_SIZES, SWATCHES, TEMPLATES, TemplateKey } from "@/src/invoice-templates";
 import { parseNum } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -124,6 +125,7 @@ export default function InvoiceTemplates() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["invoice-settings"], queryFn: () => api("/settings/invoice") });
@@ -183,7 +185,7 @@ export default function InvoiceTemplates() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="invoice-templates-screen">
       <AppBar title="Invoice templates" back rightText="Save" onRightText={() => save.mutate()} rightTextTestID="templates-save-top" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Lbl style={{ marginBottom: 6 }}>Your logo</Lbl>
         <Card>
           <Pressable onPress={pickLogo} testID="templates-logo-upload">

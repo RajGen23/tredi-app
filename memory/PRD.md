@@ -266,3 +266,13 @@ the page below visible, and a web photo upload that lands.
 - **New supplier inline on Record purchase**: the supplier sheet has a "New supplier" row that swaps to a name + phone form inside the same sheet; saving selects the supplier and keeps the user on the purchase (was a navigation away to /suppliers/new).
 - **Drafts findable**: Sales tab shows an amber "N drafts waiting" card with "Open drafts" that activates the Drafts chip (now 4th, after Unpaid). Drafts are saved via "Save draft" (step 1 app bar) or "Save as draft" on Review; a draft's detail page has Edit + Confirm & issue.
 - Tested: `backend/tests/test_iter18_photos_auth.py` 8/8, frontend pass (iteration_18).
+
+## Pass 12d — bottom system-bar overlap (June 2026)
+- **Content ran under the Android navigation bar.** Every non-tab screen set a flat
+  `paddingBottom: 24` on its scroll content, which is less than the 48px three-button
+  navigation bar, so the last row (Save image / Share on Business card, the footnote on
+  Activity, and so on) sat under the system buttons. All 44 such screens now use
+  `useBottomPad()` from `src/safe.ts`; report screens that carry the pinned ExportBar use
+  `pad + 54` (was a flat 94) and the quote detail `pad + 58`; the Super Admin shell adds
+  `pad` under its scroll. Screens with a pinned footer already measured the inset and were
+  left untouched, as were tab screens (the tab bar already pads itself).

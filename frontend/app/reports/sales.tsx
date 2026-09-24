@@ -12,6 +12,7 @@ import { ExportBar, useReportMeta } from "@/src/components/export";
 import { PeriodBar, PeriodSheet, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Group = "day" | "customer" | "product" | "shop" | "rep";
 const GROUPS: [Group, string][] = [["day", "By day"], ["customer", "By customer"], ["product", "By product"], ["shop", "By shop"], ["rep", "By rep"]];
@@ -22,6 +23,7 @@ export default function SalesSummary() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [group, setGroup] = useState<Group>("day");
   const [sheet, setSheet] = useState(false);
@@ -50,7 +52,7 @@ export default function SalesSummary() {
           {GROUPS.map(([k, l]) => <Chip key={k} label={l} on={group === k} onPress={() => setGroup(k)} testID={`sales-group-${k}`} />)}
         </ScrollView>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad + 54 }}>
         <PeriodBar label={d?.label ?? shortLabel} onPress={() => setSheet(true)} />
         {!d ? <Loading /> : (
           <>

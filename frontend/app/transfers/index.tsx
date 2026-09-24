@@ -10,6 +10,7 @@ import { AppBar, Av, Badge, Btn, Card, Chip, Empty, Field, H4, IconBtn, Li, Load
 import { Sheet, useToast } from "@/src/components/sheet";
 import { money, shortDate } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Tab = "pending" | "transit" | "received";
 const BADGE: Record<string, { tone: "due" | "info" | "paid" | "over" | "draft"; label: string }> = {
@@ -26,6 +27,7 @@ export default function Transfers() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -64,7 +66,7 @@ export default function Transfers() {
         </ScrollView>
       </View>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}
         refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}
       >
         {!q.data ? <Loading /> : rows.length === 0 ? (

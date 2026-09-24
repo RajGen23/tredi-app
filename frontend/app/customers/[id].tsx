@@ -9,6 +9,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Card, Divider, H4, IconBtn, IonName, Kpi, Li, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { initials, money } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -21,6 +22,7 @@ export default function CustomerProfile() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useQuery({ queryKey: ["customer", id], queryFn: () => api(`/customers/${id}`) });
@@ -44,7 +46,7 @@ export default function CustomerProfile() {
         </>} />
       </View>
       {!c ? <Card style={{ marginHorizontal: 14 }}><Loading /></Card> : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
           <Card>
             <Row>
               <Av text={initials(c.name)} tone="green" size={40} />

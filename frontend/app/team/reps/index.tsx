@@ -13,6 +13,7 @@ import { AppBar, Av, Badge, Card, Chip, Empty, H4, IconBtn, Lbl, Li, Loading, Mo
 import { SyncStamp } from "@/src/components/sync";
 import { initials, money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Period = "week" | "month" | "last_month" | "year" | "all";
 const LABELS: Record<Period, string> = { week: "This week", month: "This month", last_month: "Last month", year: "This year", all: "All time" };
@@ -23,6 +24,7 @@ export default function RepsPerformance() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [period, setPeriod] = useState<Period>("month");
   const q = useQuery({ queryKey: ["reports-reps", period], queryFn: () => api(`/reports/reps?period=${period}`) });
@@ -38,7 +40,7 @@ export default function RepsPerformance() {
           {(Object.keys(LABELS) as Period[]).map((k) => <Chip key={k} label={LABELS[k]} on={period === k} onPress={() => setPeriod(k)} testID={`reps-period-${k}`} />)}
         </ScrollView>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}
         refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}>
         <SyncStamp at={q.dataUpdatedAt} busy={q.isFetching} onRefresh={q.refetch} testID="reps-sync" />
         {!d ? <Loading /> : (

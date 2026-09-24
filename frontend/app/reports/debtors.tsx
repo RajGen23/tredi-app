@@ -11,6 +11,7 @@ import { AppBar, Av, Badge, Card, Empty, H4, Kpi, Lbl, Li, Loading, Money, Row, 
 import { ExportBar, useReportMeta } from "@/src/components/export";
 import { initials, money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
@@ -18,6 +19,7 @@ export default function Debtors() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const meta = useReportMeta();
   const q = useQuery({ queryKey: ["reports-debtors"], queryFn: () => api("/reports/debtors") });
@@ -40,7 +42,7 @@ export default function Debtors() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="debtors-screen">
       <AppBar title="Debtors" back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad + 54 }}>
         {!d ? <Loading /> : (
           <>
             <Row style={{ gap: 8 }}>

@@ -11,6 +11,7 @@ import { AppBar, Av, Badge, Btn, Card, Divider, H4, IconBtn, Kpi, Lbl, Li, Loadi
 import { useToast } from "@/src/components/sheet";
 import { initials, money } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -21,6 +22,7 @@ export default function Businesses() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -44,7 +46,7 @@ export default function Businesses() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="businesses-screen">
       <AppBar title="Businesses" back right={<IconBtn name="add" testID="businesses-add" onPress={() => router.push("/businesses/new")} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!d ? <Loading /> : (
           <>
             {active ? (

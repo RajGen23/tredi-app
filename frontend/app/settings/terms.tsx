@@ -8,6 +8,7 @@ import { api } from "@/src/api";
 import { AppBar, Badge, Btn, Card, Empty, Field, H4, IconBtn, Lbl, Loading, Row, Sub, Switch } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const blank = { id: "", name: "", payment_structure: "", delivery_condition: "", additional_notes: "", is_default: false, shop: "" };
 
@@ -16,6 +17,7 @@ const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surfa
 export default function Terms() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
   const [edit, setEdit] = useState<typeof blank | null>(null);
@@ -39,7 +41,7 @@ export default function Terms() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="terms-screen">
       <AppBar title="Terms of payment" back right={<IconBtn name="add" testID="terms-add" onPress={() => setEdit({ ...blank })} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!q.data ? <Loading /> : q.data.length === 0 ? (
           <Card>
             <Empty icon="document-text-outline" title="No terms saved yet" sub="Payment structure, delivery condition and additional notes — written once, reused."

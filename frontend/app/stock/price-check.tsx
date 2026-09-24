@@ -14,6 +14,7 @@ import { ScanResultSheet } from "@/src/components/scan-result";
 import { useToast } from "@/src/components/sheet";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -24,6 +25,7 @@ const useStyles = makeStyles((c) => ({
 export default function PriceCheck() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const q = useQuery({ queryKey: ["items"], queryFn: () => api<any[]>("/items") });
@@ -53,7 +55,7 @@ export default function PriceCheck() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="price-check-screen">
       <AppBar back title="Price check" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Card style={[s.mint, { paddingVertical: 10 }]}>
           <Sub>Scan or search to see the price and what is left on the shelf. Nothing is added to a sale and no stock moves.</Sub>
         </Card>

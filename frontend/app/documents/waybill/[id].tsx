@@ -14,6 +14,7 @@ import { buildWaybillHtml } from "@/src/invoice-templates";
 import { pdfName, printHtml, sharePdf } from "@/src/pdf";
 import { money, slashDate } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -24,6 +25,7 @@ export default function Waybill() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const { id, invoice_id } = useLocalSearchParams<{ id: string; invoice_id?: string }>();
   const toast = useToast();
@@ -71,7 +73,7 @@ export default function Waybill() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="waybill-screen">
       <AppBar title="Waybill" back mono right={!isNew ? <IconBtn name="share-outline" testID="waybill-share" onPress={share} /> : undefined} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         {isNew ? (
           <>
             <Card style={form.invoice_id ? s.mint : undefined} testID="waybill-invoice-card">

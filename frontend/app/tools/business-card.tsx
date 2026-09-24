@@ -11,6 +11,7 @@ import { api } from "@/src/api";
 import { AppBar, Badge, Btn, Card, Chip, Field, H4, Lbl, Li, Loading, Row, Sub, Switch } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -25,6 +26,7 @@ export default function BusinessCard() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["card"], queryFn: () => api("/business/card") });
@@ -73,7 +75,7 @@ export default function BusinessCard() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="business-card-screen">
       <AppBar title="Business card" back rightText="Save" onRightText={() => save.mutate()} rightTextTestID="card-save" />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <View style={[s.card, { backgroundColor: bg }]} testID="card-preview">
           <Text style={[s.mark, { color: fg }]}>t</Text>
           <Text style={[s.name, { color: fg }]}>{f.name}</Text>

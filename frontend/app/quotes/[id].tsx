@@ -78,7 +78,7 @@ export default function QuotePreview() {
       <AppBar title={d?.number ?? "Quotation"} back mono right={<IconBtn name="share-outline" testID="quote-share" onPress={share} />} />
       {!d ? <Loading /> : (
         <>
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 100 }}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad + 58 }}>
             <View style={s.doc} testID="quote-doc">
               <Row between>
                 <View><Text style={s.title}>{d.business?.name}</Text><Sub>{d.business?.address}</Sub></View>

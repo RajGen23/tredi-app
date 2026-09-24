@@ -12,6 +12,7 @@ import { AppBar, Av, Badge, Card, H4, IconBtn, IonName, Lbl, Li, Loading, Row, S
 import { PeriodBar, PeriodSheet, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const GROUPS: { title: string; items: { label: string; sub?: string; icon: IonName; route: string; badge?: string; testID: string }[] }[] = [
   { title: "Sales", items: [
@@ -45,6 +46,7 @@ export default function Reports() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [sheet, setSheet] = useState(false);
   const { query, shortLabel, rep } = usePeriod();
@@ -55,7 +57,7 @@ export default function Reports() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="reports-screen">
       <AppBar title="Reports" back right={<IconBtn name="calendar-outline" testID="reports-period" onPress={() => setSheet(true)} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         <PeriodBar label={sum.data?.label ?? shortLabel} onPress={() => setSheet(true)} />
         <Card style={{ marginTop: 9, backgroundColor: colors.deep, borderColor: colors.deep }} testID="reports-glance">
           <Row between>

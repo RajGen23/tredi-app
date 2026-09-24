@@ -12,6 +12,7 @@ import { AddAccountSheet } from "@/src/components/account-form";
 import { useToast } from "@/src/components/sheet";
 import { parseNum } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
@@ -19,6 +20,7 @@ export default function InvoiceSettings() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -46,7 +48,7 @@ export default function InvoiceSettings() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="invoice-settings-screen">
       <AppBar title="Invoice settings" back rightText="Save" onRightText={() => save.mutate()} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Lbl style={{ marginBottom: 6 }}>Numbering</Lbl>
         <Card style={{ gap: 8 }}>
           <Row style={{ gap: 8 }}>

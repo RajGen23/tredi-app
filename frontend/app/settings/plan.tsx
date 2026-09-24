@@ -11,6 +11,7 @@ import { api } from "@/src/api";
 import { AppBar, Badge, BadgeTone, Btn, Card, H4, Lbl, Loading, Money, Prog, Row, Sub, Tag } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const STATUS: Record<string, { label: string; tone: BadgeTone }> = {
   trialing: { label: "Free trial", tone: "info" },
@@ -41,6 +42,7 @@ export default function PlanBilling() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
   const [asking, setAsking] = useState("");
@@ -74,7 +76,7 @@ export default function PlanBilling() {
       <View style={[s.teal, { height: insets.top + 118 }]} />
       <View style={{ paddingTop: insets.top }}><AppBar teal back title="Plan & billing" /></View>
       {!d || !cat.data ? <Card style={{ marginHorizontal: 14 }}><Loading /></Card> : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 28 }}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
           <Card style={s.hero} testID="plan-current">
             <Row between>
               <Lbl>Your plan</Lbl>

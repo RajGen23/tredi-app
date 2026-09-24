@@ -10,6 +10,7 @@ import { AppBar, Av, Badge, Btn, Card, H4, Lbl, Li, Loading, Row, Sub } from "@/
 import { useToast } from "@/src/components/sheet";
 import { initials } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
@@ -17,6 +18,7 @@ export default function RemoveMember() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const toast = useToast();
@@ -38,7 +40,7 @@ export default function RemoveMember() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="remove-member-screen">
       <AppBar title={d ? `Remove ${d.name.split(" ")[0]}` : "Remove"} back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!d ? <Loading /> : (
           <>
             <Card style={{ backgroundColor: colors.warning, borderColor: colors.warning }} testID="remove-warning">

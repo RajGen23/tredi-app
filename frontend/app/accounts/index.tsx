@@ -12,6 +12,7 @@ import { AppBar, Av, Card, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub, Tag }
 import { AddAccountSheet } from "@/src/components/account-form";
 import { money, shortDate } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -22,6 +23,7 @@ export default function Accounts() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const q = useQuery({ queryKey: ["accounts"], queryFn: () => api("/accounts") });
   const d = q.data;
@@ -33,7 +35,7 @@ export default function Accounts() {
         <IconBtn name="arrow-down-outline" testID="accounts-payment-in" onPress={() => router.push("/payments/new")} />
         <IconBtn name="add" testID="accounts-add" onPress={() => setAdd(true)} />
       </>} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}>
         {!d ? <Loading /> : (
           <>
             <Card style={s.deep} testID="accounts-total-card">

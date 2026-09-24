@@ -10,12 +10,14 @@ import { bioState, bioUnlock, type BioState } from "@/src/biometrics";
 import { AppBar, Badge, Btn, Card, Chip, Field, H4, Lbl, Loading, Row, Sub, Switch } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
 export default function LockSettings() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -43,7 +45,7 @@ export default function LockSettings() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="lock-settings-screen">
       <AppBar title="App lock" back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         {!q.data ? <Loading /> : (
           <>
             <Card>

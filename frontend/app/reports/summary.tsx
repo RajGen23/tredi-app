@@ -14,6 +14,7 @@ import { ExportBar, useReportMeta } from "@/src/components/export";
 import { PeriodSheet, PERIODS, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const QUICK = PERIODS.filter((p) => ["month", "last_month", "year", "custom"].includes(p.key));
 
@@ -23,6 +24,7 @@ export default function Summary() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [sheet, setSheet] = useState(false);
   const { query, period, set } = usePeriod();
@@ -64,7 +66,7 @@ export default function Summary() {
           ))}
         </ScrollView>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad + 54 }}>
         {!d ? <Loading /> : (
           <>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>

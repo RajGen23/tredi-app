@@ -9,12 +9,14 @@ import { api } from "@/src/api";
 import { AppBar, Badge, Btn, Card, Chip, Field, H4, Lbl, Li, Row, Sub } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
 export default function Invite() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -38,7 +40,7 @@ export default function Invite() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="invite-screen">
       <AppBar title="Invite someone" close />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Card style={{ gap: 8 }}>
           <Field label="Name" placeholder="Amina Yusuf" value={form.name} onChangeText={(v) => setForm({ ...form, name: v })} testID="invite-name" />
           <Field label="Email" placeholder="amina@shop.com" autoCapitalize="none" keyboardType="email-address" value={form.email} onChangeText={(v) => setForm({ ...form, email: v })} testID="invite-email" />

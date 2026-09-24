@@ -10,6 +10,7 @@ import { AppBar, Av, Badge, Btn, Card, Check, Field, H4, Lbl, Li, Loading, Row, 
 import { Sheet, useToast } from "@/src/components/sheet";
 import { initials } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Scope = "own" | "shop" | "all";
 
@@ -26,6 +27,7 @@ export default function NewRole() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -57,7 +59,7 @@ export default function NewRole() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-role-screen">
       <AppBar title="New role" close rightText="Save" onRightText={() => save.mutate()} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Card style={{ gap: 8 }}>
           <Field label="Role name" placeholder="Senior sales" value={label} onChangeText={setLabel} testID="role-name" />
           <Row between>

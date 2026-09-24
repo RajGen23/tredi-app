@@ -17,6 +17,7 @@ import { AppBar, Av, Badge, Btn, Card, Divider, Field, H4, IconBtn, Li, Lbl, Loa
 import { Sheet, useToast } from "@/src/components/sheet";
 import { compact, money, parseNum, shortDate } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const REASONS = ["Damaged or expired", "Miscount at last stock take", "Theft or loss", "Used internally", "New delivery received"];
 
@@ -37,6 +38,7 @@ export default function ItemDetail() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const qc = useQueryClient();
   const router = useRouter();
   const toast = useToast();
@@ -121,7 +123,7 @@ export default function ItemDetail() {
         </>} />
       </View>
       {!it ? <Card style={{ marginHorizontal: 14 }}><Loading /></Card> : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
           <Card>
             <Row>
               <Pressable testID="item-photo" onPress={setPhoto} disabled={uploading}>

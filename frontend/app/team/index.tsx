@@ -9,6 +9,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, H4, IconBtn, Lbl, Li, Loading, Row, Sub } from "@/src/components/ui";
 import { initials } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
@@ -16,6 +17,7 @@ export default function Team() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const q = useQuery({ queryKey: ["team"], queryFn: () => api("/team") });
   const d = q.data;
@@ -23,7 +25,7 @@ export default function Team() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="team-screen">
       <AppBar title="Users" back right={<IconBtn name="add" testID="team-invite" onPress={() => router.push("/team/invite")} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!d ? <Loading /> : (
           <>
             <Card style={{ paddingVertical: 4 }}>

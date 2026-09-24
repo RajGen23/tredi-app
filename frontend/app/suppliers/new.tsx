@@ -10,12 +10,14 @@ import { AppBar, Btn, Card, Field, Lbl, Row, Sub } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { parseNum } from "@/src/format";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
 export default function NewSupplier() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -35,7 +37,7 @@ export default function NewSupplier() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-supplier-screen">
       <AppBar title="New supplier" close />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Card style={{ gap: 8 }}>
           <Field label="Supplier name" placeholder="Ade Foods Ltd" value={form.name} onChangeText={set("name")} testID="supplier-name" />
           <Field label="Phone" placeholder="+234 802 771 4400" keyboardType="phone-pad" value={form.phone} onChangeText={set("phone")} testID="supplier-phone" />

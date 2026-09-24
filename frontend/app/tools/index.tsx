@@ -8,6 +8,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import { AppBar, Av, Card, Divider, Field, H4, IonName, Lbl, Li, Money, Row, Seg, Sub } from "@/src/components/ui";
 import { money, parseNum } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Tool = "margin" | "discount" | "vat" | "instalments";
 
@@ -26,6 +27,7 @@ export default function Tools() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [tool, setTool] = useState<Tool>("margin");
 
@@ -70,7 +72,7 @@ export default function Tools() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="tools-screen">
       <AppBar title="Tools" back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         {tool === "margin" ? (
           <Card testID="tool-margin">
             <Row between><H4>Margin calculator</H4><Sub>Open</Sub></Row>

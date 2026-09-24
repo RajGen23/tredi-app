@@ -8,6 +8,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
 import { AppBar, Av, Badge, Card, H4, Lbl, Li, Loading, Row, Sub } from "@/src/components/ui";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
@@ -15,6 +16,7 @@ export default function PreviewMember() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useQuery({ queryKey: ["team-preview", id], queryFn: () => api(`/team/${id}/preview`) });
   const d = q.data;
@@ -22,7 +24,7 @@ export default function PreviewMember() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="team-preview-screen">
       <AppBar title={d ? `Preview · ${d.name.split(" ")[0]}` : "Preview"} back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!d ? <Loading /> : (
           <>
             <Card style={{ alignItems: "center" }}>

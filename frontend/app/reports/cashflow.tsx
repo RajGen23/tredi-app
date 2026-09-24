@@ -11,6 +11,7 @@ import { ExportBar, useReportMeta } from "@/src/components/export";
 import { PeriodBar, PeriodSheet, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 const TONE = { cash: "green", bank: "blue", mobile: "mint" } as const;
@@ -19,6 +20,7 @@ const ICON = { cash: "arrow-down-outline", bank: "card-outline", mobile: "phone-
 export default function CashFlow() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const [sheet, setSheet] = useState(false);
   const { query, shortLabel } = usePeriod();
   const meta = useReportMeta();
@@ -46,7 +48,7 @@ export default function CashFlow() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="cashflow-screen">
       <AppBar title="Cash flow" back right={<IconBtn name="calendar-outline" testID="cashflow-period" onPress={() => setSheet(true)} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad + 54 }}>
         <PeriodBar label={d?.label ?? shortLabel} icon="▤" onPress={() => setSheet(true)} />
         {!d ? <Loading /> : (
           <>

@@ -9,12 +9,14 @@ import { api } from "@/src/api";
 import { AppBar, Btn, Card, Field, H4, Row, Sub, Switch } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
 export default function NewShop() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -30,7 +32,7 @@ export default function NewShop() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-shop-screen">
       <AppBar title="Add a shop" close />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Card style={{ gap: 8 }}>
           <Field label="Shop name" placeholder="Surulere" value={form.name} onChangeText={(v) => setForm({ ...form, name: v })} testID="shop-name" />
           <Field label="Address" placeholder="22 Ojuelegba Rd, Lagos" value={form.address} onChangeText={(v) => setForm({ ...form, address: v })} testID="shop-address" />

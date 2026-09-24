@@ -9,6 +9,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Empty, H4, IconBtn, IonName, Lbl, Li, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const TONE = { warn: "coral", info: "blue", good: "green", mut: "sq" } as const;
 
@@ -17,6 +18,7 @@ const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surfa
 export default function Notifications() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const q = useQuery({ queryKey: ["notifications"], queryFn: () => api("/notifications") });
   const d = q.data;
@@ -39,7 +41,7 @@ export default function Notifications() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="notifications-screen">
       <AppBar title="Notifications" back right={<IconBtn name="settings-outline" testID="notifications-settings" onPress={() => router.push("/settings/backup")} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!d ? <Loading /> : (
           <>
             {d.today.length === 0 && d.earlier.length === 0 ? (

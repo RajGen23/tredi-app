@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { adminApi, adminSignOut, adminToken } from "@/src/admin/api";
+import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, radius, useTheme } from "@/src/theme";
 
 export type IonName = React.ComponentProps<typeof Ionicons>["name"];
@@ -356,6 +357,7 @@ export function AdminShell({ title, sub, actions, children, search, onSearch, te
   const s = useStyles();
   const { colors } = useTheme();
   const { wide } = useWide();
+  const pad = useBottomPad();
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -435,7 +437,7 @@ export function AdminShell({ title, sub, actions, children, search, onSearch, te
           {actions}
           <Pill label="PRODUCTION" tone="ok" />
         </View>
-        <ScrollView contentContainerStyle={{ padding: wide ? 20 : 14, gap: 12, maxWidth: 1360, width: "100%" }} testID="admin-scroll">
+        <ScrollView contentContainerStyle={{ padding: wide ? 20 : 14, paddingBottom: (wide ? 20 : 14) + pad, gap: 12, maxWidth: 1360, width: "100%" }} testID="admin-scroll">
           {onSearch && !wide ? <Input value={search ?? ""} onChangeText={onSearch} placeholder="Search…" icon="search-outline" testID="admin-search-narrow" /> : null}
           {guard.isLoading ? <Loading label="Checking your admin session" /> : children}
         </ScrollView>

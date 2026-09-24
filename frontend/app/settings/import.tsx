@@ -13,6 +13,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Field, H4, Lbl, Li, Loading, Row, Seg, Sub } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Target = "customers" | "items";
 type Rows = { row: number; values: Record<string, string> }[];
@@ -55,6 +56,7 @@ export default function Import() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
   const [target, setTarget] = useState<Target>("customers");
@@ -107,7 +109,7 @@ export default function Import() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="import-screen">
       <AppBar title={`Import ${target}`} back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Seg testID="import-target" value={target} onChange={(v) => { setTarget(v); setReport(null); }}
           options={[{ key: "customers", label: "Customers" }, { key: "items", label: "Stock items" }]} />
 

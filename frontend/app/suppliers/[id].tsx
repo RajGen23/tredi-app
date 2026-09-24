@@ -10,6 +10,7 @@ import { AppBar, Av, Badge, Btn, Card, Empty, Field, H4, IconBtn, Kpi, Lbl, Li, 
 import { Sheet, useToast } from "@/src/components/sheet";
 import { initials, money, parseNum, shortDate } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -22,6 +23,7 @@ export default function SupplierProfile() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const toast = useToast();
@@ -52,7 +54,7 @@ export default function SupplierProfile() {
         <AppBar title="Supplier" back teal right={<IconBtn teal name="ellipsis-horizontal" testID="supplier-more" />} />
       </View>
       {!d ? <Loading /> : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
           <Row style={{ gap: 10, marginBottom: 12 }}>
             <Av text={initials(d.name)} tone="white" size={46} />
             <View style={{ flex: 1 }}>

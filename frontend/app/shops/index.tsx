@@ -10,6 +10,7 @@ import { AppBar, Av, Badge, Btn, Card, H4, Li, Loading, Money, Radio, Row, Sub }
 import { useToast } from "@/src/components/sheet";
 import { initials, money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
@@ -17,6 +18,7 @@ export default function Shops() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -37,7 +39,7 @@ export default function Shops() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="shops-screen">
       <AppBar title="Switch shop" back right={<Badge tone="info">{d?.count ?? 0} branches</Badge>} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!d ? <Loading /> : (
           <>
             <Card style={{ paddingVertical: 4 }}>

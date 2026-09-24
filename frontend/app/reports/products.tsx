@@ -12,6 +12,7 @@ import { ExportBar, useReportMeta } from "@/src/components/export";
 import { PeriodBar, PeriodSheet, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Tab = "top" | "slow" | "profit";
 
@@ -20,6 +21,7 @@ const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surfa
 export default function Products() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("top");
   const [sheet, setSheet] = useState(false);
@@ -52,7 +54,7 @@ export default function Products() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="products-screen">
       <AppBar title="Product performance" back right={<IconBtn name="calendar-outline" testID="products-period" onPress={() => setSheet(true)} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad + 54 }}>
         <PeriodBar label={shortLabel} onPress={() => setSheet(true)} />
         <View style={{ marginTop: 9 }}>
           <Seg

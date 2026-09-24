@@ -10,6 +10,7 @@ import { AppBar, Av, Badge, Btn, Card, Check, H4, Lbl, Li, Loading, Row, Sub, Sw
 import { Sheet, useToast } from "@/src/components/sheet";
 import { initials } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Scope = "own" | "shop" | "all";
 const SCOPE_HINT: Record<string, Record<Scope, string>> = {
@@ -32,6 +33,7 @@ export default function Permissions() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const toast = useToast();
@@ -54,7 +56,7 @@ export default function Permissions() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="permissions-screen">
       <AppBar title={state.name} back rightText="Save" onRightText={() => save.mutate()} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         <Card>
           <Row style={{ gap: 10 }}>
             <Av text={initials(state.name)} tone="sq" size={40} />

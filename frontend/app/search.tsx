@@ -10,6 +10,7 @@ import { api } from "@/src/api";
 import { Av, Badge, Card, Chip, Empty, H4, Lbl, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { initials, money } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Kind = "all" | "customers" | "invoices" | "items";
 
@@ -23,6 +24,7 @@ export default function Search() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<Kind>("all");
@@ -43,7 +45,7 @@ export default function Search() {
           ))}
         </ScrollView>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         {q.trim().length < 2 ? (
           <Card><Empty icon="search-outline" title="Type at least two letters" sub="Search spans customers, invoices, items and suppliers at once." /></Card>
         ) : res.isLoading ? <Loading /> : !d || d.total === 0 ? (

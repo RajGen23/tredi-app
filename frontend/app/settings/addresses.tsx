@@ -8,6 +8,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, Empty, Field, H4, IconBtn, Lbl, Li, Loading, Row, Sub, Switch } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const KINDS: { key: "shop" | "billing" | "delivery" | "contact"; label: string }[] = [
   { key: "shop", label: "Shop" },
@@ -21,6 +22,7 @@ const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surfa
 export default function Addresses() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -45,7 +47,7 @@ export default function Addresses() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="addresses-screen">
       <AppBar title="Addresses & numbers" back right={<IconBtn name="add" testID="addresses-add" onPress={() => setOpen(true)} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!q.data ? <Loading /> : q.data.length === 0 ? (
           <Card>
             <Empty icon="location-outline" title="No addresses yet" sub="Add the shop, billing and delivery details that print on your documents."

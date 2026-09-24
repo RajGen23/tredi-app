@@ -11,6 +11,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Card, Chip, Empty, H4, IconBtn, Kpi, Lbl, Li, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { initials, money, shortDate } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Period = "week" | "month" | "last_month" | "year" | "all";
 const LABELS: Record<Period, string> = { week: "This week", month: "This month", last_month: "Last month", year: "This year", all: "All time" };
@@ -22,6 +23,7 @@ export default function RepTransactions() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [period, setPeriod] = useState<Period>("month");
@@ -39,7 +41,7 @@ export default function RepTransactions() {
           {(Object.keys(LABELS) as Period[]).map((k) => <Chip key={k} label={LABELS[k]} on={period === k} onPress={() => setPeriod(k)} testID={`rep-period-${k}`} />)}
         </ScrollView>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!d ? <Loading /> : (
           <>
             <Card testID="rep-detail-card">

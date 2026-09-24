@@ -12,6 +12,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import { AppBar, Av, Card, Chip, Empty, H4, IonName, Li, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const ICON: Record<string, IonName> = {
   invoice: "receipt-outline", sale: "flash-outline", payment: "arrow-down-outline", payment_out: "arrow-up-outline",
@@ -27,6 +28,7 @@ export default function Activity() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [shop, setShop] = useState("");
   const [who, setWho] = useState("");
@@ -55,7 +57,7 @@ export default function Activity() {
         </ScrollView>
       </View>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}
         refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}
       >
         {!d ? <Loading /> : d.rows.length === 0 ? (

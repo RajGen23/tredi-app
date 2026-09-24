@@ -9,6 +9,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, Empty, H4, IconBtn, Kpi, Li, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { initials, money, shortDate } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Tab = "all" | "owing" | "settled";
 
@@ -18,6 +19,7 @@ export default function Suppliers() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("all");
   const q = useQuery({ queryKey: ["suppliers"], queryFn: () => api("/suppliers") });
@@ -34,7 +36,7 @@ export default function Suppliers() {
     <View style={[s.root, { paddingTop: insets.top }]} testID="suppliers-screen">
       <AppBar title="Suppliers" back right={<IconBtn name="add" testID="suppliers-add" onPress={() => router.push("/suppliers/new")} />} />
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}
         refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}
       >
         {!d ? <Loading /> : (

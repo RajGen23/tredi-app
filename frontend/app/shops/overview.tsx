@@ -9,6 +9,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, H4, Kpi, Lbl, Li, Loading, Money, Prog, Row, Sub } from "@/src/components/ui";
 import { initials, money } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -19,6 +20,7 @@ export default function ShopsOverview() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const q = useQuery({ queryKey: ["shops-overview"], queryFn: () => api("/shops/overview") });
   const d = q.data;
@@ -27,7 +29,7 @@ export default function ShopsOverview() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="shops-overview-screen">
       <AppBar title="All shops" back right={<Badge tone="info">{d?.shop_count ?? 0} combined</Badge>} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!d ? <Loading /> : (
           <>
             <Card testID="overview-total">

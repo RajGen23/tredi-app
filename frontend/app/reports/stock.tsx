@@ -9,12 +9,14 @@ import { AppBar, Card, Empty, H4, Kpi, Lbl, Li, Loading, Money, Row, Sub } from 
 import { ExportBar, useReportMeta } from "@/src/components/export";
 import { money } from "@/src/format";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
 export default function StockReport() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const meta = useReportMeta();
   const q = useQuery({ queryKey: ["reports-stock"], queryFn: () => api("/reports/stock-valuation") });
@@ -36,7 +38,7 @@ export default function StockReport() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="stock-report-screen">
       <AppBar title="Stock summary" back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad + 54 }}>
         {!d ? <Loading /> : (
           <>
             <Row style={{ gap: 8 }}>

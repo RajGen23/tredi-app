@@ -16,6 +16,7 @@ import { SyncStamp } from "@/src/components/sync";
 import { PickerField } from "@/src/components/picker";
 import { money, shortDate } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Period = "month" | "last_month" | "week" | "all";
 const ICONS: Record<string, IonName> = { Rent: "home-outline", "Transport & fuel": "car-outline", Salaries: "people-outline", Utilities: "flash-outline", Repairs: "build-outline" };
@@ -27,6 +28,7 @@ export default function Expenses() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [period, setPeriod] = useState<Period>("month");
   const [rep, setRep] = useState("");
@@ -60,7 +62,7 @@ export default function Expenses() {
           {(Object.keys(PERIOD_LABELS) as Period[]).map((k) => <Chip key={k} label={PERIOD_LABELS[k]} on={period === k} onPress={() => setPeriod(k)} testID={`expenses-period-${k}`} />)}
         </ScrollView>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => { q.refetch(); allQ.refetch(); }} tintColor={colors.brandPrimary} />}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => { q.refetch(); allQ.refetch(); }} tintColor={colors.brandPrimary} />}>
         <Row between>
           <SyncStamp at={q.dataUpdatedAt} busy={q.isFetching} onRefresh={() => { q.refetch(); allQ.refetch(); }} testID="expenses-sync" />
           {rep ? <Chip label={`Rep: ${rep}`} on onPress={() => setRep("")} testID="expenses-rep-chip" /> : null}

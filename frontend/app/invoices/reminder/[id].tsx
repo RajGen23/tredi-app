@@ -10,12 +10,14 @@ import { AppBar, Av, Badge, Btn, Card, Field, H4, Lbl, Li, Loading, Row, Sub, Sw
 import { useToast } from "@/src/components/sheet";
 import { money, shortDate } from "@/src/format";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
 export default function Reminder() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const toast = useToast();
@@ -46,7 +48,7 @@ export default function Reminder() {
     <View style={[s.root, { paddingTop: insets.top }]} testID="reminder-screen">
       <AppBar title={d?.number ?? "Reminder"} back mono />
       {!d ? <Loading /> : (
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
           <Card>
             <H4>Send a payment reminder</H4>
             <Row between style={{ marginTop: 8 }}>

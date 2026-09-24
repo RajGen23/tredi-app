@@ -9,6 +9,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Empty, H4, IconBtn, Li, Lbl, Loading, Money, Row, Seg, Sub } from "@/src/components/ui";
 import { initials, money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -19,6 +20,7 @@ export default function Customers() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [seg, setSeg] = useState<"all" | "active" | "unpaid">("all");
   const q = useQuery({ queryKey: ["customers"], queryFn: () => api<any[]>("/customers") });
@@ -33,7 +35,7 @@ export default function Customers() {
       <View style={{ paddingHorizontal: 14 }}>
         <Seg testID="customers-seg" value={seg} onChange={setSeg} options={[{ key: "all", label: `All ${all.length}` }, { key: "active", label: `Active ${all.filter((c) => c.open_invoices > 0 || c.balance !== 0).length}` }, { key: "unpaid", label: `Unpaid ${all.filter((c) => c.balance > 0).length}` }]} />
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 9, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 9, paddingBottom: pad }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}>
         <Card style={s.deepCard} testID="customers-owed-card">
           <Row between>
             <View><Lbl style={{ color: colors.onDeepMuted }}>You are owed</Lbl><Money tone="white" size={17}>{money(owed)}</Money></View>

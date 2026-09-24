@@ -12,6 +12,7 @@ import { ExportBar, useReportMeta } from "@/src/components/export";
 import { PeriodBar, PeriodSheet, usePeriod } from "@/src/period";
 import { money } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -26,6 +27,7 @@ export default function Pnl() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const [sheet, setSheet] = useState(false);
   const { query, shortLabel } = usePeriod();
@@ -51,7 +53,7 @@ export default function Pnl() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="pnl-screen">
       <AppBar title="Profit & loss" back right={<IconBtn name="calendar-outline" testID="pnl-period" onPress={() => setSheet(true)} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad + 54 }}>
         <PeriodBar label={d?.label ?? shortLabel} onPress={() => setSheet(true)} />
         {!d ? <Loading /> : (
           <>

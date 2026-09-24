@@ -12,6 +12,7 @@ import { AppBar, Av, Badge, Btn, Card, Chip, Empty, Field, H4, IconBtn, Lbl, Li,
 import { Sheet, useToast } from "@/src/components/sheet";
 import { money, parseNum, shortDate } from "@/src/format";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 type Tab = "all" | "unlinked";
 
@@ -30,6 +31,7 @@ function Thumb({ url, style }: { url: string; style: any }) {
 export default function Receipts() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("all");
@@ -103,7 +105,7 @@ export default function Receipts() {
           <Chip label={`Not attached ${q.data?.unlinked ?? 0}`} on={tab === "unlinked"} onPress={() => setTab("unlinked")} testID="receipts-tab-unlinked" />
         </ScrollView>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {busy ? <Loading label="Uploading the photo" /> : null}
         {!q.data ? <Loading /> : rows.length === 0 ? (
           <Card>

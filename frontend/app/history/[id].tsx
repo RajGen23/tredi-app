@@ -9,6 +9,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Card, Empty, H4, IonName, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const ICON: Record<string, IonName> = {
   invoice: "receipt-outline", payment: "arrow-down-outline", discount: "pricetag-outline", reminder: "chatbubble-ellipses-outline",
@@ -21,6 +22,7 @@ export default function History() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useQuery({ queryKey: ["history", id], queryFn: () => api(`/history/${id}`) });
   const d = q.data;
@@ -28,7 +30,7 @@ export default function History() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="history-screen">
       <AppBar title="History" back />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         {!d ? <Loading /> : (
           <>
             <Card>

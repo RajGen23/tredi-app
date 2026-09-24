@@ -10,6 +10,7 @@ import { Sheet, useToast } from "@/src/components/sheet";
 import { ExportBar, useReportMeta } from "@/src/components/export";
 import { money, parseNum, shortDate } from "@/src/format";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const REASONS = ["Damaged on delivery", "Wrong item", "Customer changed mind", "Expired", "Short supply"];
 
@@ -18,6 +19,7 @@ const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surfa
 export default function Returns() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -69,7 +71,7 @@ export default function Returns() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="returns-screen">
       <AppBar title="Sales returns" back right={<IconBtn name="add" testID="returns-add" onPress={() => setOpen(true)} />} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 94 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad + 54 }}>
         {!list.data ? <Loading /> : list.data.length === 0 ? (
           <Card><Empty icon="return-down-back-outline" title="No returns yet" sub="A return puts stock back and credits the customer." action={<Btn label="Record a return" testID="returns-empty-add" onPress={() => setOpen(true)} />} /></Card>
         ) : (

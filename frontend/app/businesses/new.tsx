@@ -9,6 +9,7 @@ import { api } from "@/src/api";
 import { AppBar, Badge, Btn, Card, Chip, Field, H4, Lbl, Li, Row, Sub } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { makeStyles } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const TYPES = ["Retail", "Wholesale", "Services", "Pharmacy", "Building materials"];
 
@@ -17,6 +18,7 @@ const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surfa
 export default function NewBusiness() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -34,7 +36,7 @@ export default function NewBusiness() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-business-screen">
       <AppBar title="Add a business" close />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Card style={{ gap: 8 }}>
           <Field label="Business name" placeholder="Adaeze Pharmacy" value={form.name} onChangeText={(v) => setForm({ ...form, name: v })} testID="business-name" />
           <Field label="TIN" placeholder="12345678-0001" value={form.tin} onChangeText={(v) => setForm({ ...form, tin: v })} testID="business-tin" />

@@ -15,6 +15,7 @@ import { PickerField } from "@/src/components/picker";
 import { useToast } from "@/src/components/sheet";
 import { CURRENCIES, setCurrency } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
+import { useBottomPad } from "@/src/safe";
 
 const COUNTRIES = [
   { key: "NG", label: "Nigeria", currency: "NGN" },
@@ -41,6 +42,7 @@ export default function BusinessProfile() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
@@ -88,7 +90,7 @@ export default function BusinessProfile() {
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="business-profile-screen">
       <AppBar title="Business profile" back rightText="Save" onRightText={() => save.mutate()} />
-      <KeyboardAwareScrollView bottomOffset={24} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 26 }}>
+      <KeyboardAwareScrollView bottomOffset={24} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
         <Lbl style={{ marginBottom: 6 }}>Registered details</Lbl>
         <Card>
           <Field label="Business name" value={f.name ?? ""} onChangeText={(v) => setF({ ...f, name: v })} testID="profile-name" />
