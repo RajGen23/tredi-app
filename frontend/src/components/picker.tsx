@@ -14,20 +14,27 @@ const useStyles = makeStyles((c) => ({
   head: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8, minHeight: 36 },
   plus: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
   plusOn: { backgroundColor: c.sqAv },
-  addBox: { gap: 8, padding: 10, borderRadius: 12, backgroundColor: c.faint, borderWidth: 1, borderColor: c.border, marginBottom: 10 },
   search: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: c.border, borderRadius: 11, paddingHorizontal: 11, minHeight: 42, marginBottom: 8 },
   input: { flex: 1, fontFamily: fonts.medium, fontSize: 13, color: c.onSurface, paddingVertical: 8 },
 }));
 
-export function Picker({ visible, onClose, title, options, value, onPick, onAdd, addLabel = "Add a new one", searchable, testID }: {
+export type AddField = { key: string; label: string; placeholder?: string; keyboardType?: "default" | "phone-pad" | "email-address" | "numeric"; multiline?: boolean };
+
+export function Picker({ visible, onClose, title, options, value, onPick, onAdd, addLabel = "Add a new one", addTitle, addFields = [], addHint, addBusy, searchable, testID }: {
   visible: boolean;
   onClose: () => void;
   title: string;
   options: Option[];
   value?: string | null;
   onPick: (key: string) => void;
-  onAdd?: (label: string) => void;
+  onAdd?: (label: string, extra: Record<string, string>) => void;
   addLabel?: string;
+  /** Heading shown while the add form is open (defaults to addLabel). */
+  addTitle?: string;
+  /** Extra inputs under the name, e.g. phone and notes for a supplier. */
+  addFields?: AddField[];
+  addHint?: string;
+  addBusy?: boolean;
   searchable?: boolean;
   testID?: string;
 }) {
@@ -35,64 +42,86 @@ export function Picker({ visible, onClose, title, options, value, onPick, onAdd,
   const { colors } = useTheme();
   const [term, setTerm] = useState("");
   const [adding, setAdding] = useState("");
+  const [extra, setExtra] = useState<Record<string, string>>({});
   const list = useMemo(
     () => (term.trim() ? options.filter((o) => o.label.toLowerCase().includes(term.trim().toLowerCase())) : options),
     [options, term],
   );
 
   const [addOpen, setAddOpen] = useState(false);
-  const close = () => { setTerm(""); setAdding(""); setAddOpen(false); onClose(); };
+  const close = () => { setTerm(""); setAdding(""); setExtra({}); setAddOpen(false); onClose(); };
+  const save = () => {
+    const trimmed: Record<string, string> = {};
+    for (const f of addFields) trimmed[f.key] = (extra[f.key] ?? "").trim();
+    onAdd?.(adding.trim(), trimmed);
+    close();
+  };
 
   return (
     <Sheet visible={visible} onClose={close} testID={testID ?? "picker-sheet"}>
       <View style={s.head}>
-        <H4 style={{ flex: 1 }}>{title}</H4>
+        <H4 style={{ flex: 1 }}>{addOpen ? addTitle ?? addLabel : title}</H4>
         {onAdd ? (
-          <Pressable onPress={() => setAddOpen((v) => !v)} style={[s.plus, addOpen && s.plusOn]} testID="picker-add-toggle" accessibilityLabel={addLabel} hitSlop={6}>
+          <Pressable onPress={() => setAddOpen((v) => !v)} style={[s.plus, addOpen && s.plusOn]} testID="picker-add-toggle" accessibilityLabel={addOpen ? "Back to list" : addLabel} hitSlop={6}>
             <Ionicons name={addOpen ? "close" : "add"} size={20} color={addOpen ? colors.onSurface : colors.onBrandPrimary} />
           </Pressable>
         ) : null}
       </View>
       {onAdd && addOpen ? (
-        <View style={s.addBox}>
+        // The add form replaces the list so the whole thing stays above the keyboard.
+        <View style={{ gap: 9 }}>
           <Field label={addLabel} value={adding} onChangeText={setAdding} placeholder="Type a new name" autoFocus testID="picker-add-input" />
-          <Btn small label="Add and use it" disabled={!adding.trim()} testID="picker-add-save"
-            onPress={() => { onAdd(adding.trim()); close(); }} />
-        </View>
-      ) : null}
-      {searchable ? (
-        <View style={s.search}>
-          <Ionicons name="search-outline" size={16} color={colors.ink60} />
-          <TextInput value={term} onChangeText={setTerm} placeholder="Search" placeholderTextColor={colors.ink40} style={s.input} testID="picker-search" />
-        </View>
-      ) : null}
-      <View style={{ maxHeight: 380 }}>
-        <ScrollView keyboardShouldPersistTaps="handled">
-          {list.length === 0 ? (
-            <Sub style={{ paddingVertical: 12 }}>
-              Nothing matches “{term}”.{onAdd ? " Tap + to add it." : ""}
-            </Sub>
-          ) : null}
-          {list.map((o, i) => (
-            <Li key={o.key} last={i === list.length - 1} testID={`picker-option-${o.key}`} onPress={() => { onPick(o.key); close(); }}>
-              <Radio on={value === o.key} />
-              <View style={{ flex: 1 }}><H4>{o.label}</H4>{o.sub ? <Sub>{o.sub}</Sub> : null}</View>
-            </Li>
+          {addFields.map((f) => (
+            <Field key={f.key} label={f.label} value={extra[f.key] ?? ""} onChangeText={(v) => setExtra((e) => ({ ...e, [f.key]: v }))}
+              placeholder={f.placeholder} keyboardType={f.keyboardType} multiline={f.multiline} testID={`picker-add-${f.key}`} />
           ))}
-        </ScrollView>
-      </View>
+          {addHint ? <Sub>{addHint}</Sub> : null}
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+            <Btn small variant="ghost" label="Back to list" style={{ flex: 1 }} testID="picker-add-back" onPress={() => setAddOpen(false)} />
+            <Btn small label="Add and use it" style={{ flex: 2 }} disabled={!adding.trim() || addBusy} loading={addBusy} testID="picker-add-save" onPress={save} />
+          </View>
+        </View>
+      ) : (
+        <>
+          {searchable ? (
+            <View style={s.search}>
+              <Ionicons name="search-outline" size={16} color={colors.ink60} />
+              <TextInput value={term} onChangeText={setTerm} placeholder="Search" placeholderTextColor={colors.ink40} style={s.input} testID="picker-search" />
+            </View>
+          ) : null}
+          <View style={{ maxHeight: 380 }}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {list.length === 0 ? (
+                <Sub style={{ paddingVertical: 12 }}>
+                  Nothing matches “{term}”.{onAdd ? " Tap + to add it." : ""}
+                </Sub>
+              ) : null}
+              {list.map((o, i) => (
+                <Li key={o.key} last={i === list.length - 1} testID={`picker-option-${o.key}`} onPress={() => { onPick(o.key); close(); }}>
+                  <Radio on={value === o.key} />
+                  <View style={{ flex: 1 }}><H4>{o.label}</H4>{o.sub ? <Sub>{o.sub}</Sub> : null}</View>
+                </Li>
+              ))}
+            </ScrollView>
+          </View>
+        </>
+      )}
     </Sheet>
   );
 }
 
 /** A Field that opens a Picker. Keeps screens free of sheet plumbing. */
-export function PickerField({ label, value, options, onPick, onAdd, addLabel, searchable, placeholder, style, testID, title, disabled }: {
+export function PickerField({ label, value, options, onPick, onAdd, addLabel, addTitle, addFields, addHint, addBusy, searchable, placeholder, style, testID, title, disabled }: {
   label?: string;
   value?: string | null;
   options: Option[];
   onPick: (key: string) => void;
-  onAdd?: (label: string) => void;
+  onAdd?: (label: string, extra: Record<string, string>) => void;
   addLabel?: string;
+  addTitle?: string;
+  addFields?: AddField[];
+  addHint?: string;
+  addBusy?: boolean;
   searchable?: boolean;
   placeholder?: string;
   style?: any;
@@ -122,6 +151,10 @@ export function PickerField({ label, value, options, onPick, onAdd, addLabel, se
         onPick={onPick}
         onAdd={onAdd}
         addLabel={addLabel}
+        addTitle={addTitle}
+        addFields={addFields}
+        addHint={addHint}
+        addBusy={addBusy}
         searchable={searchable}
         testID={testID ? `${testID}-sheet` : undefined}
       />

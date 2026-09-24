@@ -287,3 +287,12 @@ the page below visible, and a web photo upload that lands.
   `POST /api/suppliers {name}`, invalidates the suppliers list, selects the new supplier
   and toasts that phone/address can be filled on the profile later. Brand / Category /
   Unit / Store in pickers get the same "+" affordance automatically.
+- **Follow-up (same day)**: the inline add box was pushed above the keyboard on phones. The
+  add form now *replaces* the list (title becomes "New supplier", X/"Back to list" returns),
+  and `Picker` takes `addFields` for extra inputs — the supplier form has Name, Phone,
+  Address and Additional info (saved as `note`).
+- **Splash**: Expo Go showed a white "TREDI" screen before the green in-app splash because
+  `expo.splash` was unset (white default) and the plugin used a black-on-white image. Both
+  now use the green logo on `#00C98D` (`splash-green.png` square for the manifest,
+  `tredi-logo-green.png` for the native plugin) plus `expo.backgroundColor`. Note: Expo Go's
+  own "Checking for new update…" strip is part of Expo Go and disappears in a real build.
