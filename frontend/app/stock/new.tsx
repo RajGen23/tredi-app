@@ -133,6 +133,14 @@ export default function NewItem() {
   };
 
   const supplierOptions = ((suppliersQ.data as any)?.suppliers ?? []).map((x: any) => ({ key: x.name, label: x.name, sub: x.phone || x.category }));
+  const addSupplier = useMutation({
+    mutationFn: (name: string) => api("/suppliers", { method: "POST", json: { name } }),
+    onSuccess: (sup: any) => {
+      qc.invalidateQueries({ queryKey: ["suppliers"] });
+      setSupplier(sup.name);
+      toast.show(`${sup.name} added as a supplier`, "Phone and address can be filled in later on their profile.");
+    },
+  });
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-item-screen">
@@ -143,6 +151,7 @@ export default function NewItem() {
         {step === 0 ? (
           <>
             <PickerField label="Supplier" value={supplier} options={supplierOptions} onPick={setSupplier} searchable
+              onAdd={(v) => { setSupplier(v); addSupplier.mutate(v); }} addLabel="New supplier name"
               placeholder="Optional — who you buy it from" title="Which supplier?" testID="item-supplier" />
             <Pressable testID="item-photo-add" disabled={uploading} onPress={addPhoto}>
               <Card style={{ marginTop: 9, padding: 9, flexDirection: "row", gap: 7, alignItems: "center" }}>

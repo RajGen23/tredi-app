@@ -276,3 +276,14 @@ the page below visible, and a web photo upload that lands.
   `pad + 54` (was a flat 94) and the quote detail `pad + 58`; the Super Admin shell adds
   `pad` under its scroll. Screens with a pinned footer already measured the inset and were
   left untouched, as were tab screens (the tab bar already pads itself).
+
+## Pass 12e — "+" add button in pickers, new supplier from New item (June 2026)
+- The shared `Picker` sheet (`src/components/picker.tsx`) now shows a green round "+" button
+  beside the title whenever `onAdd` is supplied. Tapping it reveals a "type a new name" box
+  at the top of the sheet (auto-focused) with "Add and use it"; the button turns into an X
+  to collapse it. The old always-visible add field at the bottom of the sheet is gone.
+  Empty search results say "Tap + to add it." when adding is possible.
+- New item (`app/stock/new.tsx`) supplier picker uses this: typing a name and saving does
+  `POST /api/suppliers {name}`, invalidates the suppliers list, selects the new supplier
+  and toasts that phone/address can be filled on the profile later. Brand / Category /
+  Unit / Store in pickers get the same "+" affordance automatically.

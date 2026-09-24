@@ -1,7 +1,7 @@
 // One dropdown for the whole app: a sheet of options, optional search, and an
 // optional "add a new one" row so a trader is never blocked by a fixed list.
 import React, { useMemo, useState } from "react";
-import { ScrollView, TextInput, View } from "react-native";
+import { Pressable, ScrollView, TextInput, View } from "react-native";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { Btn, Field, H4, Li, Radio, Sub } from "@/src/components/ui";
@@ -11,6 +11,10 @@ import { fonts, makeStyles, useTheme } from "@/src/theme";
 export type Option = { key: string; label: string; sub?: string };
 
 const useStyles = makeStyles((c) => ({
+  head: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8, minHeight: 36 },
+  plus: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
+  plusOn: { backgroundColor: c.sqAv },
+  addBox: { gap: 8, padding: 10, borderRadius: 12, backgroundColor: c.faint, borderWidth: 1, borderColor: c.border, marginBottom: 10 },
   search: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderColor: c.border, borderRadius: 11, paddingHorizontal: 11, minHeight: 42, marginBottom: 8 },
   input: { flex: 1, fontFamily: fonts.medium, fontSize: 13, color: c.onSurface, paddingVertical: 8 },
 }));
@@ -36,11 +40,26 @@ export function Picker({ visible, onClose, title, options, value, onPick, onAdd,
     [options, term],
   );
 
-  const close = () => { setTerm(""); setAdding(""); onClose(); };
+  const [addOpen, setAddOpen] = useState(false);
+  const close = () => { setTerm(""); setAdding(""); setAddOpen(false); onClose(); };
 
   return (
     <Sheet visible={visible} onClose={close} testID={testID ?? "picker-sheet"}>
-      <H4 style={{ marginBottom: 8 }}>{title}</H4>
+      <View style={s.head}>
+        <H4 style={{ flex: 1 }}>{title}</H4>
+        {onAdd ? (
+          <Pressable onPress={() => setAddOpen((v) => !v)} style={[s.plus, addOpen && s.plusOn]} testID="picker-add-toggle" accessibilityLabel={addLabel} hitSlop={6}>
+            <Ionicons name={addOpen ? "close" : "add"} size={20} color={addOpen ? colors.onSurface : colors.onBrandPrimary} />
+          </Pressable>
+        ) : null}
+      </View>
+      {onAdd && addOpen ? (
+        <View style={s.addBox}>
+          <Field label={addLabel} value={adding} onChangeText={setAdding} placeholder="Type a new name" autoFocus testID="picker-add-input" />
+          <Btn small label="Add and use it" disabled={!adding.trim()} testID="picker-add-save"
+            onPress={() => { onAdd(adding.trim()); close(); }} />
+        </View>
+      ) : null}
       {searchable ? (
         <View style={s.search}>
           <Ionicons name="search-outline" size={16} color={colors.ink60} />
@@ -49,7 +68,11 @@ export function Picker({ visible, onClose, title, options, value, onPick, onAdd,
       ) : null}
       <View style={{ maxHeight: 380 }}>
         <ScrollView keyboardShouldPersistTaps="handled">
-          {list.length === 0 ? <Sub style={{ paddingVertical: 12 }}>Nothing matches “{term}”.</Sub> : null}
+          {list.length === 0 ? (
+            <Sub style={{ paddingVertical: 12 }}>
+              Nothing matches “{term}”.{onAdd ? " Tap + to add it." : ""}
+            </Sub>
+          ) : null}
           {list.map((o, i) => (
             <Li key={o.key} last={i === list.length - 1} testID={`picker-option-${o.key}`} onPress={() => { onPick(o.key); close(); }}>
               <Radio on={value === o.key} />
@@ -58,13 +81,6 @@ export function Picker({ visible, onClose, title, options, value, onPick, onAdd,
           ))}
         </ScrollView>
       </View>
-      {onAdd ? (
-        <View style={{ marginTop: 10, gap: 8 }}>
-          <Field label={addLabel} value={adding} onChangeText={setAdding} placeholder="Type a new name" testID="picker-add-input" />
-          <Btn small label="Add and use it" disabled={!adding.trim()} testID="picker-add-save"
-            onPress={() => { onAdd(adding.trim()); close(); }} />
-        </View>
-      ) : null}
     </Sheet>
   );
 }
