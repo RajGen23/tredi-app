@@ -94,6 +94,11 @@ export default function InvoiceDetail() {
               <Tag>{draft ? "No number until issued" : `Issued ${shortDate(inv.created_at)}`}{inv.due_date && !draft ? ` · due ${shortDate(inv.due_date)}` : ""}</Tag>
             </Row>
             {inv.duplicated_from_number ? <Tag style={{ marginTop: 4 }}>Repeat of {inv.duplicated_from_number}</Tag> : null}
+            {inv.updated_at ? (
+              <Tag style={{ marginTop: 4 }} testID="invoice-edited-stamp">
+                Edited {shortDate(inv.updated_at)}{inv.updated_by ? ` · by ${inv.updated_by}` : ""}
+              </Tag>
+            ) : null}
             <Row between style={{ marginTop: 9, alignItems: "flex-end" }}>
               <View>
                 <Lbl>{draft ? "Draft total" : cancelled ? "Was" : "Amount due"}</Lbl>

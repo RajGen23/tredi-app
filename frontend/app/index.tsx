@@ -10,7 +10,7 @@ import { fonts, makeStyles } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
-  logo: { width: 236, height: 87 },
+  logo: { width: 252, height: 74 },
   tagline: { position: "absolute", bottom: 40, fontFamily: fonts.medium, fontSize: 13, color: c.onDeepSoft },
 }));
 

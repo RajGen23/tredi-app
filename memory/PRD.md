@@ -337,3 +337,23 @@ the page below visible, and a web photo upload that lands.
   allows photos; the seeded default is off.
 - `src/uploads.ts`: if the native uploader itself refuses, the remaining retries now fall back
   to the base64 route instead of repeating the same failure.
+
+## Pass 12h — splash logo, edited stamp, recent-first sort, month/day filters (June 2026)
+- **Splash logo cropped**: the manifest splash was a 1200×1200 square, and Expo Go/Android
+  scale it with *cover* — on a 9:19.5 screen that cut the "i" off "tredi". `scripts/make-splash.py`
+  now regenerates three assets from `assets/images/tredi-logo-source.png` (the logo the user
+  sent): `tredi-logo-green.png` (tight crop, in-app splash), `splash-green.png` (1284×2778,
+  logo at 58% width so cover cropping cannot reach it) and `splash-mark.png` (mark only,
+  40% of a 1024 square) which the `expo-splash-screen` plugin now uses — Android 12+ masks
+  the native splash icon into a circle, where a wordmark can never fit.
+- **Last edited**: invoice detail shows `Edited <date> · by <name>` (testID
+  `invoice-edited-stamp`) and Sales rows show an `edited <date>` tag. The backend already
+  stored `updated_at`/`updated_by` on PUT /api/invoices/{id} and `clean()` already returned
+  them — no backend change.
+- **Default sort** on the Sales tab is now `recent` ("Recently changed first"),
+  `updated_at || created_at` descending, so a corrected invoice or a just-saved draft is back
+  on top. Reset returns to it.
+- **Filters**: the sheet gained a Month chip row (last 12 months, `invoice-month-YYYY-MM`) and
+  an Exact day `DateField` (`invoice-filter-day`). Precedence is day > month > the Period
+  chips; both show as clearable chips above the list and count toward the filter dot.
+- Verified by the testing agent, iteration 19 (7/7 pass, no files changed).

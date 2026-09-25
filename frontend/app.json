@@ -39,8 +39,8 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/tredi-logo-green.png",
-          "imageWidth": 240,
+          "image": "./assets/images/splash-mark.png",
+          "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#00C98D"
         }

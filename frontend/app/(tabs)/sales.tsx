@@ -11,15 +11,18 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, Empty, H4, IconBtn, Li, Lbl, Loading, Money, Radio, Row, Sub, Tag } from "@/src/components/ui";
 import { Sheet } from "@/src/components/sheet";
 import { SyncStamp } from "@/src/components/sync";
+import { DateField } from "@/src/components/date-field";
 import { PickerField } from "@/src/components/picker";
 import { useShops } from "@/src/lookups";
 import { initials, money, shortDate, statusLabel } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 type Filter = "all" | "overdue" | "unpaid" | "paid" | "draft" | "cancelled" | "duplicate" | "quick";
-type Sort = "overdue" | "amount" | "newest" | "az";
+type Sort = "recent" | "overdue" | "amount" | "newest" | "az";
 type Span = "all" | "today" | "week" | "month";
 const SPANS: [Span, string][] = [["all", "Any date"], ["today", "Today"], ["week", "This week"], ["month", "This month"]];
+// The twelve months a trader might still be chasing money in.
+const MONTHS = Array.from({ length: 12 }, (_, i) => dayjs().subtract(i, "month"));
 
 type SaleRow = {
   id: string;
@@ -29,6 +32,7 @@ type SaleRow = {
   total: number;
   due: number;
   created_at: string;
+  updated_at?: string | null;
   status: string;
   days_overdue: number;
   method?: string;
@@ -46,14 +50,22 @@ const useStyles = makeStyles((c) => ({
   num: { fontFamily: fonts.monoSemibold, fontSize: 12.5 },
 }));
 
+/** When this record was last touched — an edit counts, so a corrected invoice
+ *  climbs back to the top of the list. */
+const touched = (r: SaleRow) => r.updated_at || r.created_at;
+
 export default function Sales() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [filter, setFilter] = useState<Filter>("all");
-  const [sort, setSort] = useState<Sort>("overdue");
+  // "Recently touched" first: an invoice you just corrected, or the draft you
+  // saved a minute ago, is the one you came back for.
+  const [sort, setSort] = useState<Sort>("recent");
   const [span, setSpan] = useState<Span>("all");
+  const [month, setMonth] = useState("");   // YYYY-MM
+  const [day, setDay] = useState("");       // YYYY-MM-DD
   const [rep, setRep] = useState("");
   const [shop, setShop] = useState("");
   const [sheet, setSheet] = useState(false);
@@ -66,6 +78,7 @@ export default function Sales() {
     const invoices: SaleRow[] = (q.data ?? []).map((i) => ({
       id: i.id, kind: "invoice", number: i.number, customer_name: i.customer_name, total: i.totals.total, due: i.due,
       created_at: i.created_at, status: i.status, days_overdue: i.days_overdue, duplicated_from: i.duplicated_from,
+      updated_at: i.updated_at ?? null,
       duplicated_from_number: i.duplicated_from_number, lines: (i.lines ?? []).length,
       rep: i.rep || i.created_by || "", shop: i.shop || "",
     }));
@@ -98,17 +111,24 @@ export default function Sales() {
       : filter === "unpaid" ? ["unpaid", "part_paid", "overdue"].includes(i.status)
       : filter === "duplicate" ? !!i.duplicated_from
       : i.status === filter);
-    if (from) l = l.filter((i) => dayjs(i.created_at).isAfter(from));
+    // A chosen day beats a chosen month, which beats the rough period chips.
+    if (day) l = l.filter((i) => dayjs(i.created_at).isSame(dayjs(day), "day"));
+    else if (month) l = l.filter((i) => dayjs(i.created_at).format("YYYY-MM") === month);
+    else if (from) l = l.filter((i) => dayjs(i.created_at).isAfter(from));
     if (rep) l = l.filter((i) => i.rep === rep);
     if (shop) l = l.filter((i) => i.shop === shop);
-    l = [...l].sort((a, b) => sort === "overdue" ? b.days_overdue - a.days_overdue || b.due - a.due : sort === "amount" ? b.total - a.total : sort === "az" ? a.customer_name.localeCompare(b.customer_name) : b.created_at.localeCompare(a.created_at));
+    l = [...l].sort((a, b) => sort === "recent" ? touched(b).localeCompare(touched(a))
+      : sort === "overdue" ? b.days_overdue - a.days_overdue || b.due - a.due
+      : sort === "amount" ? b.total - a.total
+      : sort === "az" ? a.customer_name.localeCompare(b.customer_name)
+      : b.created_at.localeCompare(a.created_at));
     return l;
-  }, [all, filter, sort, span, rep, shop]);
+  }, [all, filter, sort, span, month, day, rep, shop]);
 
   const repOptions = [{ key: "", label: "Everyone" }].concat(((teamQ.data as any)?.users ?? [])
     .filter((u: any) => u.active !== false).map((u: any) => ({ key: u.name, label: u.name, sub: u.role_label })));
   const shopOptions = [{ key: "", label: "All shops" }].concat(shops.options);
-  const extraFilters = (span !== "all" ? 1 : 0) + (rep ? 1 : 0) + (shop ? 1 : 0);
+  const extraFilters = (span !== "all" ? 1 : 0) + (month ? 1 : 0) + (day ? 1 : 0) + (rep ? 1 : 0) + (shop ? 1 : 0);
 
   const chips: { k: Filter; label: string; dot?: string }[] = [
     { k: "all", label: `All ${counts.all}` },
@@ -136,7 +156,9 @@ export default function Sales() {
           onRefresh={() => { q.refetch(); salesQ.refetch(); }} testID="invoices-sync" />
         {extraFilters > 0 ? (
           <Row style={{ gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-            {span !== "all" ? <Chip label={SPANS.find(([k]) => k === span)?.[1] ?? ""} on onPress={() => setSpan("all")} testID="invoices-clear-span" /> : null}
+            {span !== "all" && !month && !day ? <Chip label={SPANS.find(([k]) => k === span)?.[1] ?? ""} on onPress={() => setSpan("all")} testID="invoices-clear-span" /> : null}
+            {day ? <Chip label={dayjs(day).format("DD MMM YYYY")} on onPress={() => setDay("")} testID="invoices-clear-day" /> : null}
+            {month && !day ? <Chip label={dayjs(`${month}-01`).format("MMMM YYYY")} on onPress={() => setMonth("")} testID="invoices-clear-month" /> : null}
             {rep ? <Chip label={`Rep: ${rep}`} on onPress={() => setRep("")} testID="invoices-clear-rep" /> : null}
             {shop ? <Chip label={shop} on onPress={() => setShop("")} testID="invoices-clear-shop" /> : null}
           </Row>
@@ -189,7 +211,10 @@ export default function Sales() {
                       <Badge tone={quick ? "paid" : dead ? "over" : over ? "over" : row.status === "paid" ? "paid" : draft ? "draft" : "due"}>
                         {quick ? "Quick sale" : statusLabel(row as any)}
                       </Badge>
-                      <Tag>{row.duplicated_from_number ? `repeat of ${row.duplicated_from_number}` : row.status === "part_paid" ? "part paid" : quick ? `${row.lines} line${row.lines === 1 ? "" : "s"}` : "⋯"}</Tag>
+                      <Tag testID={`invoice-meta-${row.number}`}>{row.updated_at ? `edited ${shortDate(row.updated_at)}`
+                        : row.duplicated_from_number ? `repeat of ${row.duplicated_from_number}`
+                        : row.status === "part_paid" ? "part paid"
+                        : quick ? `${row.lines} line${row.lines === 1 ? "" : "s"}` : "⋯"}</Tag>
                     </Row>
                   </View>
                 </Li>
@@ -200,21 +225,31 @@ export default function Sales() {
       </ScrollView>
 
       <Sheet visible={sheet} onClose={() => setSheet(false)} testID="invoice-filter-sheet">
-        <Row between><H4>Filter</H4><Sub style={{ color: colors.green700, fontFamily: fonts.bold }} onPress={() => { setFilter("all"); setSort("overdue"); setSpan("all"); setRep(""); setShop(""); }}>Reset</Sub></Row>
+        <Row between><H4>Filter</H4><Sub style={{ color: colors.green700, fontFamily: fonts.bold }} onPress={() => { setFilter("all"); setSort("recent"); setSpan("all"); setMonth(""); setDay(""); setRep(""); setShop(""); }}>Reset</Sub></Row>
         <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Status</Lbl>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
           {chips.map((c) => <Chip key={c.k} label={c.label.replace(/ \d+$/, "")} on={filter === c.k} onPress={() => setFilter(c.k)} />)}
         </View>
         <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Period</Lbl>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          {SPANS.map(([k, label]) => <Chip key={k} label={label} on={span === k} onPress={() => setSpan(k)} testID={`invoice-span-${k}`} />)}
+          {SPANS.map(([k, label]) => <Chip key={k} label={label} on={span === k && !month && !day} onPress={() => { setSpan(k); setMonth(""); setDay(""); }} testID={`invoice-span-${k}`} />)}
         </View>
+        <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Month</Lbl>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {MONTHS.map((m) => {
+            const key = m.format("YYYY-MM");
+            return <Chip key={key} label={m.format("MMM YYYY")} on={month === key && !day}
+              onPress={() => { setMonth(month === key ? "" : key); setDay(""); setSpan("all"); }} testID={`invoice-month-${key}`} />;
+          })}
+        </View>
+        <DateField label="Exact day" value={day} allowClear hint="Only the invoices and sales raised on this day."
+          onChange={(iso) => { setDay(iso); if (iso) { setMonth(""); setSpan("all"); } }} style={{ marginTop: 12 }} testID="invoice-filter-day" />
         <PickerField label="Rep" value={rep} options={repOptions} onPick={setRep} searchable title="Whose sales?" style={{ marginTop: 12 }} testID="invoice-filter-rep" />
         {shops.options.length > 1 ? (
           <PickerField label="Shop" value={shop} options={shopOptions} onPick={setShop} title="Which shop?" style={{ marginTop: 10 }} testID="invoice-filter-shop" />
         ) : null}
         <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Sort by</Lbl>
-        {([["overdue", "Most overdue first"], ["amount", "Highest amount"], ["newest", "Newest first"], ["az", "Customer A–Z"]] as [Sort, string][]).map(([k, label]) => (
+        {([["recent", "Recently changed first"], ["overdue", "Most overdue first"], ["amount", "Highest amount"], ["newest", "Newest first"], ["az", "Customer A–Z"]] as [Sort, string][]).map(([k, label]) => (
           <Li key={k} testID={`sort-${k}`} onPress={() => setSort(k)} last={k === "az"}><H4 style={{ flex: 1 }}>{label}</H4><Radio on={sort === k} /></Li>
         ))}
         <Btn label={`Show ${list.length} record${list.length === 1 ? "" : "s"}`} testID="invoice-filter-apply" onPress={() => setSheet(false)} style={{ marginTop: 12 }} />

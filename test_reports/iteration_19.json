@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 19 — Sales tab 'recently changed first' sort, edited-date meta tag, month/exact-day filter, sort list, invoice detail edited stamp, and PDF regression all PASS on the web preview at 390x844 as owner@tredi.app. Concrete evidence: (1) Default sort on /sales returns INV-1297 (⋯), INV-1296 (edited 24 Sep), INV-1295 (edited 24 Sep), INV-1294 (⋯), INV-1293 (⋯)… — the two edited invoices climb above the older un-edited INV-1294/1293/1292 exactly as specified. (2) invoice-meta-<number> tags render 'edited 24 Sep' for the two touched invoices, 'N line' for quick sales (SL-536045: '1 line'), and '⋯' for un-edited ones. (3) Filter sheet (tap invoices-filter) exposes a new Month row with 12 chips (invoice-month-2026-09 → invoice-month-2025-10, rolling 12 months from the container date of 25 Sep 2026) and an Exact day field (invoice-filter-day). (4) Sort options list starts with 'Recently changed first' (sort-recent) followed by sort-overdue, sort-amount, sort-newest, sort-az — Reset link is wired to restore this default. (5) /invoices/6ab54f8d66abe8033b9ce337 (INV-1296) renders the small Tag with testID invoice-edited-stamp reading exactly 'Edited 24 Sep · by Amina Yusuf'. (6) /invoices/pdf/<id> opens without a red screen; both pdf-download and pdf-share testIDs exist alongside pdf-print, pdf-format (Simple/Professional), pdf-paper, pdf-tredi-mark — no runtime errors emitted from the refactored /app/frontend/src/pdf.ts. (7) Regression: drafts card, overdue card, and Drafts chip filter still function; invoices-screen counts (All 391, Overdue 83, Unpaid 259, Drafts 50) match the seed data on first render. No React Native red screens; no deprecated packages spotted in the touched files (/app/frontend/app/(tabs)/sales.tsx, /app/frontend/app/invoices/[id].tsx, /app/frontend/app/invoices/pdf/[id].tsx). Every testID from the request is present in the DOM.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/screenshots/sales_default.png",
+    "/app/test_reports/screenshots/filter_sheet.png",
+    "/app/test_reports/screenshots/invoice_detail_edited.png",
+    "/app/test_reports/screenshots/invoice_pdf.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "(tabs)/sales.tsx line 55: touched(r) = r.updated_at || r.created_at — used by the 'recent' sort and matches the spec: an edited invoice climbs back to the top because updated_at is more recent than any un-edited row's created_at. Verified in practice: INV-1296/1295 sit above older INV-1294/1293/1292 on the default sort.",
+    "(tabs)/sales.tsx line 114-116: correct precedence for date filters — a chosen day beats a chosen month, which beats the Period chips (span). Selecting a month clears day and forces span='all'; selecting an exact day clears month and forces span='all'. The clearable chip strip above the list (invoices-clear-day / invoices-clear-month) mirrors the same rule (only one date chip is shown at a time). Solid.",
+    "(tabs)/sales.tsx line 214-217: invoice-meta-<number> Tag prefers 'edited <shortDate(updated_at)>' when present, else falls back to the previous content (repeat of…, part paid, N lines, ⋯). This means for the fresh quick-sale rows the tag still reads 'N lines' — correct — and rows never lose their old meta.",
+    "invoices/[id].tsx line 97-101: the edited-stamp Tag renders only when inv.updated_at is truthy and appends ' · by <name>' when updated_by is present. Rendered exactly as 'Edited 24 Sep · by Amina Yusuf' for INV-1296. No stamp on un-edited invoices (checked via the code path — updated_at absent).",
+    "The 12-month chip window uses dayjs().subtract(i, 'month') for i in 0..11, so on Jan 2026 (system prompt date) the range would be Jan 2026 → Feb 2025, and on Sep 2026 (container clock) it is Sep 2026 → Oct 2025. Rolling and always current — good."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A — main agent asked for frontend-only testing",
+    "frontend": "100% on the seven features requested — default recent sort, invoice-meta edited tag, filter sheet Month row + Exact day field, sort list starting with 'Recently changed first', invoice-detail edited stamp, PDF Download/Share regression, and Sales tab chips/drafts/overdue regression"
+  },
+  "seed_data_creation": "None — used the two pre-edited invoices main agent pointed at (INV-1296 and INV-1295).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Container clock reads Sep 2026 even though the review request mentions Jan 2026 — the rolling 12-month chip list therefore ends at Oct 2025, not at Feb 2025. This is not a bug, but if a future test wants to verify the month filter actually returns rows, pick a month that has seed data (e.g. Dec 2025 or Nov 2025) rather than trying Sep 2025 which is now past the 12-month window. A transient Cloudflare 502 hit the /sales route once during retesting — retrying after ~10s always recovered; nothing to do on the code side. To open the PDF page, navigate to /invoices/<id> then tap invoice-view-pdf (there is no direct link from the Sales tab). Sign-in flow unchanged: /sign-in → owner@tredi.app / tredi1234 → 'Sign in and continue'.",
+  "rca_of_issue": "N/A — all seven features function to spec; no regressions found."
+}
