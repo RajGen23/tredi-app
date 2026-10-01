@@ -8,7 +8,7 @@ from bson import ObjectId
 import logging
 
 from deps import (VAT_RATE, DUMMY_HASH, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
-                  db, decorate_invoice, hash_password, invoice_paid, invoice_status, invoice_totals, line_totals, log_activity, next_number, now, oid,
+                  db, decorate_invoice, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_totals, log_activity, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, users_roles
 from plans import TRIAL_DAYS
@@ -636,6 +636,7 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
     f = biz_filter(user)
     if not data.lines:
         raise HTTPException(400, "Add at least one item")
+    await ensure_invoice_room(user)
     lines = [line_totals(l) for l in data.lines]
     totals = invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)
     number = await next_number(f["business_id"], "invoice", "INV", 1000) if data.status == "issued" else "Draft"

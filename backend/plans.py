@@ -4,78 +4,133 @@ The tenant app (Plan & billing), the limit checks on every create endpoint and
 the Super Admin panel all resolve their answers from here, so a plan can never
 mean two different things in two places.
 
-`None` in a limit means unlimited.
+`None` in a limit means unlimited. Prices are naira, per cadence:
+quarterly saves 20%, yearly roughly 22.5–25%.
 """
 from typing import Optional
 
 TRIAL_DAYS = 14
 
+CADENCES = [
+    {"key": "monthly", "label": "Monthly", "months": 1, "note": ""},
+    {"key": "quarterly", "label": "3 months", "months": 3, "note": "20% off"},
+    {"key": "yearly", "label": "12 months", "months": 12, "note": "up to 25% off"},
+]
+CADENCE_MONTHS = {c["key"]: c["months"] for c in CADENCES}
+CADENCE_WORDS = {"monthly": "per month", "quarterly": "every 3 months", "yearly": "per year"}
+
+# Everything a paid plan above Starter unlocks.
+_FULL = {"transfers": True, "custom_roles": True, "invoice_photos": True,
+         "custom_pdf": True, "reminders": True, "csv_export": True, "multi_shop_analytics": True}
+
 PLANS = [
     {
         "key": "trial",
         "name": "Free trial",
-        "price": 0,
-        "price_label": "Free",
+        "prices": {"monthly": 0, "quarterly": 0, "yearly": 0},
         "cadence": f"{TRIAL_DAYS} days",
-        "tagline": "Run your shop on tredi for two weeks before you pay a naira.",
-        "limits": {"shops": 1, "users": 2, "businesses": 1},
-        "features": {"transfers": False, "custom_roles": False, "invoice_photos": True, "multi_business": False},
-        "perks": ["One shop", "You plus one staff member", "Unlimited items, invoices and reports",
-                  "Product photos print on your invoices"],
+        "tagline": "Premium access for two weeks before you pay a naira.",
+        "limits": {"businesses": 1, "shops": 3, "users": 9, "invoices": 1000},
+        "features": {**_FULL, "multi_business": False},
+        "perks": ["Everything in Premium for 14 days", "Up to 3 locations and 9 people",
+                  "Product photos print on your invoices", "Nothing is charged, no card needed"],
     },
     {
         "key": "starter",
         "name": "Starter",
-        "price": 12000,
-        "price_label": "₦ 12,000",
+        "prices": {"monthly": 7500, "quarterly": 18500, "yearly": 69000},
         "cadence": "per month",
-        "tagline": "One shop and a small team, with a warehouse on the side.",
-        "limits": {"shops": 2, "users": 4, "businesses": 1},
-        "features": {"transfers": True, "custom_roles": False, "invoice_photos": False, "multi_business": False},
-        "perks": ["Two shops or a shop plus a warehouse", "Up to 4 people", "Stock transfers between shops",
-                  "Photos saved on items — printing them on invoices needs Pro"],
+        "tagline": "One shop, one person, the whole book in your pocket.",
+        "limits": {"businesses": 1, "shops": 1, "users": 1, "invoices": 1000},
+        "features": {"transfers": False, "custom_roles": False, "invoice_photos": False,
+                     "custom_pdf": False, "reminders": False, "csv_export": False,
+                     "multi_shop_analytics": False, "multi_business": False},
+        "perks": ["Basic inventory", "Sales tracking", "Debt tracking", "Offline mode",
+                  "Inventory image upload", "1,000 customer invoices",
+                  "Photos save on items — printing them on invoices needs Premium"],
+    },
+    {
+        "key": "premium",
+        "name": "Premium",
+        "prices": {"monthly": 17000, "quarterly": 40800, "yearly": 149000},
+        "cadence": "per month",
+        "tagline": "Three locations, nine hands, photos on every invoice.",
+        "limits": {"businesses": 1, "shops": 3, "users": 9, "invoices": 10000},
+        "features": {**_FULL, "multi_business": False},
+        "perks": ["All Starter features", "Image display on invoices", "Custom PDF invoices",
+                  "Customer sales reminders", "CSV exports", "Multi-shop analytics",
+                  "10,000 customer invoices"],
     },
     {
         "key": "pro",
         "name": "Pro",
-        "price": 38000,
-        "price_label": "₦ 38,000",
+        "prices": {"monthly": 50000, "quarterly": 120000, "yearly": 449000},
         "cadence": "per month",
-        "tagline": "Every branch, every report, no ceiling.",
-        "limits": {"shops": None, "users": None, "businesses": 3},
-        "features": {"transfers": True, "custom_roles": True, "invoice_photos": True, "multi_business": True},
-        "perks": ["Unlimited shops and warehouses", "Unlimited team members", "Custom roles and permissions",
-                  "Product photos print on your invoices", "Up to 3 separate businesses"],
+        "tagline": "Three businesses, nine locations, twenty-seven people.",
+        "limits": {"businesses": 3, "shops": 9, "users": 27, "invoices": 50000},
+        "features": {**_FULL, "multi_business": True},
+        "perks": ["All Starter features", "Image display on invoices", "Custom PDF invoices",
+                  "Customer sales reminders", "CSV exports", "Multi-shop analytics",
+                  "50,000 customer invoices"],
+    },
+    {
+        "key": "enterprise",
+        "name": "Enterprise",
+        "prices": {"monthly": 83500, "quarterly": 200400, "yearly": 749000},
+        "cadence": "per month",
+        "tagline": "Four businesses, sixteen locations, forty-eight people.",
+        "limits": {"businesses": 4, "shops": 16, "users": 48, "invoices": 200000},
+        "features": {**_FULL, "multi_business": True},
+        "perks": ["All Starter features", "Image display on invoices", "Custom PDF invoices",
+                  "Customer sales reminders", "CSV exports", "Multi-shop analytics",
+                  "200,000 customer invoices"],
     },
 ]
 
 # Older records (and the Super Admin sample tenants) use different words for the
 # same thing.
-ALIASES = {"basic": "starter", "free": "trial", "lapsed": "trial", "": "trial"}
+ALIASES = {"basic": "starter", "free": "trial", "lapsed": "trial", "": "trial", "plus": "premium"}
 
-LIMIT_NAMES = {"shops": "shops", "users": "team members", "businesses": "businesses"}
+LIMIT_NAMES = {"shops": "locations", "users": "staff or reps", "businesses": "businesses",
+               "invoices": "customer invoices"}
 
 FEATURE_NAMES = {
-    "transfers": "Stock transfers between shops",
+    "transfers": "Stock transfers between locations",
     "custom_roles": "Custom roles and permissions",
-    "invoice_photos": "Product photos on invoices",
+    "invoice_photos": "Image display on invoices",
+    "custom_pdf": "Custom PDF invoices",
+    "reminders": "Customer sales reminders",
+    "csv_export": "CSV exports",
+    "multi_shop_analytics": "Multi-shop analytics",
     "multi_business": "More than one business",
 }
 
 # The comparison table on Plan & billing, in the order a trader reads it.
 MATRIX = [
-    {"label": "Shops and warehouses", "kind": "limit", "key": "shops"},
-    {"label": "Team members", "kind": "limit", "key": "users"},
-    {"label": "Separate businesses", "kind": "limit", "key": "businesses"},
-    {"label": FEATURE_NAMES["transfers"], "kind": "feature", "key": "transfers"},
-    {"label": FEATURE_NAMES["custom_roles"], "kind": "feature", "key": "custom_roles"},
+    {"label": "Businesses", "kind": "limit", "key": "businesses"},
+    {"label": "Locations", "kind": "limit", "key": "shops"},
+    {"label": "Staff or reps", "kind": "limit", "key": "users"},
+    {"label": "Customer invoices", "kind": "limit", "key": "invoices"},
     {"label": FEATURE_NAMES["invoice_photos"], "kind": "feature", "key": "invoice_photos"},
-    {"label": "Invoices, items and reports", "kind": "always", "key": "unlimited"},
+    {"label": FEATURE_NAMES["custom_pdf"], "kind": "feature", "key": "custom_pdf"},
+    {"label": FEATURE_NAMES["reminders"], "kind": "feature", "key": "reminders"},
+    {"label": FEATURE_NAMES["csv_export"], "kind": "feature", "key": "csv_export"},
+    {"label": FEATURE_NAMES["multi_shop_analytics"], "kind": "feature", "key": "multi_shop_analytics"},
+    {"label": FEATURE_NAMES["transfers"], "kind": "feature", "key": "transfers"},
+    {"label": "Basic inventory, sales and debt tracking", "kind": "always", "key": "core"},
     {"label": "Offline mode and cloud backup", "kind": "always", "key": "offline"},
-    {"label": "Receipt printing and sharing", "kind": "always", "key": "print"},
+    {"label": "Inventory image upload", "kind": "always", "key": "item_photos"},
 ]
 
-PAID_KEYS = ["starter", "pro"]
+PAID_KEYS = ["starter", "premium", "pro", "enterprise"]
+
+
+def money(amount: int) -> str:
+    return f"₦ {amount:,.0f}" if amount else "Free"
+
+
+def price_of(plan: dict, cadence: str) -> int:
+    return plan["prices"].get(cadence, plan["prices"]["monthly"])
 
 
 def plan_key(raw: Optional[str]) -> str:
@@ -87,6 +142,12 @@ def plan_key(raw: Optional[str]) -> str:
 def plan_by_key(raw: Optional[str]) -> dict:
     k = plan_key(raw)
     return next(p for p in PLANS if p["key"] == k)
+
+
+def public_plan(plan: dict) -> dict:
+    """What the app shows on a plan card."""
+    return {**plan, "price": plan["prices"]["monthly"], "price_label": money(plan["prices"]["monthly"]),
+            "price_labels": {k: money(v) for k, v in plan["prices"].items()}}
 
 
 def _rank(key: str) -> int:
@@ -117,8 +178,8 @@ def limit_message(current: str, kind: str, cap: int) -> str:
     tail = ""
     if nxt:
         room = nxt["limits"].get(kind)
-        tail = f" {nxt['name']} gives you {'unlimited' if room is None else room} — open More → Plan & billing to upgrade."
-    return f"{plan['name']} covers {cap} {word}. You already have {cap}.{tail}"
+        tail = f" {nxt['name']} gives you {'unlimited' if room is None else f'{room:,}'} — open More → Plan & billing to upgrade."
+    return f"{plan['name']} covers {cap:,} {word}. You are already at {cap:,}.{tail}"
 
 
 def feature_message(current: str, feature: str) -> str:
@@ -131,7 +192,7 @@ def feature_message(current: str, feature: str) -> str:
 
 def expired_message(plan: dict, trialing: bool) -> str:
     if trialing:
-        return ("Your 14-day free trial has ended. Every record is safe and still readable — "
+        return (f"Your {TRIAL_DAYS}-day free trial has ended. Every record is safe and still readable — "
                 "pick a plan in More → Plan & billing to start saving again.")
     return (f"Your {plan['name']} subscription has lapsed. Your books are safe and still readable — "
             "renew in More → Plan & billing to start saving again.")

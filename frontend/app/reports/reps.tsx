@@ -79,6 +79,9 @@ export default function SalesByRep() {
                         <Sub>{r.invoices} invoice{r.invoices === 1 ? "" : "s"}{r.quick_sales ? ` · ${r.quick_sales} quick` : ""}</Sub>
                         <Tag>{r.frequency}/week · avg {money(r.average_sale, { symbol: false })}</Tag>
                       </Row>
+                      <Tag style={{ marginTop: 1 }} testID={`rep-shops-${r.rep}`}>
+                        {r.shops?.length ? `Posted to ${r.shops.join(", ")}` : "Every location"}
+                      </Tag>
                       <View style={{ marginTop: 5 }}><Prog pct={(r.sales / best) * 100} /></View>
                       <Row between style={{ marginTop: 5 }}>
                         <Pressable testID={`rep-entries-${r.rep}`} onPress={() => router.push(`/reports/entries?kind=rep&key=${encodeURIComponent(r.rep)}`)}>

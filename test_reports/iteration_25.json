@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 25 verified the new 4-plan matrix, self-service /api/subscription/choose, trial-expiry → recovery flow, Starter-vs-Premium invoice-photos gate, owner shop switching, rep (amina) hard scoping to Surulere, the multi-currency business profile and the reps-report shop column. 18/18 backend tests pass (serial run). UI flows on /settings/plan, /settings/business and /reports/reps all pass. Demo tenant left on pro/monthly/NGN, owner on Ikeja branch, amina on Surulere. No regressions detected.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter25_plans_scoping.py",
+    "/app/test_reports/pytest/iter25_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "deps.subscription_state treats a `trial` plan with `trial_ends_at=None` as 'active' (ends is None → expired=False). Acceptable today because /businesses creation stamps trial_ends_at, but any legacy row with plan='trial' and no trial_ends_at silently gets infinite access. Consider defaulting to created_at + TRIAL_DAYS when the field is missing.",
+    "billing.choose_plan sets renews_at = now + 30*months days. Three-month cadence = 90 days (not calendar months); good enough for billing, documented in review request as 'approx 30/90/360 days'.",
+    "deps.shop_scope: a non-owner with no explicit `shops` list and no `shop` is scoped to the main branch — amina has shop='Surulere' so this works. If a rep is ever created with no shop and the business has multiple shops, they will see only the main branch regardless of intent. Consider forcing team-add to require a shop for non-owners."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter25_plans_scoping.py (new)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% (plan + currency + reps-report screens)"},
+  "seed_data_creation": "None. The expiry test flipped the demo business's plan to 'trial' with trial_ends_at in the past, activated starter via /api/subscription/choose, then restored it to pro/monthly in a teardown. All intermediate test writes were cleaned.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_iter25_plans_scoping.py must be run with -o addopts='' (serial) — the demo tenant is global so parallel xdist workers race on business.plan. Credentials and shop expectations are hard-coded for owner@tredi.app / amina@tredi.app. The expiry recovery test uses direct Mongo writes via MONGO_URL/DB_NAME env vars and always restores pro/monthly in a finally block, but if the test is interrupted the tenant may be left on 'trial expired' — in that case POST /api/subscription/choose {plan:'pro', cadence:'monthly'} will restore it.",
+  "rca_of_issue": "User-reported bug (expired tenant cannot activate a plan) is fixed: GET /api/subscription returns status 'expired' when trial_ends_at is past, POST /api/expenses correctly returns 402 with the 'books are safe' message, POST /api/subscription/choose with starter+monthly flips status to 'active' and the next POST /api/expenses returns 201. Reproduced and verified in TestExpiryRecovery.test_expired_blocks_and_choose_unblocks."
+}

@@ -14,7 +14,7 @@ export default function Plans() {
 
   const cols: Col<any>[] = [
     { key: "feature", label: "Feature", flex: 2.4, render: (r) => <Text style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface }}>{r.feature}</Text> },
-    ...["trial", "basic", "pro"].map((k) => ({
+    ...["trial", "starter", "premium", "pro", "enterprise"].map((k) => ({
       key: k, label: k[0].toUpperCase() + k.slice(1), flex: 0.8, align: "right" as const,
       render: (r: any) => r[k]
         ? <Ionicons name="checkmark" size={15} color={colors.green700} />
@@ -36,7 +36,7 @@ export default function Plans() {
                 </Row>
                 <Fig size={24} style={{ marginTop: 8 }}>{p.price_label}</Fig>
                 <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 11 }} />
-                {[["Shops", p.shops], ["Users", p.users], ["Storage", p.storage], ["Businesses", p.businesses]].map(([k, v]) => (
+                {[["Locations", p.shops], ["Staff", p.users], ["Storage", p.storage], ["Businesses", p.businesses]].map(([k, v]) => (
                   <Row key={k as string} style={{ justifyContent: "space-between", paddingVertical: 4 }}>
                     <Lbl>{k}</Lbl><Fig>{v}</Fig>
                   </Row>

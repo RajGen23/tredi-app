@@ -319,7 +319,7 @@ async def plan_requests(admin: Admin):
         plan = plan_by_key(r["plan"])
         rows.append({"id": str(r["_id"]), "business": r.get("business_name") or (biz or {}).get("name", ""),
                      "business_id": r["business_id"], "plan": plan["key"], "plan_name": plan["name"],
-                     "amount": plan["price"], "current_plan": plan_by_key((biz or {}).get("plan")).get("name", "—"),
+                     "amount": plan["prices"]["monthly"], "current_plan": plan_by_key((biz or {}).get("plan")).get("name", "—"),
                      "by": r.get("requested_by_name", ""), "note": r.get("note", ""),
                      "asked_at": aw(r["created_at"]).isoformat(), "days_waiting": (now() - aw(r["created_at"])).days})
     return {"rows": rows, "count": len(rows)}

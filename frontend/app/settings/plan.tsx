@@ -1,14 +1,14 @@
-// Plan & billing — what this shop is on, what it is using, and how to move up.
-// Cards are not connected yet, so choosing a plan raises a request the tredi
-// team activates; the ceilings themselves are enforced by the API.
-import { useState } from "react";
+// Plan & billing — what this shop is on, what it is using, and switching plan.
+// Card payment is not wired yet, so picking a plan activates it straight away;
+// the ceilings themselves are enforced by the API on every create.
+import { useEffect, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
-import { AppBar, Badge, BadgeTone, Btn, Card, H4, Lbl, Loading, Money, Prog, Row, Sub, Tag } from "@/src/components/ui";
+import { AppBar, Badge, BadgeTone, Btn, Card, Chip, H4, Lbl, Loading, Money, Prog, Row, Sub, Tag } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 import { useBottomPad } from "@/src/safe";
@@ -19,10 +19,11 @@ const STATUS: Record<string, { label: string; tone: BadgeTone }> = {
   expired: { label: "Ended", tone: "over" },
 };
 
-const USAGE: { key: "shops" | "users" | "businesses"; label: string; word: string }[] = [
-  { key: "shops", label: "Shops and warehouses", word: "shops" },
-  { key: "users", label: "Team members", word: "people" },
-  { key: "businesses", label: "Separate businesses", word: "businesses" },
+const USAGE: { key: "businesses" | "shops" | "users" | "invoices"; label: string; word: string }[] = [
+  { key: "businesses", label: "Businesses", word: "businesses" },
+  { key: "shops", label: "Locations", word: "locations" },
+  { key: "users", label: "Staff or reps", word: "people" },
+  { key: "invoices", label: "Customer invoices", word: "invoices" },
 ];
 
 const useStyles = makeStyles((c) => ({
@@ -31,12 +32,13 @@ const useStyles = makeStyles((c) => ({
   hero: { borderWidth: 0, boxShadow: `0 8px 22px ${c.shadow}`, elevation: 3 },
   price: { fontFamily: fonts.monoSemibold, fontSize: 20, color: c.onSurface },
   planName: { fontFamily: fonts.extrabold, fontSize: 15, color: c.onSurface },
-  cell: { width: 52, textAlign: "center" },
+  cell: { width: 74, textAlign: "center", fontFamily: fonts.medium, fontSize: 11.5, color: c.ink40 },
   head: { fontFamily: fonts.bold, fontSize: 9.5, letterSpacing: 0.6, textTransform: "uppercase", color: c.ink40 },
   matrixRow: { flexDirection: "row", alignItems: "center", paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: c.border },
   yes: { fontFamily: fonts.bold, fontSize: 12, color: c.green700 },
-  no: { fontFamily: fonts.medium, fontSize: 12, color: c.ink40 },
 }));
+
+const num = (v: number | null) => (v === null ? "No limit" : v.toLocaleString());
 
 export default function PlanBilling() {
   const s = useStyles();
@@ -45,24 +47,26 @@ export default function PlanBilling() {
   const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
-  const [asking, setAsking] = useState("");
+  const [cadence, setCadence] = useState("monthly");
+  const [picking, setPicking] = useState("");
   const sub = useQuery({ queryKey: ["subscription"], queryFn: () => api<any>("/subscription") });
   const cat = useQuery({ queryKey: ["plans"], queryFn: () => api<any>("/plans") });
   const d = sub.data;
 
-  const ask = useMutation({
-    mutationFn: (plan: string) => api("/subscription/request", { method: "POST", json: { plan } }),
-    onSuccess: (r: any) => { qc.invalidateQueries({ queryKey: ["subscription"] }); toast.show(r.message, "Requested"); },
-    onError: (e: any) => toast.show(e.message),
-    onSettled: () => setAsking(""),
-  });
-  const cancel = useMutation({
-    mutationFn: () => api("/subscription/request", { method: "DELETE" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subscription"] }); toast.show("Request withdrawn"); },
+  // Land on the cadence they are already paying for.
+  useEffect(() => { if (cat.data?.cadence) setCadence(cat.data.cadence); }, [cat.data?.cadence]);
+
+  const choose = useMutation({
+    mutationFn: (plan: string) => api("/subscription/choose", { method: "POST", json: { plan, cadence } }),
+    onSuccess: (r: any) => {
+      ["subscription", "plans", "dashboard", "settings-invoice"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      toast.show(r.message, r.over?.length ? "Watch the ceiling" : "Plan active");
+    },
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
+    onSettled: () => setPicking(""),
   });
 
   const status = STATUS[d?.status ?? "active"] ?? STATUS.active;
-  const cap = (v: number | null) => (v === null ? "No limit" : String(v));
 
   const when = () => {
     if (!d) return "";
@@ -94,49 +98,51 @@ export default function PlanBilling() {
             </Row>
             <Sub style={{ marginTop: 9 }} testID="plan-when">{when()}</Sub>
             {d.status === "expired" ? (
-              <Sub style={{ marginTop: 4, color: colors.coral }}>Your books are safe and readable — saving starts again the moment a plan is active.</Sub>
+              <Sub style={{ marginTop: 4, color: colors.coral }} testID="plan-expired-note">
+                Your books are safe and readable — pick a plan below and saving starts again at once.
+              </Sub>
             ) : null}
           </Card>
-
-          {d.pending ? (
-            <Card style={{ marginTop: 9, backgroundColor: colors.info, borderColor: colors.info }} testID="plan-pending">
-              <Row between>
-                <View style={{ flex: 1 }}>
-                  <H4>{d.pending.plan_name} requested</H4>
-                  <Sub>We are activating it — you keep working in the meantime.</Sub>
-                </View>
-                <Btn small variant="ghost" label="Withdraw" testID="plan-withdraw" onPress={() => cancel.mutate()} />
-              </Row>
-            </Card>
-          ) : null}
 
           <Lbl style={{ marginTop: 14, marginBottom: 6 }}>What you are using</Lbl>
           <Card testID="plan-usage">
             {USAGE.map((u, i) => {
               const used = d.usage[u.key] ?? 0;
-              const limit = d.limits[u.key];
+              const limit = d.limits[u.key] ?? null;
               const full = limit !== null && used >= limit;
               return (
                 <View key={u.key} style={{ marginTop: i ? 12 : 0 }} testID={`plan-usage-${u.key}`}>
                   <Row between>
                     <H4>{u.label}</H4>
-                    <Money tone={full ? "neg" : undefined}>{used}{limit === null ? "" : ` / ${limit}`}</Money>
+                    <Money tone={full ? "neg" : undefined}>{used.toLocaleString()}{limit === null ? "" : ` / ${limit.toLocaleString()}`}</Money>
                   </Row>
                   <View style={{ marginTop: 6 }}>
                     <Prog pct={limit === null ? 18 : Math.min(100, (used / limit) * 100)} tone={full ? "bad" : undefined} />
                   </View>
                   <Sub style={{ marginTop: 4, fontSize: 10.5 }}>
-                    {limit === null ? `No limit on ${u.word}` : full ? `You are at the limit — upgrade to add more ${u.word}` : `${limit - used} more ${u.word} on ${d.name}`}
+                    {limit === null ? `No limit on ${u.word}`
+                      : full ? `You are at the limit — move up a plan to add more ${u.word}`
+                      : `${(limit - used).toLocaleString()} more ${u.word} on ${d.name}`}
                   </Sub>
                 </View>
               );
             })}
           </Card>
 
-          <Lbl style={{ marginTop: 16, marginBottom: 6 }}>Plans</Lbl>
+          <Row between style={{ marginTop: 16, marginBottom: 6 }}>
+            <Lbl>Plans</Lbl>
+            <Sub style={{ fontSize: 10.5 }}>Free trial is {cat.data.trial_days} days</Sub>
+          </Row>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 9 }}>
+            {cat.data.cadences.map((c: any) => (
+              <Chip key={c.key} label={c.note ? `${c.label} · ${c.note}` : c.label} on={cadence === c.key}
+                onPress={() => setCadence(c.key)} testID={`plan-cadence-${c.key}`} />
+            ))}
+          </View>
+
           {cat.data.plans.map((p: any) => {
             const mine = p.key === d.plan;
-            const requested = d.pending?.plan === p.key;
+            const trial = p.key === "trial";
             return (
               <Card key={p.key} style={{ marginBottom: 9, borderColor: mine ? colors.brandPrimary : colors.border }} testID={`plan-card-${p.key}`}>
                 <Row between style={{ alignItems: "flex-start" }}>
@@ -148,9 +154,15 @@ export default function PlanBilling() {
                     <Sub style={{ marginTop: 2 }}>{p.tagline}</Sub>
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
-                    <Text style={s.price}>{p.price ? p.price_label : "Free"}</Text>
-                    <Tag>{p.cadence}</Tag>
+                    <Text style={s.price} testID={`plan-price-${p.key}`}>{trial ? "Free" : p.price_labels[cadence]}</Text>
+                    <Tag>{trial ? p.cadence : cat.data.cadences.find((c: any) => c.key === cadence)?.label}</Tag>
                   </View>
+                </Row>
+                <Row style={{ gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                  <Tag>{num(p.limits.businesses)} business{p.limits.businesses === 1 ? "" : "es"}</Tag>
+                  <Tag>{num(p.limits.shops)} location{p.limits.shops === 1 ? "" : "s"}</Tag>
+                  <Tag>{num(p.limits.users)} staff</Tag>
+                  <Tag>{num(p.limits.invoices)} invoices</Tag>
                 </Row>
                 <View style={{ marginTop: 10, gap: 6 }}>
                   {p.perks.map((perk: string) => (
@@ -160,12 +172,12 @@ export default function PlanBilling() {
                     </Row>
                   ))}
                 </View>
-                {mine ? (
+                {mine && d.status !== "expired" ? (
                   <Btn small variant="ghost" label="You are on this plan" disabled style={{ marginTop: 12 }} testID={`plan-choose-${p.key}`} />
-                ) : p.key === "trial" ? null : (
-                  <Btn small variant={requested ? "ghost" : "deep"} label={requested ? "Requested — we are on it" : `Choose ${p.name}`}
-                    disabled={requested || !d.can_manage} loading={ask.isPending && asking === p.key} style={{ marginTop: 12 }}
-                    testID={`plan-choose-${p.key}`} onPress={() => { setAsking(p.key); ask.mutate(p.key); }} />
+                ) : trial ? null : (
+                  <Btn small variant="deep" label={mine ? `Renew ${p.name}` : `Activate ${p.name}`}
+                    disabled={!d.can_manage} loading={choose.isPending && picking === p.key} style={{ marginTop: 12 }}
+                    testID={`plan-choose-${p.key}`} onPress={() => { setPicking(p.key); choose.mutate(p.key); }} />
                 )}
               </Card>
             );
@@ -173,24 +185,29 @@ export default function PlanBilling() {
 
           <Lbl style={{ marginTop: 6, marginBottom: 6 }}>Side by side</Lbl>
           <Card style={{ paddingVertical: 4 }} testID="plan-matrix">
-            <View style={[s.matrixRow, { paddingVertical: 7 }]}>
-              <Text style={[s.head, { flex: 1 }]}>Feature</Text>
-              {cat.data.plans.map((p: any) => <Text key={p.key} style={[s.head, s.cell]} numberOfLines={1}>{p.name.replace("Free ", "")}</Text>)}
-            </View>
-            {cat.data.matrix.map((m: any, i: number) => (
-              <View key={m.label} style={[s.matrixRow, i === cat.data.matrix.length - 1 && { borderBottomWidth: 0 }]}>
-                <Sub style={{ flex: 1, paddingRight: 8 }}>{m.label}</Sub>
-                {cat.data.plans.map((p: any) => {
-                  const val = m.kind === "limit" ? cap(p.limits[m.key]) : m.kind === "feature" ? (p.features[m.key] ? "✓" : "—") : "✓";
-                  const good = val === "✓" || (m.kind === "limit" && val !== "—");
-                  return <Text key={p.key} style={[s.cell, good && val === "✓" ? s.yes : s.no]} numberOfLines={1}>{val}</Text>;
-                })}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View>
+                <View style={[s.matrixRow, { paddingVertical: 7 }]}>
+                  <Text style={[s.head, { width: 168 }]}>Feature</Text>
+                  {cat.data.plans.map((p: any) => <Text key={p.key} style={[s.head, { width: 74, textAlign: "center" }]} numberOfLines={1}>{p.name.replace("Free ", "")}</Text>)}
+                </View>
+                {cat.data.matrix.map((m: any, i: number) => (
+                  <View key={m.label} style={[s.matrixRow, i === cat.data.matrix.length - 1 && { borderBottomWidth: 0 }]}>
+                    <Sub style={{ width: 168, paddingRight: 8 }}>{m.label}</Sub>
+                    {cat.data.plans.map((p: any) => {
+                      const val = m.kind === "limit" ? num(p.limits[m.key] ?? null)
+                        : m.kind === "feature" ? (p.features[m.key] ? "✓" : "—") : "✓";
+                      return <Text key={p.key} style={[s.cell, val === "✓" && s.yes]} numberOfLines={1}>{val}</Text>;
+                    })}
+                  </View>
+                ))}
               </View>
-            ))}
+            </ScrollView>
           </Card>
 
           <Sub style={{ marginTop: 12 }}>
-            Card payment is not switched on yet. Tap the plan you want and the tredi team activates it for you — nothing is charged from the app.
+            Card payment is not switched on yet, so the plan you tap switches on immediately and we invoice you for it.
+            Starter saves photos on items but only Premium and above print them on invoices.
           </Sub>
         </ScrollView>
       )}

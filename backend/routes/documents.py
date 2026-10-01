@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List, Literal, Optional
 from bson import ObjectId
 
-from deps import CurrentUser, biz_filter, clean, db, log_activity, next_number, now, oid
+from deps import CurrentUser, biz_filter, clean, db, log_activity, next_number, now, oid, scoped, writing_shop
 
 router = APIRouter(prefix="/api")
 
@@ -48,7 +48,7 @@ class CardIn(BaseModel):
 # ---------------------------------------------------------------- 13.1 bills & receipts
 @router.get("/receipts")
 async def list_receipts(user: CurrentUser, kind: str = "all"):
-    f = biz_filter(user)
+    f = await scoped(user, "stock")
     q = dict(f)
     if kind == "unlinked":
         q["link_id"] = None
@@ -62,7 +62,8 @@ async def list_receipts(user: CurrentUser, kind: str = "all"):
 @router.post("/receipts", status_code=201)
 async def add_receipt(data: ReceiptIn, user: CurrentUser):
     f = biz_filter(user)
-    res = await db.receipts.insert_one({**data.model_dump(), **f, "created_by": user.get("name", ""), "created_at": now()})
+    res = await db.receipts.insert_one({**data.model_dump(), **f, "shop": await writing_shop(user),
+                                        "created_by": user.get("name", ""), "created_at": now()})
     return clean(await db.receipts.find_one({"_id": res.inserted_id}))
 
 
@@ -96,7 +97,7 @@ async def attachables(user: CurrentUser):
 # ---------------------------------------------------------------- 13.2 waybill
 @router.get("/waybills")
 async def list_waybills(user: CurrentUser):
-    f = biz_filter(user)
+    f = await scoped(user, "sales")
     return [clean(w) async for w in db.waybills.find(f).sort("created_at", -1)]
 
 
@@ -111,7 +112,7 @@ async def create_waybill(data: WaybillIn, user: CurrentUser):
                       "unit_price": l.get("unit_price") or 0} for l in inv.get("lines", [])]
     number = await next_number(f["business_id"], "waybill", "WB", 230)
     doc = {**data.model_dump(exclude={"lines"}), "lines": lines, "number": number, "packages": round(sum(l["quantity"] for l in lines), 2),
-           **f, "created_by": user.get("name", ""), "created_at": now()}
+           **f, "shop": await writing_shop(user), "created_by": user.get("name", ""), "created_at": now()}
     res = await db.waybills.insert_one(doc)
     await log_activity(f["business_id"], user, "waybill", f"Waybill {number}", data.customer_name, 0, str(res.inserted_id))
     return clean(await db.waybills.find_one({"_id": res.inserted_id}))

@@ -119,8 +119,12 @@ def subscription_state(biz: dict) -> dict:
         ends = aware(biz.get("renews_at"))
     days_left = None if ends is None else (ends - now()).days
     expired = ends is not None and ends <= now()
-    return {"plan": plan["key"], "name": plan["name"], "price": plan["price"], "price_label": plan["price_label"],
-            "cadence": plan["cadence"], "tagline": plan["tagline"], "perks": plan["perks"],
+    cadence = biz.get("plan_cadence") or "monthly"
+    price = plan_rules.price_of(plan, cadence)
+    return {"plan": plan["key"], "name": plan["name"], "price": price,
+            "price_label": plan_rules.money(price),
+            "cadence": plan_rules.CADENCE_WORDS[cadence] if not trialing else plan["cadence"],
+            "cadence_key": cadence, "tagline": plan["tagline"], "perks": plan["perks"],
             "limits": plan["limits"], "features": plan["features"], "trialing": trialing,
             "status": "expired" if expired else ("trialing" if trialing else "active"),
             "days_left": days_left, "ends_at": ends.isoformat() if ends else None}
@@ -153,6 +157,12 @@ async def ensure_feature(user: dict, feature: str):
     sub = await subscription_of(str(user["business_id"]))
     if not sub["features"].get(feature):
         raise HTTPException(402, plan_rules.feature_message(sub["plan"], feature))
+
+
+async def ensure_invoice_room(user: dict):
+    """Each plan covers a number of customer invoices; this is that gate."""
+    bid = str(user["business_id"])
+    await ensure_limit(user, "invoices", await db.invoices.count_documents({"business_id": bid, "deleted_at": None}))
 
 
 def public_user(u: dict) -> dict:
@@ -188,6 +198,11 @@ async def shop_scope(user: dict, area: str = "sales") -> dict:
     role = user.get("role", "owner")
     sc = "all" if role == "owner" else ((user.get("scopes") or {}).get(area) or "shop")
     assigned = [s for s in (user.get("shops") or []) if s in all_shops]
+    # A rep with no explicit posting is still not a roaming owner: they are tied
+    # to the shop they are standing in (the main branch if that is all there is).
+    if not assigned and sc != "all":
+        here = user.get("shop") or ""
+        assigned = [here if here in all_shops else main]
     locked = sc != "all" and bool(assigned)
     allowed = assigned if locked else None
     active = user.get("shop") or ""

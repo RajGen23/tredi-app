@@ -409,3 +409,40 @@ the page below visible, and a web photo upload that lands.
     every category ("Other — tap to split it").
 - Verified by the testing agent, iteration 24 (18/18 backend + frontend sweep of all 11 report
   screens). Note: the "Other" split only appears for tenants with 4+ expense categories.
+
+## Pass 12l — subscription plans rebuilt + shop/rep separation (June 2026)
+**User's plan table is now the law** (`/app/backend/plans.py`): Starter (1 business / 1 location /
+1 staff / 1,000 invoices · ₦7,500 · ₦18,500 · ₦69,000), Premium (1/3/9/10,000 · 17,000 · 40,800 ·
+149,000), Pro (3/9/27/50,000 · 50,000 · 120,000 · 449,000), Enterprise (4/16/48/200,000 · 83,500 ·
+200,400 · 749,000), 14-day trial with Premium-level access. Starter uploads item photos but
+cannot print them on invoices (`invoice_photos` false). New feature flags: custom_pdf,
+reminders, csv_export, multi_shop_analytics. `deps.ensure_invoice_room` enforces the invoice cap
+on POST /api/invoices.
+
+**The lock-out bug**: picking a plan used to file a *request* an admin had to approve, so an
+expired tenant could never get back to work. Replaced with self-service
+`POST /api/subscription/choose {plan, cadence}` (owner only) which switches the plan instantly,
+sets `renews_at` from the cadence and records `plan_history`; the old
+`POST/DELETE /api/subscription/request` endpoints are gone. `/api/subscription` and `/api/plans`
+are on the write-always-allow list, so an expired shop can always reach them. Expiry stays
+read-only, per the user's choice. `app/settings/plan.tsx` rebuilt: 5 cards, cadence chips,
+limits per card, usage incl. customer invoices, horizontal comparison table.
+
+**Multi-currency** was already wired (`src/format.ts` CURRENCIES + `setCurrency`, Country and
+Currency pickers on Business profile) — the user's screenshot was a stale bundle. Verified live:
+picking United States switches amounts to "$", back to NGN restores "₦".
+
+**Shop separation**: invoices, expenses, dashboard and reports were already scoped; quotes,
+purchases, returns, receipts, waybills now use `scoped(...)` and transfers match either end of
+the move. New receipts and waybills are stamped with the writing shop (legacy rows fall to the
+main branch, as `scope_clause` already does elsewhere). The item catalogue stays shared with the
+quantity of the shop in view.
+
+**Rep scoping**: `deps.shop_scope` now locks a non-owner with no explicit shop list to the shop
+they are standing in, so a rep cannot see or switch to another branch
+(`POST /api/shops/active` → 403). `/reports/reps` rows show "Posted to <shop>".
+
+Super-admin plan seed (`admin_seed.PLANS` / `FEATURE_GATES`) and
+`app/admin/subscriptions/plans.tsx` carry the same five plans.
+Verified by the testing agent, iteration 25 (18/18 backend + frontend sweep).
+Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as active forever.

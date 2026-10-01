@@ -13,20 +13,29 @@ ADMIN_EMAIL = "superadmin@tredi.app"
 ADMIN_PASSWORD = "tredi1234"
 
 PLANS = [
-    {"key": "trial", "name": "Trial", "cadence": "14 days", "price": 0, "price_label": "Free", "shops": "1", "users": "2",
-     "storage": "2 GB", "businesses": "1", "note": ""},
-    {"key": "basic", "name": "Basic", "cadence": "Monthly", "price": 12000, "price_label": "₦ 12,000", "shops": "2", "users": "4",
-     "storage": "2 GB", "businesses": "1", "note": ""},
-    {"key": "pro", "name": "Pro", "cadence": "Monthly", "price": 38000, "price_label": "₦ 38,000", "shops": "Unlimited",
-     "users": "Unlimited", "storage": "5 GB", "businesses": "3", "note": "Most revenue"},
+    {"key": "trial", "name": "Trial", "cadence": "14 days", "price": 0, "price_label": "Free", "shops": "3", "users": "9",
+     "storage": "2 GB", "businesses": "1", "note": "Premium access"},
+    {"key": "starter", "name": "Starter", "cadence": "Monthly", "price": 7500, "price_label": "₦ 7,500", "shops": "1", "users": "1",
+     "storage": "2 GB", "businesses": "1", "note": "No photos on invoices"},
+    {"key": "premium", "name": "Premium", "cadence": "Monthly", "price": 17000, "price_label": "₦ 17,000", "shops": "3", "users": "9",
+     "storage": "5 GB", "businesses": "1", "note": "Most popular"},
+    {"key": "pro", "name": "Pro", "cadence": "Monthly", "price": 50000, "price_label": "₦ 50,000", "shops": "9",
+     "users": "27", "storage": "10 GB", "businesses": "3", "note": "Most revenue"},
+    {"key": "enterprise", "name": "Enterprise", "cadence": "Monthly", "price": 83500, "price_label": "₦ 83,500", "shops": "16",
+     "users": "48", "storage": "20 GB", "businesses": "4", "note": ""},
 ]
 
 FEATURE_GATES = [
-    {"feature": "Offline mode & cloud backup", "trial": True, "basic": True, "pro": True},
-    {"feature": "Stock transfers between shops", "trial": False, "basic": True, "pro": True},
-    {"feature": "Custom roles", "trial": False, "basic": False, "pro": True},
-    {"feature": "Multiple businesses", "trial": False, "basic": False, "pro": True},
-    {"feature": "Thermal printing & image export", "trial": True, "basic": True, "pro": True},
+    {"feature": "Basic inventory, sales & debt tracking", "trial": True, "starter": True, "premium": True, "pro": True, "enterprise": True},
+    {"feature": "Offline mode & cloud backup", "trial": True, "starter": True, "premium": True, "pro": True, "enterprise": True},
+    {"feature": "Inventory image upload", "trial": True, "starter": True, "premium": True, "pro": True, "enterprise": True},
+    {"feature": "Image display on invoices", "trial": True, "starter": False, "premium": True, "pro": True, "enterprise": True},
+    {"feature": "Custom PDF invoices", "trial": True, "starter": False, "premium": True, "pro": True, "enterprise": True},
+    {"feature": "Customer sales reminders", "trial": True, "starter": False, "premium": True, "pro": True, "enterprise": True},
+    {"feature": "CSV exports", "trial": True, "starter": False, "premium": True, "pro": True, "enterprise": True},
+    {"feature": "Multi-shop analytics", "trial": True, "starter": False, "premium": True, "pro": True, "enterprise": True},
+    {"feature": "Stock transfers between locations", "trial": True, "starter": False, "premium": True, "pro": True, "enterprise": True},
+    {"feature": "Multiple businesses", "trial": False, "starter": False, "premium": False, "pro": True, "enterprise": True},
 ]
 
 ROLE_TEMPLATES = ["Owner", "Manager", "Sales", "Stock", "Accountant"]

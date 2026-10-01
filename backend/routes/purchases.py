@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Literal
 from bson import ObjectId
 
-from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, line_totals, log_activity, next_number, now, oid, writing_shop)
+from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, line_totals, log_activity, next_number, now, oid, scoped, writing_shop)
 from datetime import date as _date, datetime, timezone
 
 router = APIRouter(prefix="/api")
@@ -175,7 +175,7 @@ async def create_purchase(data: PurchaseIn, user: CurrentUser):
 
 @router.get("/purchases")
 async def list_purchases(user: CurrentUser):
-    f = biz_filter(user)
+    f = await scoped(user, "stock")
     out = []
     async for p in db.purchases.find(f).sort("created_at", -1):
         d = clean(p)
@@ -239,7 +239,7 @@ async def pay_supplier(data: SupplierPaymentIn, user: CurrentUser):
 
 @router.get("/returns")
 async def list_returns(user: CurrentUser):
-    f = biz_filter(user)
+    f = await scoped(user, "sales")
     return [clean(r) async for r in db.returns.find(f).sort("created_at", -1)]
 
 

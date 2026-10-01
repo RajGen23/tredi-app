@@ -248,6 +248,10 @@ async def delete_address(aid: str, user: CurrentUser):
 @router.get("/transfers")
 async def list_transfers(user: CurrentUser):
     f = biz_filter(user)
+    # A transfer belongs to two shops, so the one in view sees it from either end.
+    sc = await shop_scope(user, "stock")
+    if sc["shops"] is not None:
+        f = {**f, "$or": [{"from_shop": {"$in": sc["shops"]}}, {"to_shop": {"$in": sc["shops"]}}]}
     out = [clean(t) async for t in db.transfers.find(f).sort("created_at", -1)]
     counts = {"pending": 0, "transit": 0, "received": 0, "discrepancy": 0}
     for t in out:

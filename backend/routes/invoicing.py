@@ -6,7 +6,7 @@ from bson import ObjectId
 from datetime import timedelta, date
 
 from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, decorate_invoice, invoice_totals, line_totals,
-                  log_activity, next_number, now, oid, subscription_of, VAT_RATE)
+                  log_activity, next_number, now, oid, scoped, subscription_of, VAT_RATE)
 
 router = APIRouter(prefix="/api")
 
@@ -141,7 +141,7 @@ async def delete_terms(tid: str, user: CurrentUser):
 # ---------------------------------------------------------------- 04.9 quotations
 @router.get("/quotes")
 async def list_quotes(user: CurrentUser):
-    f = biz_filter(user)
+    f = await scoped(user, "sales")
     rows = []
     counts = {"open": 0, "accepted": 0, "rejected": 0, "expired": 0}
     today = date.today()
