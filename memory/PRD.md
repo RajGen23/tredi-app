@@ -357,3 +357,18 @@ the page below visible, and a web photo upload that lands.
   an Exact day `DateField` (`invoice-filter-day`). Precedence is day > month > the Period
   chips; both show as clearable chips above the list and count toward the filter dot.
 - Verified by the testing agent, iteration 19 (7/7 pass, no files changed).
+
+## Pass 12i — invoice page top-bar action (June 2026)
+- Review of the user's "INVOICE FIXES" slides against the build: the draft card (visible **Edit**
+  + **Confirm & issue**), the stock-deduction disclaimer sheet (`invoice-issue-sheet` with
+  per-line before/after), **Delete this draft / Cancel this invoice**, the payment page
+  (paying-invoice card with its own balance, pre-ticked target invoice, method / date /
+  account pickers) and the waybill auto-link from an invoice were all already in place.
+  Issuing a draft already updates the *same* document (server.py `issue_invoice`), so a draft
+  never becomes a second invoice — the "repeat of…" rows the user saw come from Duplicate,
+  which is meant to create a new document.
+- The only gap: the invoice detail top-right was an unlabelled copy icon (Duplicate). It is now
+  a clock → `/history/{id}` (`invoice-history`), matching "add a button up here for activity
+  and payment history". Duplicate stays as the labelled "Duplicate this invoice" row.
+- Verified by the testing agent, iterations 20 and 21 (4/4 + 10/10 backend tests, frontend
+  flows for draft lifecycle, payment prefill and waybill prefill all pass).

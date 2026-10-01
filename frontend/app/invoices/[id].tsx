@@ -84,7 +84,7 @@ export default function InvoiceDetail() {
       <View style={[s.teal, { height: insets.top + 132 }]} />
       <View style={{ paddingTop: insets.top }}>
         <AppBar teal back mono title={inv?.number ?? "Invoice"}
-          right={<IconBtn teal name="copy-outline" testID="invoice-more" onPress={() => setRepeat(true)} />} />
+          right={<IconBtn teal name="time-outline" testID="invoice-history" onPress={() => router.push(`/history/${id}`)} />} />
       </View>
       {!inv ? <Card style={{ marginHorizontal: 14 }}><Loading /></Card> : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: insets.bottom + 24 }}>

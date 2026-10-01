@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 20 — Record history unification verified end-to-end on web preview at 390x844 as owner@tredi.app. Backend GET /api/history/{ref_id} returns the expected envelope (title, sub, rows[], count) and resolves invoice refs (title=invoice number, sub=customer, synthetic 'Invoice created' seed row if no activity row exists) and item refs (title=item name, stock movements injected). Frontend: on /invoices/<objectId> both the top AppBar clock button (testID invoice-history) and the bottom 'Activity & payments' row (testID invoice-activity) call router.push(`/history/${id}`) with the SAME MongoDB id and both land on the SAME history-screen rendering identical content: 'Record INV-1297 · Adeola Stores · 1 events · INV-1297 created · ₦ 538 · Amina Yusuf · Surulere · 24 Sep, 18:14'. Target URL from both entry points matched exactly (/history/6ab5688b7460bead622ead1d). Stock → item detail → 'Record history' row (testID item-history) also navigates to the same /history/<item-id> and renders history-screen. No React Native red screens; invoice-detail-screen testID present; history-N row testIDs render per event (history-0 for the single row observed). No deprecated expo packages touched in the files involved (/app/frontend/app/invoices/[id].tsx, /app/frontend/app/history/[id].tsx, /app/frontend/app/stock/[id].tsx, /app/frontend/app/sales/[id].tsx, /app/backend/routes/activity.py).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter20_history.py",
+    "/app/test_reports/pytest/iter20_history.xml",
+    "/app/test_reports/screenshots/iter20_inv_detail.png",
+    "/app/test_reports/screenshots/iter20_hist_top.png",
+    "/app/test_reports/screenshots/iter20_hist_activity.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "invoices/[id].tsx line 87 (IconBtn invoice-history) and line 215 (Li invoice-activity) both call router.push(`/history/${id}`) with the same route param from useLocalSearchParams — guarantees the two entry points land on the same screen (verified: identical URL and identical rendered content).",
+    "activity.py::history (line 179) correctly handles both object kinds: when ref_id is a valid ObjectId matching an invoice it sets title=inv['number'] and sub=customer name and backfills a synthetic 'Invoice created' row if the activity log has no creation entry — this is exactly what the UI showed for INV-1297. When ref_id does not match an invoice or an item it returns {title: 'Record', sub: '', rows: [], count: 0} without crashing (verified with /api/history/not-an-oid).",
+    "history/[id].tsx line 47 uses `history-${i}` as the row testID — stable per index, consistent with the existing testID scheme on the sales/stock lists. Avoids leaking the activity-row's MongoDB id into the DOM, which is good.",
+    "stock/[id].tsx line 245 and sales/[id].tsx line 102 also push to /history/<id> — the four entry points (invoice header clock, invoice activity row, stock item history row, sale history row) all converge on the same screen. One source of truth; no divergence."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter20_history.py (new, 4 tests, all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (4/4) — history for invoice, history for item, auth gate, and non-ObjectId safety",
+    "frontend": "100% on the ask — top clock button and bottom activity row both reach the same /history/<id> screen with identical content; the parallel entry point from stock/[id] also works"
+  },
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Invoice list rows on /sales use data-testid='invoice-row-<INVOICE_NUMBER>' (e.g. invoice-row-INV-1297), NOT the MongoDB ObjectId. The invoice detail route is /invoices/<ObjectId>, so DO NOT try to navigate directly by splitting the invoice number off the row testID — click the row through the UI (natural Expo Router onPress) and read the resolved ObjectId from page.url. The history-screen testID is on the outer View in /app/frontend/app/history/[id].tsx; row testIDs are history-0, history-1, … (per index). The activity row at the bottom of the invoice detail (testID invoice-activity) is below the fold on 390x844 — scroll_into_view_if_needed before clicking. Login flow unchanged: /sign-in → owner@tredi.app / tredi1234 → 'Sign in and continue'. Backend login expects form-encoded username/password (OAuth2PasswordRequestForm) and returns access_token (not 'token').",
+  "rca_of_issue": "N/A — the feature functions to spec. Both entry points share one router.push call pattern and the backend endpoint is a single handler, so divergence is structurally impossible as long as the same `id` is passed. Verified empirically with identical URL and identical rendered content from both entry points plus the equivalent entry from /stock/[id]."
+}

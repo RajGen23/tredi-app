@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 21 — Draft lifecycle, payment page and waybill prefill verified. Backend 10/10 pytest cases pass against the public URL (owner@tredi.app) covering: POST /invoices with status=draft does not mint an INV number nor move stock; GET /invoices/{id}/issue-preview returns rows with before/after stock, total and shop; POST /invoices/{id}/issue assigns an INV- number and deducts stock; a second /issue returns 400; DELETE /invoices/{id} on an issued invoice without reason returns 400, with reason returns {mode:'cancelled', number preserved} and puts stock back on the shelf; POST /invoices/{id}/uncancel restores and re-deducts stock; DELETE on a draft returns {mode:'deleted'}; POST /payments with allocations against the invoice reduces the invoice.due by exactly the paid amount; POST /waybills with invoice_id persists invoice_id and GET /waybills/{wid} resolves invoice_number from the source invoice, with lines (name, quantity) copied from the invoice.\n\nFrontend verified (390x844 web preview, owner@tredi.app): sign-in → home redirect; /invoices/new loads with Step 0 (Customer) → Step 1 (Items) → Step 2 (Review) progress bar; Step 0 shows top-right 'Save draft' affordance (testID new-invoice-screen); Review step renders BOTH testID='review-save-draft' AND testID='review-send' side-by-side with the disclaimer 'A draft touches nothing. Issuing takes the items off your shelf.' as the PDF asks for. Customer summary strip renders correctly (Owes/Bought/Credit left) on step 1. Draft invoice detail route /invoices/{id} shows the amber testID='invoice-draft-card' with 'Edit' + 'Confirm & issue' buttons, and HIDES testID='invoice-waybill' and testID='invoice-record-payment' until issued (code path in /app/frontend/app/invoices/[id].tsx:131-147,161-167,197-206). Issue-sheet (testID invoice-issue-sheet → issue-preview-rows) renders the per-item stock movement before confirm. Payment page (testID payment-in-screen) pre-selects target invoice (testID payment-target-invoice, payment-target-due) and prefills the amount from invoice.due via useEffect; method/date/account pickers render. Waybill from invoice (/documents/waybill/new?invoice_id=…) resolves source via GET /invoices/{id} and populates lines + deliver_to in the local form (/app/frontend/app/documents/waybill/[id].tsx:30-50).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter21_draft_payment_waybill.py",
+    "/app/test_reports/pytest/iter21_results.xml",
+    "/app/test_reports/screenshots/iter21_issue_sheet.png",
+    "/app/test_reports/screenshots/iter21_payment.png",
+    "/app/test_reports/screenshots/iter21_waybill_prefill.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:777-819 — DELETE /invoices/{id} correctly branches on inv['status']: draft → deleted, otherwise requires reason and returns {mode:'cancelled', credit:<paid>} after re-crediting stock and detaching payment allocations. Note: cancelled invoice KEEPS 'number' per plan (never erased).",
+    "server.py:746-774 — issue endpoint rejects non-draft (400 'already a sales order'), assigns prefix+next_number, sets was_draft=True, applies stock, and auto-posts the receipt when payment_mode != 'credit'. Matches Part 1 requirement end-to-end.",
+    "frontend/app/invoices/new.tsx:456-463 — Review footer renders Save-draft + Issue-invoice side-by-side with the one-liner disclaimer directly above, exactly as the plan asks. Each button is labelled with what it does.",
+    "frontend/app/invoices/[id].tsx:197-206 — waybill row is hidden on drafts and renders different sub-copy when a waybill already exists ('<WB-xxx> already raised — tap for a new one'), which routes to a NEW waybill with invoice_id prefill, matching Part 3 'raised from an invoice stays linked both ways'.",
+    "frontend/app/documents/waybill/[id].tsx:43-50 — `take()` only runs when source.data arrives and form.invoice_id is still empty, so switching invoices from the picker won't silently merge lines across sources.",
+    "frontend/app/payments/new.tsx:66-71 — target invoice.due is used as the default amount; allocations recompute from the live amount so partial payments allocate correctly against the picked invoices. Matches Part 2."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter21_draft_payment_waybill.py (new, 10 tests, all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10) — draft create, issue-preview, issue, re-issue 400, delete-issued-no-reason 400, cancel + stock back, uncancel, delete-draft, payment reduces due, waybill prefill",
+    "frontend": "Flows verified: sign-in, new-invoice step progression, review (Save-draft + Issue-invoice both present), draft detail (draft card + edit + confirm&issue, waybill/record-payment hidden), issue sheet with preview rows, payment page prefill of target invoice + due amount, waybill-from-invoice loading. One Playwright flake clicking the 'Choose from inventory' row inside the Add-item sheet (viewport reports element 'outside of viewport' after sheet animation); the sheet is interactable manually and the backend path it drives is covered by the pytest suite."
+  },
+  "seed_data_creation": "None. Uses existing demo seed on owner@tredi.app — created one draft invoice per run that is either issued/cancelled/deleted inside the same run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "To drive sign-in via Playwright on this app: Field testIDs sit on an outer View, so target the input by placeholder: input[placeholder=\"you@shop.ng\"] for email and input[type=\"password\"] for password, then click [data-testid=\"sign-in-submit\"]. The post-signin URL is / (home). Draft invoice detail flow: open /invoices/new → pick [data-testid^=\"invoice-pick-customer-\"] → click [data-testid=\"invoice-add-item-field\"] to open the add-item sheet. The sheet entries [data-testid=\"add-item-inventory\"] can occasionally report 'outside viewport' right after the sheet animation; a page.wait_for_timeout(400) + a direct `locator.evaluate('el => el.scrollIntoView({block:\"center\"})')` on the testID resolves it, or dispatch_event('click'). Review footer buttons are [data-testid=\"review-save-draft\"] and [data-testid=\"review-send\"]. The waybill route pattern is /documents/waybill/new?invoice_id=<ObjectId> (handled in [id].tsx with isNew = id==='new').",
+  "rca_of_issue": "N/A — the three ask-features are implemented and working end-to-end at the API layer and have the expected UI entry points. Status-decorator reports an issued invoice with a past due_date as 'overdue' (not 'issued') — this is cosmetic and intentional, but tests comparing status must accept the set {'issued','overdue','unpaid','paid'}."
+}
