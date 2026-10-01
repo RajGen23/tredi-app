@@ -1,6 +1,6 @@
 // 06.2 Supplier profile — identical shape to the customer profile.
 import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { ScrollView, Linking, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,6 +29,8 @@ export default function SupplierProfile() {
   const toast = useToast();
   const qc = useQueryClient();
   const [pay, setPay] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [list, setList] = useState<"" | "orders" | "payments">("");
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState<string | null>(null);
 
@@ -51,7 +53,7 @@ export default function SupplierProfile() {
     <View style={s.root} testID="supplier-profile-screen">
       <View style={[s.teal, { height: insets.top + 150 }]} />
       <View style={{ paddingTop: insets.top }}>
-        <AppBar title="Supplier" back teal right={<IconBtn teal name="ellipsis-horizontal" testID="supplier-more" />} />
+        <AppBar title="Supplier" back teal right={<IconBtn teal name="ellipsis-horizontal" testID="supplier-more" onPress={() => setMenu(true)} />} />
       </View>
       {!d ? <Loading /> : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
@@ -73,9 +75,10 @@ export default function SupplierProfile() {
             </Row>
           </Card>
           <Row style={{ gap: 8, marginTop: 9 }}>
-            <View style={{ flex: 1 }}><Kpi label="Orders" value={String(d.purchases.length)} small="tap to see the last one" testID="supplier-kpi-orders"
-              onPress={() => d.purchases[0] && router.push(`/purchases/${d.purchases[0].id}`)} /></View>
-            <View style={{ flex: 1 }}><Kpi label="Payments sent" value={String(d.payments.length)} small={d.payments[0] ? `last from ${d.payments[0].account_name}` : "none yet"} /></View>
+            <View style={{ flex: 1 }}><Kpi label="Orders" value={String(d.purchases.length)} small="tap to see them all" testID="supplier-kpi-orders"
+              onPress={() => setList("orders")} /></View>
+            <View style={{ flex: 1 }}><Kpi label="Payments sent" value={String(d.payments.length)} small={d.payments[0] ? `last from ${d.payments[0].account_name}` : "none yet"}
+              testID="supplier-kpi-payments" onPress={() => setList("payments")} /></View>
           </Row>
 
           <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Ledger</Lbl>
@@ -120,6 +123,54 @@ export default function SupplierProfile() {
           ) : null}
         </ScrollView>
       )}
+
+      <Sheet visible={menu} onClose={() => setMenu(false)} testID="supplier-menu-sheet">
+        <H4 style={{ marginBottom: 6 }}>{d?.name ?? "Supplier"}</H4>
+        <Li testID="supplier-menu-edit" onPress={() => { setMenu(false); router.push(`/suppliers/new?edit=${id}`); }}>
+          <Av icon="create-outline" tone="sq" />
+          <View style={{ flex: 1 }}><H4>Edit details</H4><Sub>Phone, address, what they supply, opening balance</Sub></View>
+        </Li>
+        <Li testID="supplier-menu-purchase" onPress={() => { setMenu(false); router.push(`/purchases/new?supplier=${id}`); }}>
+          <Av icon="cart-outline" tone="sq" />
+          <View style={{ flex: 1 }}><H4>Record a purchase</H4><Sub>Raises stock and what you owe in one entry</Sub></View>
+        </Li>
+        <Li testID="supplier-menu-pay" onPress={() => { setMenu(false); setPay(true); }}>
+          <Av icon="arrow-up-outline" tone="sq" />
+          <View style={{ flex: 1 }}><H4>Pay this supplier</H4><Sub>{money(d?.owed ?? 0)} outstanding</Sub></View>
+        </Li>
+        <Li last testID="supplier-menu-call" onPress={() => { setMenu(false); if (d?.phone) Linking.openURL(`tel:${String(d.phone).replace(/\s/g, "")}`); else toast.show("No phone saved for them yet"); }}>
+          <Av icon="call-outline" tone="sq" />
+          <View style={{ flex: 1 }}><H4>Call them</H4><Sub>{d?.phone || "No phone on file"}</Sub></View>
+        </Li>
+      </Sheet>
+
+      <Sheet visible={list !== ""} onClose={() => setList("")} testID="supplier-list-sheet">
+        <H4 style={{ marginBottom: 6 }}>{list === "orders" ? "Every order from them" : "Every payment sent"}</H4>
+        <View style={{ maxHeight: 440 }}>
+          <ScrollView>
+            {list === "orders" ? (d?.purchases ?? []).map((p: any, i: number, arr: any[]) => (
+              <Li key={p.id} last={i === arr.length - 1} testID={`supplier-list-order-${p.id}`}
+                onPress={() => { setList(""); router.push(`/purchases/${p.id}`); }}>
+                <Av icon="cart-outline" tone="sq" />
+                <View style={{ flex: 1 }}>
+                  <Row between><H4>{p.number}</H4><Money>{money(p.total)}</Money></Row>
+                  <Sub>{p.lines.length} line{p.lines.length === 1 ? "" : "s"} · {shortDate(p.created_at)} · paid from {p.account_name}</Sub>
+                </View>
+              </Li>
+            )) : (d?.payments ?? []).map((p: any, i: number, arr: any[]) => (
+              <Li key={p.id} last={i === arr.length - 1} testID={`supplier-list-payment-${p.id}`}>
+                <Av icon="arrow-up-outline" tone="mint" />
+                <View style={{ flex: 1 }}>
+                  <Row between><H4>From {p.account_name}</H4><Money tone="pos">− {money(p.amount)}</Money></Row>
+                  <Sub>{shortDate(p.created_at)}{p.note ? ` · ${p.note}` : ""}</Sub>
+                </View>
+              </Li>
+            ))}
+            {(list === "orders" ? d?.purchases ?? [] : d?.payments ?? []).length === 0
+              ? <Sub>Nothing recorded yet.</Sub> : null}
+          </ScrollView>
+        </View>
+      </Sheet>
 
       <Sheet visible={pay} onClose={() => setPay(false)} testID="supplier-pay-sheet">
         <H4>Pay {d?.name}</H4>

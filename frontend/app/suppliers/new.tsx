@@ -1,9 +1,9 @@
-// Add a supplier — name and phone are enough to start.
-import { useState } from "react";
+// Add or correct a supplier — name and phone are enough to start.
+import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
 import { AppBar, Btn, Card, Field, Lbl, Row, Sub } from "@/src/components/ui";
@@ -21,14 +21,28 @@ export default function NewSupplier() {
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
   const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", category: "", opening_balance: "" });
   const set = (k: string) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  const editQ = useQuery({ queryKey: ["supplier", edit], queryFn: () => api(`/suppliers/${edit}`), enabled: !!edit });
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const d: any = editQ.data;
+    if (!d || loaded) return;
+    setLoaded(true);
+    setForm({ name: d.name ?? "", phone: d.phone ?? "", email: d.email ?? "", address: d.address ?? "",
+      category: d.category ?? "", opening_balance: d.opening_balance ? String(d.opening_balance) : "" });
+  }, [editQ.data, loaded]);
+
   const save = useMutation({
-    mutationFn: () => api("/suppliers", { method: "POST", json: { ...form, category: form.category || "General", opening_balance: parseNum(form.opening_balance) } }),
+    mutationFn: () => {
+      const json = { ...form, category: form.category || "General", opening_balance: parseNum(form.opening_balance) };
+      return edit ? api(`/suppliers/${edit}`, { method: "PUT", json }) : api("/suppliers", { method: "POST", json });
+    },
     onSuccess: (r: any) => {
-      qc.invalidateQueries({ queryKey: ["suppliers"] });
-      toast.show("Supplier saved", r.name);
+      ["suppliers", "supplier", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      toast.show(edit ? "Supplier updated" : "Supplier saved", r.name);
       router.replace(`/suppliers/${r.id}`);
     },
     onError: (e: any) => toast.show(e.message),
@@ -36,7 +50,7 @@ export default function NewSupplier() {
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-supplier-screen">
-      <AppBar title="New supplier" close />
+      <AppBar title={edit ? "Edit supplier" : "New supplier"} close />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Card style={{ gap: 8 }}>
           <Field label="Supplier name" placeholder="Ade Foods Ltd" value={form.name} onChangeText={set("name")} testID="supplier-name" />
@@ -46,7 +60,7 @@ export default function NewSupplier() {
           <Field label="Opening balance you owe" placeholder="0" keyboardType="numeric" mono value={form.opening_balance} onChangeText={set("opening_balance")} testID="supplier-opening" />
         </Card>
         <Sub style={{ marginTop: 10 }}>Purchases raise stock and what you owe in one entry.</Sub>
-        <Btn label="Save supplier" style={{ marginTop: 14 }} disabled={!form.name.trim()} loading={save.isPending} testID="supplier-save" onPress={() => save.mutate()} />
+        <Btn label={edit ? "Save changes" : "Save supplier"} style={{ marginTop: 14 }} disabled={!form.name.trim()} loading={save.isPending} testID="supplier-save" onPress={() => save.mutate()} />
       </ScrollView>
     </View>
   );

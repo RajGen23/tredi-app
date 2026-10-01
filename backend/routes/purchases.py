@@ -111,6 +111,20 @@ async def create_supplier(data: SupplierIn, user: CurrentUser):
     return clean(await db.suppliers.find_one({"_id": res.inserted_id}))
 
 
+@router.put("/suppliers/{sid}")
+async def update_supplier(sid: str, data: SupplierIn, user: CurrentUser):
+    """Correct a supplier's details — phone, address, what they supply. The
+    opening balance is part of the form, so it stays editable too."""
+    f = biz_filter(user)
+    s = await db.suppliers.find_one({"_id": oid(sid), **f})
+    if not s:
+        raise HTTPException(404, "Supplier not found")
+    await db.suppliers.update_one({"_id": s["_id"]}, {"$set": {
+        **data.model_dump(), "updated_at": now(), "updated_by": user.get("name", "")}})
+    await log_activity(f["business_id"], user, "supplier", f"Supplier {data.name} updated", "", 0, sid)
+    return clean(await db.suppliers.find_one({"_id": s["_id"]}))
+
+
 @router.get("/suppliers/{sid}")
 async def get_supplier(sid: str, user: CurrentUser):
     f = biz_filter(user)

@@ -372,3 +372,23 @@ the page below visible, and a web photo upload that lands.
   and payment history". Duplicate stays as the labelled "Duplicate this invoice" row.
 - Verified by the testing agent, iterations 20 and 21 (4/4 + 10/10 backend tests, frontend
   flows for draft lifecycle, payment prefill and waybill prefill all pass).
+
+## Pass 12j — supplier tab + inventory slides (June 2026)
+- Already in place from earlier passes (confirmed against the slides): PO rows on the supplier
+  ledger open the purchase with its lines; supplier payments show the account they came from;
+  New item has supplier / brand / category / unit / store-in pickers that all accept a new
+  value through "+", photo upload works, and Store-in defaults to the writing shop; the item
+  page has Edit, delete (archive), tap-to-add photo, "Prices & profit · since inception"
+  (cost, sells at, units sold, profit + margin), stock aging and Supply history (PO number,
+  supplier, qty, unit cost → opens the purchase).
+- Fixed this pass:
+  - Supplier `⋯` was dead. It now opens `supplier-menu-sheet`: Edit details, Record a purchase,
+    Pay this supplier, Call them.
+  - Supplier **Orders** and **Payments sent** cards are now tappable and open
+    `supplier-list-sheet` — every order (tap → purchase) and every payment with the account
+    it was paid from.
+  - Supplier editing exists now: `PUT /api/suppliers/{sid}` (routes/purchases.py) plus
+    `app/suppliers/new.tsx?edit=<id>` which prefills and saves changes.
+  - Item page "Where it is" shows the per-location breakdown even for a single location, and
+    marks the active shop with "· this store".
+- Verified by the testing agent, iterations 22 (10/10 backend + frontend) and 23.

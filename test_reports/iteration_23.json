@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 23 — 2-minute frontend confirmation of the two follow-ups from iter22. (1) 'Where it is' label: the row for the writing shop now shows ' · this store' as a suffix — verified on /stock/{id} ('item-shop-Ikeja branch' renders text 'Ikeja branch · this store24'), while 'item-shop-Surulere' has no suffix (owner is scoped to Ikeja). (2) Supplier menu sheet: tapping supplier-more opens testID='supplier-menu-sheet' with all four rows visible (supplier-menu-edit / -purchase / -pay / -call). Tapping Edit routes to /suppliers/new?edit=<id>, [data-testid='new-supplier-screen'] renders with the app-bar title 'Edit supplier', fields are prefilled from the backend profile (name='Ade Foods Ltd', phone='+234 802 111 2233', category='Grains', address='Ikeja, Lagos'), and the primary button is now 'Save changes' — exactly the one label and one sheet the main agent asked to confirm. No backend re-run per the task note.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/screenshots/iter23_menu.png",
+    "/app/test_reports/screenshots/iter23_edit_supplier.png",
+    "/app/test_reports/screenshots/iter23_item_location.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "frontend/app/stock/[id].tsx:206-213 — 'Where it is' now renders whenever stock_by_shop has any entries (previously only when length>1), and the row matching useShops().writeShop appends ' · this store'. This resolves the iter22 note that the previous comparison against it.location (free-text) never lit up.",
+    "frontend/app/suppliers/[id].tsx:124-141 — supplier-menu-sheet carries all four rows; edit routes to /suppliers/new?edit=<id>. The 'call' row falls back to a toast when no phone is saved — nice touch.",
+    "frontend/app/suppliers/new.tsx:28-40,53,63 — one screen handles both create and edit via ?edit=<id>; useQuery(['supplier', id]) prefills the form once, PUT /suppliers/{id} on save, invalidates ['suppliers','supplier','activity'], and the title + CTA switch to 'Edit supplier' / 'Save changes'."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "not-run (per task note)",
+    "frontend": "100% — both target confirmations pass: '· this store' label visible on writeShop row, supplier menu sheet opens with four rows, Edit opens the pre-filled Edit supplier screen with 'Save changes' CTA."
+  },
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "writeShop comes from GET /api/shops .active; on owner@tredi.app it is 'Ikeja branch', so the matching stock_by_shop row is 'item-shop-Ikeja branch' with text ending in ' · this store'. To open the Edit supplier screen from the supplier profile: click [data-testid='supplier-more'] → [data-testid='supplier-menu-edit'] → URL becomes /suppliers/new?edit=<supplier-id> and [data-testid='new-supplier-screen'] mounts with the title 'Edit supplier' and the save button labelled 'Save changes'.",
+  "rca_of_issue": "N/A — the iter22 'this store' marker gap is now closed by comparing against the user's writing shop (useShops().writeShop) instead of the item's free-text location field."
+}

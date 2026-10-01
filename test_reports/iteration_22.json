@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 22 — Supplier profile screen and item-page location breakdown verified. Backend 10/10 pytest cases pass against the public URL (owner@tredi.app) covering: GET /api/suppliers returns {suppliers,owed,count} with each row carrying id/name/owed/purchases; GET /api/suppliers/{sid} returns the full profile shape the screen reads (owed, total_purchased, purchases[], payments[], items[]); purchase rows carry number/lines/total/due/account_name/created_at and payment rows carry id/amount/account_name/created_at; GET /api/suppliers/<badid> → 404; POST /api/supplier-payments reduces supplier.owed by exactly the amount paid; GET /api/items/{iid} returns stock_by_shop (list of {shop, qty}) plus quantity, quantity_all, cost_price, selling_price, sold_qty, revenue, profit, margin, returned_qty/value, idle_days, last_sold_at, last_received_at, supply_history, movements, adjustments; stock_by_shop sums to quantity_all; GET /api/items/<badid> → 404. Frontend verified (390x844 web preview, owner@tredi.app): /suppliers lists 53 suppliers; opening a row routes to /suppliers/{id} where [data-testid='supplier-profile-screen'] renders with testIDs supplier-payable, supplier-owed, supplier-kpi-orders, supplier-kpi-payments, supplier-record-purchase, supplier-pay and supplier-more all visible; supplier-more opens supplier-menu-sheet with the four menu rows (edit/purchase/pay/call); supplier-pay opens supplier-pay-sheet with supplier-pay-amount and 5 supplier-pay-account-* account chips and supplier-pay-save; supplier-kpi-orders opens supplier-list-sheet. On /stock, opening a stock-row-* lands on [data-testid='item-detail-screen']; the 'Where it is' section renders stock_by_shop rows testID='item-shop-<Shop name>' (e.g. 'item-shop-Ikeja branch' = 24, 'item-shop-Surulere' = 2, summing to the headline In-stock 26); item-aging-card, item-money-card and item-qty are all rendered.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "supplier profile", "issues": ["TEST_* suppliers accumulated from earlier iterations are polluting the list (53 shown vs ~1 expected from the seed). Not a regression but worth flagging a cleanup script before shipping screenshots."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter22_supplier_and_item_location.py",
+    "/app/test_reports/pytest/iter22_results.xml",
+    "/app/test_reports/screenshots/iter22_supplier_profile.png",
+    "/app/test_reports/screenshots/iter22_supplier_pay_sheet.png",
+    "/app/test_reports/screenshots/iter22_item_location.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "backend/routes/purchases.py:128-148 — GET /suppliers/{sid} decorates purchases with due = total − paid and resolves account_name via a single accounts dict lookup; payments are decorated the same way. Shape matches /app/frontend/app/suppliers/[id].tsx:89-108 (reads p.number, p.lines, p.total, p.due, p.account_name) and :100-108 (p.amount, p.account_name).",
+    "backend/server.py:386-448 — GET /items/{iid} always returns stock_by_shop built from shop_scope's visible shops: `[{shop, qty: round(m.get(s,0),3)} for s in sc['visible']]`. For an owner on 'all' scope this is every shop in the business, so the breakdown sums to quantity_all (verified in test_stock_by_shop_sums_to_total_quantity).",
+    "frontend/app/stock/[id].tsx:204-213 — The 'Where it is' panel iterates it.stock_by_shop and marks the row that matches it.location with '· this store'. Note the seeded data has it.location = 'Warehouse' / 'Shelf A' etc. — these are free-text locations, not shop names, so the '· this store' marker won't light up for seeded items. The breakdown itself still renders correctly from the shop-level stock_map.",
+    "frontend/app/suppliers/[id].tsx:67-110 — the ledger composition (purchases + payments) is kept in two separate .map blocks; it is correct, but when both lists are long the UI mixes orders and payments without a date sort. The KPI 'tap to see them all' sheet still shows each kind separately, so it is fine.",
+    "frontend/app/suppliers/[id].tsx:42 — supplier-payments POST sends supplier_id, amount, account_id, note; matches the SupplierPaymentIn model in routes/purchases.py:56-61. No allocations are passed from the UI, which is OK because the API auto-settles oldest purchases first (routes/purchases.py:222-227)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter22_supplier_and_item_location.py (new, 10 tests, all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10) — suppliers list envelope, supplier profile shape, purchase row fields, payment row fields, profile 404, pay reduces owed; item detail stock_by_shop presence, row shape, breakdown sums to quantity_all, item 404",
+    "frontend": "Fully verified. All supplier screen testIDs present (supplier-profile-screen, -payable, -owed, -kpi-orders, -kpi-payments, -record-purchase, -pay, -more, -menu-sheet with four menu rows, -pay-sheet with 5 account options, -list-sheet). Item page 'Where it is' breakdown rendered via item-shop-<ShopName> rows; totals agree with the headline In-stock card."
+  },
+  "seed_data_creation": "None. TEST iter22 supplier payment (₦100) was recorded against the first supplier with outstanding — this reduces owed by exactly ₦100 and is cosmetic; it will not affect other screens.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Supplier list testIDs are supplier-<ObjectId> (NOT supplier-row-*). Filter by (startswith='supplier-' AND no further hyphen in the id) to grab the row from the index page. Stock list testIDs ARE stock-row-<id> (and stock-tile-<id> when the grid toggle is on). On the item detail page, the location breakdown rows carry testID='item-shop-<Shop name>' where <Shop name> is a shop name with spaces preserved (e.g. 'item-shop-Ikeja branch') — if you query with a strict CSS selector, use selector escaping or query by startswith('item-shop-').",
+  "rca_of_issue": "N/A — both target screens are implemented correctly end-to-end. Only observation: because the seeded item 'location' field is free-text (Warehouse / Shelf A / Yard …), the '· this store' highlight on the matching stock_by_shop row never fires for seeded data. If the plan intends that marker to light up on the shop the user is scoped to, the comparison should be against sc['shops'][0] (the writing shop), not it.location."
+}

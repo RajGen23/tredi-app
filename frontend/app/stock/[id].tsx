@@ -16,6 +16,7 @@ import { useAuth } from "@/src/auth";
 import { AppBar, Av, Badge, Btn, Card, Divider, Field, H4, IconBtn, Li, Lbl, Loading, Money, Radio, Row, Seg, Sub, Tag } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { compact, money, parseNum, shortDate } from "@/src/format";
+import { useShops } from "@/src/lookups";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 import { useBottomPad } from "@/src/safe";
 
@@ -37,6 +38,7 @@ const useStyles = makeStyles((c) => ({
 export default function ItemDetail() {
   const s = useStyles();
   const { colors } = useTheme();
+  const { writeShop } = useShops();
   const insets = useSafeAreaInsets();
   const pad = useBottomPad();
   const qc = useQueryClient();
@@ -201,11 +203,13 @@ export default function ItemDetail() {
               {(it.idle_days ?? 0) > 60 ? (
                 <Card style={s.amber}><Sub><Text style={s.bold}>Sitting {it.idle_days} days.</Text> {money(it.quantity * it.cost_price)} of your money is tied up here.</Sub></Card>
               ) : null}
-              {it.stock_by_shop?.length > 1 ? (
+              {it.stock_by_shop?.length ? (
                 <View style={{ marginTop: 9 }}>
                   <Lbl>Where it is</Lbl>
                   {it.stock_by_shop.map((r: any) => (
-                    <Row between key={r.shop} style={{ marginTop: 5 }}><Sub>{r.shop}</Sub><Money size={12.5}>{r.qty}</Money></Row>
+                    <Row between key={r.shop} style={{ marginTop: 5 }} testID={`item-shop-${r.shop}`}>
+                      <Sub>{r.shop}{r.shop === writeShop ? " · this store" : ""}</Sub><Money size={12.5}>{r.qty}</Money>
+                    </Row>
                   ))}
                 </View>
               ) : null}
