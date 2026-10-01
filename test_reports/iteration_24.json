@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 24 — verified the four reworked areas end-to-end against the public URL (owner@tredi.app). (1) Expense edit: /expenses/{eid} GET/PUT/DELETE round-trip persists amount+note (500 → 777.5), history row 'Expense corrected 500 → 777.5' is written, the detail screen renders [data-testid=expense-detail-screen] with Edit toggle in the app bar; tapping Edit flips the screen into 'Edit expense' and all nine edit controls appear (expense-edit-amount, -category, -account, -date, -shop, -rep, -note, -receipt, expense-save-changes, expense-cancel-edit, expense-delete, and the kill sheet with expense-kill-reason + expense-kill-confirm). (2) Account statement: GET /accounts/{aid} returns {account, opening, closing, in, out, label, entries[]} with every entry carrying title/amount/balance/ref_type/ref_id/ref_number and the running balance exactly tracks opening_balance + sum(amount). /accounts recent-movement rows now carry account_name + ref_type + ref_id + ref_number; tapping [data-testid^=movement-] on the Accounts screen navigates to the source entry (verified it routed to /expenses/<id> for the top row). 404 returned for a bad aid. (3) Report export bars: every one of the 11 report screens (/reports/summary, /cashflow, /products, /pnl, /receivables, /stock, /sales, /returns, /entries, /reps, /debtors) renders exactly one Export button + one Print button via the shared <ExportBar/> wrapper. All backend endpoints behind them return 200 with JSON content-type. (4) Sales summary rep grouping: GET /reports/sales-summary?period=year&group=rep returns {group:'rep', rows:[{label,key,amount,count}], total, count} with three reps (Adaeze Owner 16,315,130 / 328, Amina Yusuf 314,715 / 13, Tester 199,950 / 3, total 16,829,795). Rep filter narrows the result. UI tab [data-testid=sales-group-rep] is present on /reports/sales and switches the headline column to 'By rep'. All 18 pytest cases pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/expenses", "issues": ["Donut's 'Other' split-out code path only fires when there are 4+ categories; the seeded owner currently has 2 expenses in 2 categories so 'Other' never appears for this account. The logic is correct (byCategory list is used once allCats is on). Not a regression — just worth sanity-checking on a tenant with more categories (e.g. the migrated owner)."]},
+      {"screen": "/reports/sales", "issues": ["Default period is 'This month' which has 0 sales on the seeded owner; the rep tab is only visually populated when the user bumps the period to year via the Change sheet. Not a bug — just surfaces as a hollow screen on the default."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter24_statement_rep_expense_export.py",
+    "/app/test_reports/pytest/iter24_results.xml",
+    "/app/test_reports/screenshots/iter24_sales_summary.png",
+    "/app/test_reports/screenshots/iter24_sales_by_rep.png",
+    "/app/test_reports/screenshots/iter24_expenses_donut.png",
+    "/app/test_reports/screenshots/iter24_expense_edit.png",
+    "/app/test_reports/screenshots/iter24_expense_edit_mode.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "backend/server.py:907-927 — GET /accounts now joins account names into a single names dict, decorates each recent-payment row with the invoice ref (invoice_id resolved via allocations[0]) and each recent-expense row with ref_type='expense'. The 2x N+1 queries (per row find_one on customers/invoices) are OK at the 6+6 limit but could become visible on a very busy tenant; a $lookup pipeline would scale better.",
+    "backend/server.py:930-965 — GET /accounts/{aid} is the account statement endpoint: it reads payments+expenses scoped to the account, sorts chronologically, accumulates balance from opening_balance, then applies the period window AFTER the balance is laid down (so balance remains correct even when earlier rows are filtered out). Clean solution.",
+    "frontend/app/accounts/index.tsx:67-82 — Each recent movement row now gates onPress on r.ref_id, routing to /invoices/, /sales/ or /expenses/ by ref_type, and appends the account name after the sub-text. The 'from invoice <number> ›' tag only shows when ref_number is non-empty.",
+    "frontend/app/expenses/index.tsx:33-105 — Donut legend uses `allCats` to flip between the three-biggest+Other grouping and the full byCategory list; tapping 'Other' only expands when !allCats, otherwise reuses the tap-to-filter behaviour.",
+    "frontend/src/components/export.tsx:21-74 — Single <ExportBar/> is reused by every report screen via a build()=>ReportDoc callback; testID is parameterised so each screen gets its own data-testid pair (summary-export/-print, sales-summary-export/-print, …). This keeps the eleven screens consistent."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter24_statement_rep_expense_export.py (new — 18 pytest cases, all pass)"
+  ],
+  "success_rate": {
+    "backend": "100% — 18/18 (expense edit lifecycle incl. history and 400-without-reason, /accounts recent-row shape, /accounts/{aid} statement shape + running-balance identity + 404, all 11 report endpoints 200, sales-summary rep grouping + rep filter + other groupings)",
+    "frontend": "100% — all four target flows wired up correctly: /accounts movement rows link to source; /expenses Edit opens the edit form with every expected testID; /reports/sales By rep tab present and switches the headline; every /reports/* screen shows the Export + Print pair."
+  },
+  "seed_data_creation": "The expense test creates one TEST_iter24 expense, edits it, and tears it down with a reason — net-zero. The owner's demo seed is otherwise untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The account statement endpoint is GET /api/accounts/{aid} (NOT /accounts/{aid}/statement). GET /api/accounts also now includes account_name/ref_type/ref_id/ref_number on each row of recent[]. The donut on /expenses only renders an 'Other' slice when the tenant has more than three categories spending in the period, so to exercise the setAllCats(true) path pick a tenant with >=4 categories. On /reports/sales the group tabs are [data-testid='sales-group-day|customer|product|shop|rep']; the default period is month so switch to year via the Change button to see populated rep rows.",
+  "rca_of_issue": "N/A — all four features ship correctly."
+}

@@ -67,9 +67,15 @@ export default function Accounts() {
             <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Recent movement</Lbl>
             <Card style={{ paddingVertical: 4 }}>
               {d.recent.length === 0 ? <Sub style={{ paddingVertical: 10 }}>No movement yet.</Sub> : d.recent.map((r: any, i: number) => (
-                <Li key={r.id} last={i === d.recent.length - 1} testID={`movement-${r.id}`}>
+                <Li key={r.id} last={i === d.recent.length - 1} testID={`movement-${r.id}`}
+                  onPress={r.ref_id ? () => router.push(r.ref_type === "invoice" ? `/invoices/${r.ref_id}`
+                    : r.ref_type === "sale" ? `/sales/${r.ref_id}` : `/expenses/${r.ref_id}`) : undefined}>
                   <Av icon={r.amount >= 0 ? "arrow-down" : "arrow-up"} tone={r.amount >= 0 ? "green" : "coral"} />
-                  <View style={{ flex: 1 }}><H4>{r.title}</H4><Sub>{shortDate(r.date)} · {r.sub}</Sub></View>
+                  <View style={{ flex: 1 }}>
+                    <H4>{r.title}</H4>
+                    <Sub numberOfLines={1}>{shortDate(r.date)} · {r.sub}{r.account_name ? ` · ${r.account_name}` : ""}</Sub>
+                    {r.ref_number ? <Tag>from invoice {r.ref_number} ›</Tag> : null}
+                  </View>
                   <Money tone={r.amount >= 0 ? "pos" : "neg"}>{r.amount >= 0 ? "+ " : "− "}{money(Math.abs(r.amount), { symbol: false })}</Money>
                 </Li>
               ))}

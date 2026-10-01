@@ -33,6 +33,8 @@ export default function Expenses() {
   const [period, setPeriod] = useState<Period>("month");
   const [rep, setRep] = useState("");
   const [category, setCategory] = useState("");
+  // The donut keeps three slices plus "Other"; tapping Other splits it out.
+  const [allCats, setAllCats] = useState(false);
   const [filters, setFilters] = useState(false);
   const teamQ = useQuery({ queryKey: ["team"], queryFn: () => api("/team") });
   const q = useQuery({
@@ -88,11 +90,16 @@ export default function Expenses() {
               </Row>
               <Divider />
               <View style={{ gap: 6 }}>
-                {cats.map((c: any, i: number) => (
-                  <Pressable key={c.category} testID={`expenses-legend-${c.category}`} disabled={c.category === "Other"}
-                    onPress={() => setCategory(c.category === category ? "" : c.category)}>
+                {(allCats ? byCategory : cats).map((c: any, i: number) => (
+                  <Pressable key={c.category} testID={`expenses-legend-${c.category}`}
+                    onPress={() => c.category === "Other" && !allCats
+                      ? setAllCats(true)
+                      : setCategory(c.category === category ? "" : c.category)}>
                     <Row between>
-                      <Row style={{ gap: 6 }}><View style={[s.legend, { backgroundColor: ringColors[i] }]} /><Sub>{c.category}</Sub></Row>
+                      <Row style={{ gap: 6 }}>
+                        <View style={[s.legend, { backgroundColor: ringColors[Math.min(i, ringColors.length - 1)] }]} />
+                        <Sub>{c.category}{c.category === "Other" && !allCats ? " — tap to split it" : ""}</Sub>
+                      </Row>
                       <Money>{money(c.amount)}</Money>
                     </Row>
                   </Pressable>

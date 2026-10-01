@@ -907,11 +907,22 @@ async def list_accounts(user: Annotated[dict, Depends(current_user)]):
         total_in += inn
         total_out += out
     recent = []
+    names = {a["id"]: a["name"] for a in accs}
     async for p in db.payments.find(f).sort("created_at", -1).limit(6):
         c = await db.customers.find_one({"_id": ObjectId(p["customer_id"])}) if p.get("customer_id") and ObjectId.is_valid(p["customer_id"]) else None
-        recent.append({"id": str(p["_id"]), "title": c["name"] if c else "Cash sale", "sub": p.get("note", "Payment"), "amount": p["amount"], "date": p["created_at"].isoformat()})
+        inv_id = (p.get("allocations") or [{}])[0].get("invoice_id") if p.get("allocations") else None
+        inv = await db.invoices.find_one({"_id": ObjectId(inv_id)}) if ObjectId.is_valid(inv_id or "") else None
+        recent.append({"id": str(p["_id"]), "title": c["name"] if c else "Cash sale",
+                       "sub": p.get("note", "Payment"), "amount": p["amount"], "date": p["created_at"].isoformat(),
+                       "account_name": names.get(p.get("account_id", ""), ""),
+                       "ref_type": "invoice" if inv else ("sale" if p.get("sale_id") else ""),
+                       "ref_id": str(inv["_id"]) if inv else (p.get("sale_id") or ""),
+                       "ref_number": inv["number"] if inv else ""})
     async for e in db.expenses.find(f).sort("created_at", -1).limit(6):
-        recent.append({"id": str(e["_id"]), "title": e.get("note") or e["category"], "sub": f"Expense · {e['category']}", "amount": -e["amount"], "date": e["created_at"].isoformat()})
+        recent.append({"id": str(e["_id"]), "title": e.get("note") or e["category"],
+                       "sub": f"Expense · {e['category']}", "amount": -e["amount"], "date": e["created_at"].isoformat(),
+                       "account_name": names.get(e.get("account_id", ""), ""),
+                       "ref_type": "expense", "ref_id": str(e["_id"]), "ref_number": ""})
     recent.sort(key=lambda r: r["date"], reverse=True)
     return {"accounts": accs, "total": round(sum(a["balance"] for a in accs), 2), "in": round(total_in, 2), "out": round(total_out, 2), "recent": recent[:8]}
 

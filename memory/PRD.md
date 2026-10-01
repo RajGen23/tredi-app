@@ -392,3 +392,20 @@ the page below visible, and a web photo upload that lands.
   - Item page "Where it is" shows the per-location breakdown even for a single location, and
     marks the active shop with "· this store".
 - Verified by the testing agent, iterations 22 (10/10 backend + frontend) and 23.
+
+## Pass 12k — expense / accounts / report slides (June 2026)
+- Already in place (checked against the slides): all 11 report screens carry the shared
+  `<ExportBar/>` (Export + Print); `/accounts` has "+" in two places and each account opens a
+  statement with date, account, method, running balance and "from invoice INV-x ›" links; Add
+  expense has a Category picker with "Add a category", a working **Paid from** account picker
+  and real receipt photo upload; every expense row opens `/expenses/{id}` which has an Edit
+  mode (amount, category, account, date, shop, rep, note, receipt) and delete-with-reason;
+  `/reports/sales` has a **By rep** grouping and every row opens `/reports/entries`.
+- Fixed this pass:
+  - `/accounts` "Recent movement" rows were dead text. They now show the account the money
+    moved through and open their source — invoice, quick sale or expense (`GET /accounts` now
+    returns `account_name`, `ref_type`, `ref_id`, `ref_number` per row, server.py `list_accounts`).
+  - The Expenses donut legend "Other" row was disabled; tapping it now splits the ring into
+    every category ("Other — tap to split it").
+- Verified by the testing agent, iteration 24 (18/18 backend + frontend sweep of all 11 report
+  screens). Note: the "Other" split only appears for tenants with 4+ expense categories.
