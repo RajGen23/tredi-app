@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
 from typing import Optional
 
-from deps import (CurrentUser, LIVE_PO, LIVE_QUICK, LIVE_SALE, biz_filter, date_query, db, invoice_paid, invoice_status, period_range, rep_clause,
+from deps import (CurrentUser, LIVE_PO, LIVE_QUICK, LIVE_SALE, biz_filter, date_query, db, invoice_paid, invoice_status, line_cost, period_range, rep_clause,
                   scoped, shop_qty, shop_scope)
 
 router = APIRouter(prefix="/api/reports")
@@ -45,8 +45,8 @@ def cogs_of(docs: list[dict], items: dict) -> float:
     for d in docs:
         for l in d.get("lines", []):
             it = items.get(l.get("item_id") or "")
-            if it:
-                total += (l.get("quantity") or 0) * (it.get("cost_price") or 0)
+            if it or l.get("cost_at_sale") is not None:
+                total += line_cost(l, it)
     return round(total, 2)
 
 
@@ -173,7 +173,7 @@ async def products(user: CurrentUser, period: str = "month", start: Optional[str
                                       "revenue": 0.0, "qty": 0.0, "cost": 0.0})
             r["revenue"] = round(r["revenue"] + (l.get("total") or 0), 2)
             r["qty"] = round(r["qty"] + (l.get("quantity") or 0), 2)
-            r["cost"] = round(r["cost"] + (l.get("quantity") or 0) * ((it or {}).get("cost_price") or 0), 2)
+            r["cost"] = round(r["cost"] + line_cost(l, it), 2)
     for r in rows.values():
         r["profit"] = round(r["revenue"] - r["cost"], 2)
         r["margin"] = round(r["profit"] / r["revenue"] * 100, 1) if r["revenue"] else 0

@@ -48,18 +48,6 @@ class TermsIn(BaseModel):
     shop: str = ""  # each set belongs to a shop/location, so it can be reused there
 
 
-class QuoteIn(BaseModel):
-    customer_id: Optional[str] = None
-    lines: List[LineIn]
-    invoice_discount_type: Literal["amount", "percent", "final"] = "amount"
-    invoice_discount_value: float = 0
-    vat_rate: float = VAT_RATE
-    valid_until: Optional[str] = None
-    terms_id: Optional[str] = None
-    note: str = ""
-    status: Literal["draft", "sent"] = "sent"
-
-
 class ReminderIn(BaseModel):
     channel: Literal["whatsapp", "sms"] = "whatsapp"
     message: str = ""
@@ -136,102 +124,10 @@ async def delete_terms(tid: str, user: CurrentUser):
     f = biz_filter(user)
     await db.terms.update_one({"_id": oid(tid), **f}, {"$set": {"deleted_at": now()}})
     return {"ok": True}
+# Quotations were pulled out of the app at the owner's request; the saved
+# documents stay in the database for whenever they come back.
 
 
-# ---------------------------------------------------------------- 04.9 quotations
-@router.get("/quotes")
-async def list_quotes(user: CurrentUser):
-    f = await scoped(user, "sales")
-    rows = []
-    counts = {"open": 0, "accepted": 0, "rejected": 0, "expired": 0}
-    today = date.today()
-    async for q in db.quotes.find(f).sort("created_at", -1):
-        d = clean(q)
-        if d.get("customer_id"):
-            c = await db.customers.find_one({"_id": ObjectId(d["customer_id"])})
-            d["customer_name"] = c["name"] if c else "Walk-in"
-        else:
-            d["customer_name"] = "Walk-in"
-        state = d.get("state", "sent")
-        expired = bool(d.get("valid_until")) and date.fromisoformat(d["valid_until"][:10]) < today and state in ("sent", "draft")
-        d["expired"] = expired
-        bucket = "expired" if expired else ("open" if state in ("draft", "sent") else state)
-        counts[bucket] = counts.get(bucket, 0) + 1
-        d["bucket"] = bucket
-        rows.append(d)
-    return {"quotes": rows, "counts": counts}
-
-
-@router.post("/quotes", status_code=201)
-async def create_quote(data: QuoteIn, user: CurrentUser):
-    f = biz_filter(user)
-    if not data.lines:
-        raise HTTPException(400, "Add at least one item")
-    lines = [line_totals(l) for l in data.lines]
-    totals = invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate)
-    number = await next_number(f["business_id"], "quote", "QT", 40)
-    doc = {**data.model_dump(exclude={"lines", "status"}), "lines": lines, "totals": totals, "number": number,
-           "state": data.status, "views": 0, "converted_invoice_id": None,
-           "valid_until": data.valid_until or (date.today() + timedelta(days=7)).isoformat(),
-           **f, "created_by": user.get("name", ""), "created_at": now()}
-    res = await db.quotes.insert_one(doc)
-    await log_activity(f["business_id"], user, "quote", f"Quotation {number}", "", totals["total"], str(res.inserted_id))
-    return clean(await db.quotes.find_one({"_id": res.inserted_id}))
-
-
-@router.get("/quotes/{qid}")
-async def get_quote(qid: str, user: CurrentUser):
-    f = biz_filter(user)
-    q = await db.quotes.find_one({"_id": oid(qid), **f})
-    if not q:
-        raise HTTPException(404, "Quotation not found")
-    await db.quotes.update_one({"_id": q["_id"]}, {"$inc": {"views": 1}})
-    d = clean(q)
-    if d.get("customer_id"):
-        c = await db.customers.find_one({"_id": ObjectId(d["customer_id"])})
-        d["customer_name"] = c["name"] if c else "Walk-in"
-        d["customer_phone"] = (c or {}).get("phone", "")
-    d["business"] = clean(await db.businesses.find_one({"_id": ObjectId(f["business_id"])}))
-    return d
-
-
-@router.post("/quotes/{qid}/state")
-async def set_quote_state(qid: str, body: dict, user: CurrentUser):
-    f = biz_filter(user)
-    state = body.get("state")
-    if state not in ("draft", "sent", "accepted", "rejected"):
-        raise HTTPException(400, "Unknown state")
-    r = await db.quotes.update_one({"_id": oid(qid), **f}, {"$set": {"state": state}})
-    if not r.matched_count:
-        raise HTTPException(404, "Quotation not found")
-    return {"ok": True, "state": state}
-
-
-@router.post("/quotes/{qid}/convert")
-async def convert_quote(qid: str, user: CurrentUser):
-    """Stock only moves now — a quotation reserves nothing."""
-    f = biz_filter(user)
-    q = await db.quotes.find_one({"_id": oid(qid), **f})
-    if not q:
-        raise HTTPException(404, "Quotation not found")
-    if q.get("converted_invoice_id"):
-        raise HTTPException(400, "This quotation is already an invoice")
-    settings = await get_invoice_settings(user)
-    number = await next_number(f["business_id"], "invoice", settings["prefix"], 1000)
-    doc = {**f, "customer_id": q.get("customer_id"), "lines": q["lines"], "totals": q["totals"], "number": number,
-           "invoice_discount_type": q.get("invoice_discount_type", "amount"), "invoice_discount_value": q.get("invoice_discount_value", 0),
-           "vat_rate": q.get("vat_rate", VAT_RATE), "due_date": (date.today() + timedelta(days=settings["due_days"])).isoformat(),
-           "payment_mode": "credit", "account_id": None, "status": "issued", "note": q.get("note", ""), "terms_id": q.get("terms_id"),
-           "quote_id": qid, "created_by": user.get("name", ""), "created_at": now()}
-    res = await db.invoices.insert_one(doc)
-    for l in q["lines"]:
-        await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", number, user)
-    await db.quotes.update_one({"_id": q["_id"]}, {"$set": {"state": "accepted", "converted_invoice_id": str(res.inserted_id)}})
-    await log_activity(f["business_id"], user, "invoice", f"{q['number']} → {number}", "Quotation converted", q["totals"]["total"], str(res.inserted_id))
-    return await decorate_invoice(await db.invoices.find_one({"_id": res.inserted_id}))
-
-
-# ---------------------------------------------------------------- 04.8 reminders
 @router.get("/invoices/{iid}/reminder")
 async def reminder_draft(iid: str, user: CurrentUser):
     f = biz_filter(user)

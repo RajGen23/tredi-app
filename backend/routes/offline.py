@@ -207,7 +207,7 @@ async def import_commit(data: ImportCommitIn, user: CurrentUser):
 @router.get("/import/template")
 async def import_template(target: str = "customers"):
     cols = CUSTOMER_COLS if target == "customers" else ITEM_COLS
-    sample = ({"name": "Grace Mwangi", "phone": "+234 815 220 7741", "email": "", "address": "Surulere", "opening_balance": "0"}
+    sample = ({"name": "Your customer name", "phone": "+234 800 000 0000", "email": "", "address": "Street, city", "opening_balance": "0"}
               if target == "customers" else
               {"name": "Adeba Rice 50kg", "category": "Grains", "unit": "Bag", "cost_price": "52400", "selling_price": "62000", "quantity": "8", "barcode": "", "photo_url": ""})
     csv = ",".join(cols) + "\n" + ",".join(str(sample[c]) for c in cols) + "\n"

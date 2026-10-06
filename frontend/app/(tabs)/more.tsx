@@ -14,7 +14,6 @@ const GROUPS: { title: string; items: { label: string; sub: string; icon: IonNam
     { label: "Expenses", sub: "By period and category", icon: "wallet-outline", route: "/expenses", testID: "more-expenses" },
     { label: "Accounts & payments", sub: "Cash, bank, mobile money", icon: "card-outline", route: "/accounts", testID: "more-accounts" },
     { label: "Suppliers", sub: "Purchases and what you owe", icon: "business-outline", route: "/suppliers", testID: "more-suppliers" },
-    { label: "Quotations", sub: "Convert an accepted quote to an invoice", icon: "document-text-outline", route: "/quotes", testID: "more-quotes" },
     { label: "Reports", sub: "Profit & loss, product performance", icon: "bar-chart-outline", route: "/reports", testID: "more-reports" },
   ] },
   { title: "Stock & shops", items: [

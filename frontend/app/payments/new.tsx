@@ -12,7 +12,7 @@ import { AppBar, Av, Btn, Card, Check, Chip, H4, Li, Lbl, Money, Row, Sub, Switc
 import { Sheet, useToast } from "@/src/components/sheet";
 import { DateField } from "@/src/components/date-field";
 import { PickerField } from "@/src/components/picker";
-import { initials, money, parseNum, statusLabel, sym } from "@/src/format";
+import { group, initials, money, parseNum, statusLabel, sym } from "@/src/format";
 import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -105,7 +105,7 @@ export default function PaymentIn() {
         ) : null}
         <View style={s.amountBox}>
           <Lbl>Amount received</Lbl>
-          <TextInput testID="payment-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder={`${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus={!!customerId} />
+          <TextInput testID="payment-amount" value={group(amount)} onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ""))} keyboardType="decimal-pad" placeholder={`${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus={!!customerId} />
         </View>
         {owed > 0 ? (
           <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>

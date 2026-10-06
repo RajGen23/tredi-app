@@ -8,7 +8,7 @@ from bson import ObjectId
 import logging
 
 from deps import (VAT_RATE, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
-                  db, decorate_invoice, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_totals, log_activity, next_number, now, oid,
+                  db, decorate_invoice, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_cost, line_totals, log_activity, stamp_costs, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, users_roles
 from plans import TRIAL_DAYS
@@ -409,13 +409,13 @@ async def get_item(iid: str, user: Annotated[dict, Depends(current_user)]):
             if l.get("item_id") == iid:
                 sold_qty += l.get("quantity") or 0
                 revenue += l.get("total") or 0
-                cost += (l.get("quantity") or 0) * (i.get("cost_price") or 0)
+                cost += line_cost(l, i)
     async for s in db.sales.find({**f, **LIVE_QUICK}):
         for l in s.get("lines", []):
             if l.get("item_id") == iid:
                 sold_qty += l.get("quantity") or 0
                 revenue += l.get("total") or 0
-                cost += (l.get("quantity") or 0) * (i.get("cost_price") or 0)
+                cost += line_cost(l, i)
     returned_qty = returned_value = 0.0
     async for r in db.returns.find(f):
         for l in r.get("lines", []):
@@ -629,7 +629,7 @@ async def list_invoices(user: Annotated[dict, Depends(current_user)]):
 
 @api.post("/invoices/preview")
 async def preview_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_user)]):
-    lines = [line_totals(l) for l in data.lines]
+    lines = await stamp_costs(f["business_id"], [line_totals(l) for l in data.lines])
     return {"lines": lines, "totals": invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)}
 
 
@@ -639,7 +639,7 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
     if not data.lines:
         raise HTTPException(400, "Add at least one item")
     await ensure_invoice_room(user)
-    lines = [line_totals(l) for l in data.lines]
+    lines = await stamp_costs(f["business_id"], [line_totals(l) for l in data.lines])
     totals = invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)
     number = await next_number(f["business_id"], "invoice", "INV", 1000) if data.status == "issued" else "Draft"
     shop = await writing_shop(user, data.shop)
@@ -692,7 +692,14 @@ async def update_invoice(iid: str, data: InvoiceIn, user: Annotated[dict, Depend
         raise HTTPException(404, "Invoice not found")
     if not data.lines:
         raise HTTPException(400, "An invoice needs at least one item")
+    # Keep the cost this invoice was sold at: an edit is not a reason to reprice
+    # history with today's cost.
+    was = {l.get("item_id"): l.get("cost_at_sale") for l in inv.get("lines", []) if l.get("cost_at_sale") is not None}
     lines = [line_totals(l) for l in data.lines]
+    for l in lines:
+        if l.get("cost_at_sale") is None and l.get("item_id") in was:
+            l["cost_at_sale"] = was[l["item_id"]]
+    lines = await stamp_costs(f["business_id"], lines)
     totals = invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)
     shop = inv.get("shop") or await writing_shop(user, data.shop)
     was_issued = inv.get("status") == "issued"
@@ -844,6 +851,9 @@ async def create_sale(data: SaleIn, user: Annotated[dict, Depends(current_user)]
     if not data.lines:
         raise HTTPException(400, "Add at least one item")
     lines = [line_totals(l) for l in data.lines]
+    # A new sale has no "old state" to copy costs from — stamp_costs reads
+    # today's item cost for any line that did not already carry one.
+    lines = await stamp_costs(f["business_id"], lines)
     totals = invoice_totals(lines, "amount", 0, 0)
     number = await next_number(f["business_id"], "sale", "SL", 536000)
     shop = await writing_shop(user, data.shop)
@@ -912,10 +922,11 @@ async def update_sale(sid: str, data: SaleIn, user: Annotated[dict, Depends(curr
         raise HTTPException(400, "This sale is cancelled — restore it before editing")
     if not data.lines:
         raise HTTPException(400, "Add at least one item")
+    was = {l.get("item_id"): l.get("cost_at_sale") for l in s.get("lines", []) if l.get("cost_at_sale") is not None}
     shop = s.get("shop", "")
     for l in s.get("lines", []):                       # put the old basket back
         await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "edit", s["number"], user, "Sale edited", shop)
-    lines = [line_totals(l) for l in data.lines]
+    lines = await stamp_costs(f["business_id"], [line_totals(l) for l in data.lines])
     totals = invoice_totals(lines, "amount", 0, 0)
     change = round(max(0.0, data.tendered - totals["total"]), 2) if data.method == "cash" and data.tendered else 0
     await db.sales.update_one({"_id": s["_id"]}, {"$set": {

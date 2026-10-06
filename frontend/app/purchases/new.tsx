@@ -160,7 +160,7 @@ export default function NewPurchase() {
               <Chip key={m} label={m === "credit" ? "On credit" : m === "cash" ? "Cash" : "Transfer"} on={method === m} onPress={() => setMethod(m)} testID={`purchase-method-${m}`} />
             ))}
           </Row>
-          <Field label="Paid now" placeholder="0" keyboardType="numeric" mono value={paid} onChangeText={setPaid} testID="purchase-paid" />
+          <Field label="Paid now" placeholder="0" keyboardType="decimal-pad" mono value={paid} onChangeText={setPaid} testID="purchase-paid" />
           {method !== "credit" ? (
             <PickerField label="Paid from" value={account?.id ?? null} options={accountOptions} onPick={setAccountId}
               title="Which account paid for it?" placeholder="Cash till" testID="purchase-account" />
@@ -236,8 +236,8 @@ export default function NewPurchase() {
             <H4>{draft.name || "New item"}</H4>
             {!draft.item_id ? <Field label="Item name" placeholder="Sugar 50kg" value={draft.name} onChangeText={(v) => setDraft({ ...draft, name: v })} testID="purchase-draft-name" style={{ marginTop: 10 }} /> : null}
             <Row style={{ marginTop: 10, gap: 8 }}>
-              <View style={{ flex: 1 }}><Field label="Quantity" placeholder="0" keyboardType="numeric" mono value={draft.qty} onChangeText={(v) => setDraft({ ...draft, qty: v })} testID="purchase-draft-qty" /></View>
-              <View style={{ flex: 1 }}><Field label="Cost each" placeholder="0" keyboardType="numeric" mono value={draft.cost} onChangeText={(v) => setDraft({ ...draft, cost: v })} testID="purchase-draft-cost" /></View>
+              <View style={{ flex: 1 }}><Field label="Quantity" placeholder="0" keyboardType="decimal-pad" mono value={draft.qty} onChangeText={(v) => setDraft({ ...draft, qty: v })} testID="purchase-draft-qty" /></View>
+              <View style={{ flex: 1 }}><Field label="Cost each" placeholder="0" keyboardType="decimal-pad" mono value={draft.cost} onChangeText={(v) => setDraft({ ...draft, cost: v })} testID="purchase-draft-cost" /></View>
             </Row>
             <Row between style={{ marginTop: 10 }}>
               <Sub>Line total</Sub>

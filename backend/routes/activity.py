@@ -21,7 +21,6 @@ SHORTCUT_CATALOGUE = [
     {"key": "expense", "label": "Expense", "icon": "remove-outline", "route": "/expenses/new"},
     {"key": "reports", "label": "Reports", "icon": "bar-chart-outline", "route": "/reports"},
     {"key": "transfer", "label": "Stock transfer", "icon": "swap-horizontal-outline", "route": "/transfers/new"},
-    {"key": "quote", "label": "New quotation", "icon": "document-text-outline", "route": "/quotes/new"},
     {"key": "suppliers", "label": "Suppliers", "icon": "business-outline", "route": "/suppliers"},
 ]
 
@@ -132,8 +131,6 @@ async def activity_route(f: dict, r: dict) -> str:
         return f"/transfers/{ref}"
     if kind == "purchase" and valid:
         return f"/purchases/{ref}"
-    if kind == "quote" and valid:
-        return f"/quotes/{ref}"
     if kind == "supplier" and valid:
         return f"/suppliers/{ref}"
     if kind == "waybill" and valid:

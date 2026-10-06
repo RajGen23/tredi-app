@@ -13,7 +13,7 @@ import { Photo } from "@/src/components/photo";
 import { Scanner, ScanMode } from "@/src/components/scanner";
 import { ScanResultSheet } from "@/src/components/scan-result";
 import { Sheet, useToast } from "@/src/components/sheet";
-import { money, parseNum } from "@/src/format";
+import { group, money, parseNum } from "@/src/format";
 import { buildReceiptHtml, DEFAULT_BRAND } from "@/src/invoice-templates";
 import { useAccounts } from "@/src/lookups";
 import { pdfName, printHtml, sharePdf } from "@/src/pdf";
@@ -221,7 +221,7 @@ export default function QuickSale() {
         <Sub style={{ marginTop: 3 }}>Total <Money size={12}>{money(total)}</Money></Sub>
         <View style={{ marginTop: 10, borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: 11, padding: 12 }}>
           <Lbl style={{ textAlign: "center" }}>Amount tendered</Lbl>
-          <TextInput testID="tender-input" value={tendered} onChangeText={setTendered} keyboardType="decimal-pad" placeholder={money(total)} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
+          <TextInput testID="tender-input" value={group(tendered)} onChangeText={(v) => setTendered(v.replace(/[^0-9.]/g, ""))} keyboardType="decimal-pad" placeholder={money(total)} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
         </View>
         <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 8 }}>
           {[total, Math.ceil(total / 1000) * 1000, Math.ceil(total / 5000) * 5000, Math.ceil(total / 10000) * 10000].filter((v, i, a) => a.indexOf(v) === i).map((v) => <Chip key={v} label={v === total ? "Exact" : money(v)} on={parseNum(tendered) === v} onPress={() => setTendered(String(v))} testID={`tender-preset-${v}`} />)}

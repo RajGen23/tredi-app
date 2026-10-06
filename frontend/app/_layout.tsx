@@ -56,7 +56,6 @@ export default function RootLayout() {
                     <Stack.Screen name="suppliers/new" options={{ presentation: "modal" }} />
                     <Stack.Screen name="purchases/new" options={{ presentation: "fullScreenModal" }} />
                     <Stack.Screen name="transfers/new" options={{ presentation: "modal" }} />
-                    <Stack.Screen name="quotes/new" options={{ presentation: "fullScreenModal" }} />
                     <Stack.Screen name="shops/new" options={{ presentation: "modal" }} />
                     <Stack.Screen name="businesses/new" options={{ presentation: "modal" }} />
                     <Stack.Screen name="team/invite" options={{ presentation: "modal" }} />

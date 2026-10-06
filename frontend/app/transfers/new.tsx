@@ -112,7 +112,7 @@ export default function NewTransfer() {
           <>
             <H4>{draft.name}</H4>
             <Sub style={{ marginTop: 4 }}>{draft.have} {draft.unit} on hand at {from ?? "the sending shop"}.</Sub>
-            <Field label={`How many ${draft.unit.toLowerCase()}`} placeholder="0" keyboardType="numeric" mono value={draft.qty}
+            <Field label={`How many ${draft.unit.toLowerCase()}`} placeholder="0" keyboardType="decimal-pad" mono value={draft.qty}
               onChangeText={(v) => setDraft({ ...draft, qty: v })} testID="transfer-draft-qty" style={{ marginTop: 10 }} />
             <Btn label="Add to transfer" style={{ marginTop: 14 }} disabled={parseNum(draft.qty) <= 0} testID="transfer-draft-add"
               onPress={() => {

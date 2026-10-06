@@ -493,3 +493,30 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
   invoice-paper.tsx (template key `receipt`). Professional stays the full A4 document with the
   image column and bank details, so the two no longer look alike.
 - Verified by the testing agent, iteration 27 (9/9 backend + every frontend testID).
+
+## Pass 12o — costs frozen at sale, quotations removed, comma inputs, import template (June 2026)
+- **Price changes used to rewrite history**: every profit figure multiplied the quantity sold by
+  the item's *current* `cost_price`, so raising a cost changed last month's books. Lines are now
+  stamped with `cost_at_sale` when they are written (`deps.stamp_costs`, called from invoice
+  preview/create/update and sale create/update; an edit keeps the original stamp per item), and
+  every profit reader goes through `deps.line_cost` (item detail, P&L COGS, products report).
+  `migrations/freeze_line_costs.py` backfilled the existing books (2,328 invoices, 46 sales).
+  Proven: item profit 927,200 and year COGS 13,700,100 do not move when cost goes 52,400 → 60,000;
+  stock *value* still follows the new cost, which is correct.
+- **Quotations pulled out** at the owner's request: `app/quotes/*`, the More-tab row, the stack
+  entry, the "New quotation" shortcut and all five `/api/quotes*` endpoints are gone (saved quote
+  documents stay in Mongo for a future update).
+- **Thousands separators while typing**: `format.group()` + `Field` grouping for every
+  `keyboardType="decimal-pad"` input, plus the big raw TextInputs (expense amount, payment
+  amount, tendered, shipping, amount discount, stock adjust). Money Fields that were on
+  `"numeric"` moved to `"decimal-pad"`; genuine counters (next invoice number, due days, VAT
+  rate, logo px, the 44px per-line DISC box) stay ungrouped on purpose. Callers still hold plain
+  digits — verified through the API that 1,500,000 persists as 1500000.
+- **Import template**: `/settings/import` now has a "Download the template" card that lists the
+  exact columns for the selected tab and shares `tredi_<target>_template.csv` from
+  `GET /api/import/template`; the sample row round-trips through `/api/import/preview` as ready.
+- Verified by the testing agent, iterations 28 (17/17) and 29 (7/7). It also fixed a NameError I
+  left in `create_sale` which was 500-ing every quick sale — lesson: after a copy-paste edit,
+  run one real POST before handing over.
+- Housekeeping: deleted the TEST_* litter earlier testing agents left in the demo tenant
+  (92 customers, 49 suppliers, 11 items, 46 POs, 34 payments, 26 invoices, 2 shops, 1 account).

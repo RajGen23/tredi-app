@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system";
 import * as XLSX from "xlsx";
@@ -14,6 +14,7 @@ import { AppBar, Av, Badge, Btn, Card, Field, H4, Lbl, Li, Loading, Row, Seg, Su
 import { useToast } from "@/src/components/sheet";
 import { makeStyles, useTheme } from "@/src/theme";
 import { useBottomPad } from "@/src/safe";
+import { shareCsv } from "@/src/report-export";
 
 type Target = "customers" | "items";
 type Rows = { row: number; values: Record<string, string> }[];
@@ -90,6 +91,19 @@ export default function Import() {
     preview.mutate({ filename: name, rows });
   };
 
+  // The columns we actually read, straight from the server, so the template can
+  // never drift from the importer.
+  const tpl = useQuery({ queryKey: ["import-template", target], queryFn: () => api<any>(`/import/template?target=${target}`) });
+  const grab = useMutation({
+    mutationFn: async () => {
+      const t = tpl.data ?? (await api<any>(`/import/template?target=${target}`));
+      const res = await shareCsv(t.csv, t.filename);
+      if (!res.shared) toast.show(`${t.filename} saved`, "Open it in Excel or Sheets");
+      return t;
+    },
+    onError: (e: any) => toast.show(e.message ?? "Could not build the template", undefined, "bad"),
+  });
+
   const pickFile = async () => {
     const res = await DocumentPicker.getDocumentAsync({ type: SHEET_MIME, copyToCacheDirectory: true });
     if (res.canceled || !res.assets?.length) return;
@@ -112,6 +126,18 @@ export default function Import() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} keyboardShouldPersistTaps="handled">
         <Seg testID="import-target" value={target} onChange={(v) => { setTarget(v); setReport(null); }}
           options={[{ key: "customers", label: "Customers" }, { key: "items", label: "Stock items" }]} />
+
+        <Card style={{ marginTop: 10 }} testID="import-template-card">
+          <Row style={{ gap: 10 }}>
+            <Av icon="download-outline" tone="sq" />
+            <View style={{ flex: 1 }}>
+              <H4>Start from our template</H4>
+              <Sub>{tpl.data ? tpl.data.columns.join(", ") : "The exact columns we read, with one example row"}</Sub>
+            </View>
+          </Row>
+          <Btn label="Download the template" variant="ghost" small style={{ marginTop: 10 }} loading={grab.isPending}
+            testID="import-template" onPress={() => grab.mutate()} />
+        </Card>
 
         <Card style={{ marginTop: 10 }}>
           {filename ? (

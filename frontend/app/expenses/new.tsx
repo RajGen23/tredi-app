@@ -18,7 +18,7 @@ import { DateField } from "@/src/components/date-field";
 import { PickerField } from "@/src/components/picker";
 import { useAccounts, useLookup, useShops } from "@/src/lookups";
 import { photoSource, pickAndUploadPhoto } from "@/src/uploads";
-import { money, parseNum, sym } from "@/src/format";
+import { group, money, parseNum, sym } from "@/src/format";
 import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -100,7 +100,7 @@ export default function NewExpense() {
       <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }} bottomOffset={80} keyboardShouldPersistTaps="handled">
         <View style={s.amountBox}>
           <Lbl>Amount</Lbl>
-          <TextInput testID="expense-amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder={`${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
+          <TextInput testID="expense-amount" value={group(amount)} onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ""))} keyboardType="decimal-pad" placeholder={`${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
         </View>
         <PickerField label="Category" value={category} options={cats.options} onPick={setCategory}
           onAdd={(v) => { cats.add(v); setCategory(v); }} addLabel="Add a category" searchable

@@ -15,7 +15,7 @@ import { photoSource, pickAndUploadPhoto } from "@/src/uploads";
 import { useAuth } from "@/src/auth";
 import { AppBar, Av, Badge, Btn, Card, Divider, Field, H4, IconBtn, Li, Lbl, Loading, Money, Radio, Row, Seg, Sub, Tag } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
-import { compact, money, parseNum, shortDate } from "@/src/format";
+import { compact, group, money, parseNum, shortDate } from "@/src/format";
 import { useShops } from "@/src/lookups";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 import { useBottomPad } from "@/src/safe";
@@ -274,7 +274,7 @@ export default function ItemDetail() {
         <Sub style={{ marginTop: 3 }}>Current count: <Money size={12}>{it?.quantity} {it?.unit.toLowerCase()}s</Money></Sub>
         <View style={{ marginTop: 11 }}><Seg testID="adjust-mode" value={mode} onChange={setMode} options={[{ key: "set", label: "Set new count" }, { key: "add", label: "Add" }, { key: "remove", label: "Remove" }]} /></View>
         <View style={{ marginTop: 10, borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: 11, padding: 10 }}>
-          <TextInput testID="adjust-input" value={val} onChangeText={setVal} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
+          <TextInput testID="adjust-input" value={group(val)} onChangeText={(v) => setVal(v.replace(/[^0-9.]/g, ""))} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
         </View>
         <Row between style={{ marginTop: 8 }}><Sub>Difference</Sub><Money tone={diff < 0 ? "neg" : "pos"} testID="adjust-diff">{diff > 0 ? "+ " : diff < 0 ? "− " : ""}{Math.abs(diff)} {it?.unit.toLowerCase()}s · {money(Math.abs(diff) * (it?.cost_price ?? 0))}</Money></Row>
         <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Reason — required</Lbl>

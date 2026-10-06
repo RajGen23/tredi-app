@@ -5,6 +5,7 @@ import { Pressable, Text, TextInput, TextInputProps, TextProps, View, ViewProps,
 import Ionicons from "@react-native-vector-icons/ionicons";
 import { useRouter } from "expo-router";
 
+import { group } from "@/src/format";
 import { fonts, makeStyles, radius, useTheme } from "@/src/theme";
 
 export type IonName = React.ComponentProps<typeof Ionicons>["name"];
@@ -159,24 +160,29 @@ export function Btn({ label, onPress, variant = "green", small, loading, disable
   );
 }
 
-export function Field({ label, value, onChangeText, placeholder, mono, right, onPress, testID, style, multiline, ...rest }: TextInputProps & {
-  label?: string; mono?: boolean; right?: React.ReactNode; onPress?: () => void; style?: StyleProp<ViewStyle>;
+export function Field({ label, value, onChangeText, placeholder, mono, right, onPress, testID, style, multiline, nogroup, ...rest }: TextInputProps & {
+  label?: string; mono?: boolean; right?: React.ReactNode; onPress?: () => void; style?: StyleProp<ViewStyle>; nogroup?: boolean;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
   const [focus, setFocus] = React.useState(false);
+  // Money and quantity boxes read with thousands separators as you type; the
+  // caller keeps the plain digits, which parseNum understands.
+  const grouped = !nogroup && rest.keyboardType === "decimal-pad";
+  const shown = grouped ? group(value as string) : value;
+  const change = grouped ? (t: string) => onChangeText?.(t.replace(/[^0-9.]/g, "")) : onChangeText;
   const inner = (
     <View style={[s.field, focus && s.fieldFocus, style]}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <View style={{ flex: 1 }}>
           {label ? <Lbl>{label}</Lbl> : null}
           {onPress ? (
-            <Text testID={testID} style={[s.fieldInput, mono && { fontFamily: fonts.monoSemibold }, !value && { color: colors.ink40, fontFamily: fonts.medium }]}>{value || placeholder}</Text>
+            <Text testID={testID} style={[s.fieldInput, mono && { fontFamily: fonts.monoSemibold }, !value && { color: colors.ink40, fontFamily: fonts.medium }]}>{shown || placeholder}</Text>
           ) : (
             <TextInput
               testID={testID}
-              value={value}
-              onChangeText={onChangeText}
+              value={shown as string}
+              onChangeText={change}
               placeholder={placeholder}
               placeholderTextColor={colors.ink40}
               onFocus={() => setFocus(true)}

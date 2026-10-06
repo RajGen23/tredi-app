@@ -17,7 +17,7 @@ import { DateField } from "@/src/components/date-field";
 import { PickerField } from "@/src/components/picker";
 import { Scanner, ScanMode } from "@/src/components/scanner";
 import { ScanResultSheet } from "@/src/components/scan-result";
-import { initials, money, parseNum, sym } from "@/src/format";
+import { group, initials, money, parseNum, sym } from "@/src/format";
 import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -375,7 +375,7 @@ export default function NewInvoice() {
               </Row>
               <Row between style={{ marginBottom: 5, alignItems: "center" }}>
                 <View style={{ flex: 1 }}><Sub>Shipping fee</Sub><Tag>Delivery or logistics — not taxed</Tag></View>
-                <TextInput testID="review-shipping" value={shipping} onChangeText={setShipping} keyboardType="decimal-pad"
+                <TextInput testID="review-shipping" value={group(shipping)} onChangeText={(v) => setShipping(v.replace(/[^0-9.]/g, ""))} keyboardType="decimal-pad"
                   placeholder={`${sym()} 0`} placeholderTextColor={colors.ink40}
                   style={{ width: 96, textAlign: "right", fontFamily: fonts.monoSemibold, fontSize: 13, color: colors.onSurface, borderWidth: 1, borderColor: ship > 0 ? colors.brandPrimary : colors.border, borderRadius: 9, paddingVertical: 6, paddingHorizontal: 8 }} />
               </Row>
@@ -572,7 +572,7 @@ export default function NewInvoice() {
         <View style={{ marginTop: 11 }}><Seg testID="disc-mode" value={discMode} onChange={(m) => { setDiscMode(m); setDiscDraft(""); }} options={[{ key: "amount", label: `${sym()} off` }, { key: "percent", label: "% off" }, { key: "final", label: "Final total" }]} /></View>
         <View style={{ marginTop: 10, borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: 11, padding: 12, alignItems: "center" }}>
           <Lbl>{discMode === "final" ? "Make the total" : "Take off"}</Lbl>
-          <TextInput testID="disc-input" value={discDraft} onChangeText={setDiscDraft} keyboardType="decimal-pad" placeholder={discMode === "percent" ? "0 %" : `${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
+          <TextInput testID="disc-input" value={discMode === "percent" ? discDraft : group(discDraft)} onChangeText={(v) => setDiscDraft(v.replace(/[^0-9.]/g, ""))} keyboardType="decimal-pad" placeholder={discMode === "percent" ? "0 %" : `${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
         </View>
         <View style={{ flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
           {(discMode === "percent" ? ["5", "10", "15"] : discMode === "final" ? [String(Math.floor(totals.total / 10000) * 10000), String(Math.floor(totals.total / 1000) * 1000)] : ["5000", "10000", "20000"]).map((v) => <Chip key={v} label={discMode === "percent" ? `${v}%` : money(Number(v))} on={discDraft === v} onPress={() => setDiscDraft(v)} testID={`disc-preset-${v}`} />)}

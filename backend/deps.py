@@ -299,12 +299,39 @@ class LineIn(BaseModel):
     quick_add: bool = False
     unit: str = ""
     photo_url: str = ""
+    # Stamped by the server when the line is first sold; see stamp_costs.
+    cost_at_sale: Optional[float] = None
 
 
 def line_totals(l: LineIn) -> dict:
     gross = round(l.quantity * l.unit_price, 2)
     disc = round(gross * l.discount_value / 100, 2) if l.discount_type == "percent" else round(min(l.discount_value, gross), 2)
     return {**l.model_dump(), "gross": gross, "discount": disc, "total": round(gross - disc, 2)}
+
+
+async def stamp_costs(business_id: str, lines: List[dict]) -> List[dict]:
+    """Write today's cost price onto each line as it is sold.
+
+    Without this, a sale's profit is worked out from whatever the item costs
+    *now*, so raising a price would quietly rewrite last month's books. The
+    stamped `cost_at_sale` is what every profit figure reads.
+    """
+    for l in lines:
+        if l.get("cost_at_sale") is not None:
+            continue
+        iid = l.get("item_id")
+        it = await db.items.find_one({"_id": ObjectId(iid), "business_id": business_id}) if iid and ObjectId.is_valid(str(iid)) else None
+        l["cost_at_sale"] = round(float((it or {}).get("cost_price") or 0), 2)
+    return lines
+
+
+def line_cost(line: dict, item: Optional[dict] = None) -> float:
+    """What this line cost us. Old rows have no stamp, so they fall back to the
+    item's current cost — the best guess available for history already written."""
+    stamped = line.get("cost_at_sale")
+    if stamped is None:
+        stamped = (item or {}).get("cost_price") or 0
+    return round((line.get("quantity") or 0) * float(stamped or 0), 2)
 
 
 def invoice_totals(lines: List[dict], dtype: str, dvalue: float, vat_rate: float, shipping: float = 0) -> dict:

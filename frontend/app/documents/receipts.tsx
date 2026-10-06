@@ -144,7 +144,7 @@ export default function Receipts() {
           <>
             <View style={{ marginTop: 10 }}><Thumb url={draft.url} style={s.big} /></View>
             <Field label="What is it" placeholder="Diesel for the generator" value={draft.title} onChangeText={(v) => setDraft({ ...draft, title: v })} testID="receipt-title" style={{ marginTop: 10 }} />
-            <Field label="Amount" placeholder="0" keyboardType="numeric" mono value={draft.amount} onChangeText={(v) => setDraft({ ...draft, amount: v })} testID="receipt-amount" style={{ marginTop: 8 }} />
+            <Field label="Amount" placeholder="0" keyboardType="decimal-pad" mono value={draft.amount} onChangeText={(v) => setDraft({ ...draft, amount: v })} testID="receipt-amount" style={{ marginTop: 8 }} />
             <Btn label="Save receipt" style={{ marginTop: 14 }} loading={create.isPending} testID="receipt-save" onPress={() => create.mutate()} />
           </>
         ) : null}

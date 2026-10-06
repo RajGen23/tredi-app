@@ -71,6 +71,19 @@ export function slashDate(d?: string | null): string {
   return dayjs(d ?? undefined).format("DD/MM/YYYY");
 }
 
+/** Group an amount being typed: "1500000" reads as "1,500,000" while the caller
+ *  still holds the raw digits (parseNum strips the commas again). A trailing
+ *  dot or half-typed decimal is left exactly as the person typed it. */
+export function group(v?: string | number | null): string {
+  const raw = String(v ?? "");
+  if (!raw) return "";
+  const neg = raw.trim().startsWith("-");
+  const [whole = "", ...rest] = raw.replace(/[^0-9.]/g, "").split(".");
+  const head = whole ? Number(whole).toLocaleString("en-NG", { maximumFractionDigits: 0 }) : "";
+  const tail = rest.length ? `.${rest.join("").slice(0, 2)}` : "";
+  return `${neg ? "-" : ""}${head}${tail}`;
+}
+
 export function parseNum(s: string): number {
   const n = parseFloat(String(s).replace(/[^0-9.]/g, ""));
   return isNaN(n) ? 0 : n;
