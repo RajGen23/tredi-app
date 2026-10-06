@@ -1,15 +1,16 @@
 // A quick sale after the fact — the receipt, what was sold, and where the money
 // landed. Reached from the Sales tab, the activity trail and the saved sheet.
+import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
-import { AppBar, Av, Badge, Btn, Card, H4, IconBtn, Lbl, Li, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
+import { AppBar, Av, Badge, Btn, Card, Field, H4, IconBtn, Lbl, Li, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { Photo } from "@/src/components/photo";
-import { useToast } from "@/src/components/sheet";
+import { Sheet, useToast } from "@/src/components/sheet";
 import { longDate, money } from "@/src/format";
 import { buildReceiptHtml, DEFAULT_BRAND } from "@/src/invoice-templates";
 import { pdfName, printHtml, sharePdf } from "@/src/pdf";
@@ -32,10 +33,27 @@ export default function SaleDetail() {
   const pad = useBottomPad();
   const router = useRouter();
   const toast = useToast();
+  const qc = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useQuery({ queryKey: ["sale", id], queryFn: () => api(`/sales/${id}`) });
   const settings = useQuery({ queryKey: ["invoice-settings"], queryFn: () => api("/settings/invoice") });
-  const sale = q.data;
+  const sale = q.data as any;
+  const [kill, setKill] = useState(false);
+  const [reason, setReason] = useState("");
+
+  const refresh = () => ["sale", "sales", "dashboard", "accounts", "items", "activity", "reports-summary"]
+    .forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+
+  const cancel = useMutation({
+    mutationFn: () => api(`/sales/${id}/cancel`, { method: "POST", json: { reason } }),
+    onSuccess: (r: any) => { refresh(); setKill(false); setReason(""); toast.show(r.message, "Cancelled"); },
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
+  });
+  const restore = useMutation({
+    mutationFn: () => api(`/sales/${id}/uncancel`, { method: "POST" }),
+    onSuccess: () => { refresh(); toast.show("Sale restored — the stock came off again"); },
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
+  });
 
   const receipt = async (print: boolean) => {
     if (!sale) return;
@@ -43,8 +61,8 @@ export default function SaleDetail() {
       const chosen: any = settings.data ?? {};
       const logo = chosen.logo_url ? await photoDataUri(chosen.logo_url) : "";
       const html = buildReceiptHtml(sale, { ...DEFAULT_BRAND, ...chosen, logo_url: logo });
-      if (print) return await printHtml(html);
       const name = pdfName([sale.business?.name, sale.customer_name, sale.number]);
+      if (print) return await printHtml(html, name);
       const res = await sharePdf(html, name);
       if (!res.shared) toast.show(`${name} is ready — sharing is not available in this preview`);
     } catch (e: any) {
@@ -63,7 +81,9 @@ export default function SaleDetail() {
         <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }}>
           <Card testID="sale-hero">
             <Row between>
-              <Badge tone={sale.method === "credit" ? "due" : "paid"}>{sale.method === "credit" ? "On credit" : `Paid · ${METHOD[sale.method] ?? sale.method}`}</Badge>
+              <Badge tone={sale.cancelled_at ? "over" : sale.method === "credit" ? "due" : "paid"}>
+                {sale.cancelled_at ? "Cancelled" : sale.method === "credit" ? "On credit" : `Paid · ${METHOD[sale.method] ?? sale.method}`}
+              </Badge>
               <Tag>{longDate(sale.created_at)}</Tag>
             </Row>
             <Lbl style={{ marginTop: 9 }}>Sale total</Lbl>
@@ -73,6 +93,13 @@ export default function SaleDetail() {
               <View style={{ alignItems: "flex-end" }}><Lbl>Customer</Lbl><H4>{sale.customer_name}</H4></View>
             </Row>
             {sale.shop ? <Tag style={{ marginTop: 8 }}>Recorded at {sale.shop}{sale.created_by ? ` · by ${sale.created_by}` : ""}</Tag> : null}
+            {sale.updated_at ? <Tag style={{ marginTop: 4 }} testID="sale-edited-stamp">Edited {longDate(sale.updated_at)}{sale.updated_by ? ` · by ${sale.updated_by}` : ""}</Tag> : null}
+            {sale.cancelled_at ? (
+              <Sub style={{ marginTop: 8, color: colors.coral }} testID="sale-cancelled-note">
+                Cancelled {longDate(sale.cancelled_at)}{sale.cancelled_by ? ` by ${sale.cancelled_by}` : ""}
+                {sale.cancelled_reason ? ` · ${sale.cancelled_reason}` : ""}. The stock went back and the money is out of the account.
+              </Sub>
+            ) : null}
           </Card>
 
           {sale.method === "cash" && sale.tendered ? (
@@ -94,6 +121,13 @@ export default function SaleDetail() {
           </Card>
 
           <Card style={{ marginTop: 9, paddingVertical: 4 }}>
+            {sale.cancelled_at ? null : (
+              <Li testID="sale-edit" onPress={() => router.push(`/quick-sale?edit=${sale.id}`)}>
+                <Av icon="create-outline" tone="sq" />
+                <View style={{ flex: 1 }}><H4>Edit this sale</H4><Sub>Fix the items, the quantity or where the money went</Sub></View>
+                <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
+              </Li>
+            )}
             <Li testID="sale-open-accounts" onPress={() => router.push("/accounts")}>
               <Av icon="wallet-outline" tone="sq" />
               <View style={{ flex: 1 }}><H4>Where the money went</H4><Sub>{sale.account_name || "Cash till"}</Sub></View>
@@ -105,12 +139,32 @@ export default function SaleDetail() {
               <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
             </Li>
           </Card>
+
+          {sale.cancelled_at ? (
+            <Btn variant="ghost" label="Restore this sale" style={{ marginTop: 12 }} loading={restore.isPending}
+              testID="sale-restore" onPress={() => restore.mutate()} />
+          ) : (
+            <Btn variant="ghost" label="Cancel this sale" style={{ marginTop: 12 }}
+              testID="sale-cancel" onPress={() => setKill(true)} />
+          )}
         </ScrollView>
       )}
       <View style={[s.bar, { paddingBottom: pad }]}>
         <Btn small variant="ghost" label="Print receipt" style={{ flex: 1 }} testID="sale-print-receipt" onPress={() => receipt(true)} />
         <Btn small label="Share receipt" icon="logo-whatsapp" style={{ flex: 1 }} testID="sale-share-receipt" onPress={() => receipt(false)} />
       </View>
+
+      <Sheet visible={kill} onClose={() => setKill(false)} testID="sale-cancel-sheet">
+        <H4>Cancel {sale?.number ?? "this sale"}?</H4>
+        <Sub style={{ marginTop: 4 }}>
+          The {sale?.lines?.length ?? 0} line{(sale?.lines?.length ?? 0) === 1 ? "" : "s"} go back on the shelf and {money(sale?.totals?.total ?? 0)} comes out of {sale?.account_name || "the account"}. The sale number stays in your book.
+        </Sub>
+        <Field label="Why (optional)" value={reason} onChangeText={setReason} placeholder="Customer returned everything"
+          style={{ marginTop: 12 }} testID="sale-cancel-reason" />
+        <Btn label="Yes, cancel this sale" style={{ marginTop: 12 }} loading={cancel.isPending}
+          testID="sale-cancel-confirm" onPress={() => cancel.mutate()} />
+        <Btn variant="ghost" label="Keep it" style={{ marginTop: 8 }} testID="sale-cancel-abort" onPress={() => setKill(false)} />
+      </Sheet>
     </View>
   );
 }

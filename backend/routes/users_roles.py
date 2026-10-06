@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Dict, List, Optional, Literal
 from bson import ObjectId
 
-from deps import (CurrentUser, LIVE_SALE, biz_filter, clean, db, ensure_feature, ensure_limit, hash_password, invoice_paid,
+from deps import (CurrentUser, LIVE_QUICK, LIVE_SALE, biz_filter, clean, db, ensure_feature, ensure_limit, hash_password, invoice_paid,
                   invoice_status, log_activity, now, oid, period_range, date_query, public_user, rep_clause, scoped)
 
 router = APIRouter(prefix="/api")
@@ -214,7 +214,7 @@ async def reps(user: CurrentUser, period: str = "month"):
             count += 1
             ts = inv["created_at"]
             last = ts if not last or ts > last else last
-        async for s in db.sales.find(date_query({**f, **rep_clause(name)}, a, b)):
+        async for s in db.sales.find(date_query({**f, **rep_clause(name), **LIVE_QUICK}, a, b)):
             sold += s["totals"]["total"]
             count += 1
             ts = s["created_at"]
@@ -254,7 +254,7 @@ async def rep_transactions(uid: str, user: CurrentUser, period: str = "month"):
                      "customer": (cust or {}).get("name", "Cash sale"), "amount": inv["totals"]["total"],
                      "due": st["due"], "status": st["status"], "shop": inv.get("shop", ""),
                      "date": inv["created_at"].isoformat(), "route": f"/invoices/{str(inv['_id'])}"})
-    async for s in db.sales.find(date_query({**f, **rep_clause(name)}, a, b)).sort("created_at", -1):
+    async for s in db.sales.find(date_query({**f, **rep_clause(name), **LIVE_QUICK}, a, b)).sort("created_at", -1):
         cust = await db.customers.find_one({"_id": ObjectId(s["customer_id"])}) if ObjectId.is_valid(s.get("customer_id") or "") else None
         rows.append({"id": str(s["_id"]), "kind": "sale", "number": s.get("number", ""),
                      "customer": (cust or {}).get("name", "Cash sale"), "amount": s["totals"]["total"],

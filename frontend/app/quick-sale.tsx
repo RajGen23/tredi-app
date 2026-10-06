@@ -1,7 +1,7 @@
 // 04.17 Quick sale + 04.18 Sale saved.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
@@ -53,6 +53,9 @@ export default function QuickSale() {
   const toast = useToast();
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => api<any[]>("/items") });
   const settings = useQuery({ queryKey: ["invoice-settings"], queryFn: () => api("/settings/invoice") });
+  // `?edit=<id>` reopens a sale that was keyed wrong, in the same till screen.
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const editQ = useQuery({ queryKey: ["sale", edit], queryFn: () => api<any>(`/sales/${edit}`), enabled: !!edit });
   const { accounts, options: accountOptions } = useAccounts();
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("Popular");
@@ -76,10 +79,30 @@ export default function QuickSale() {
   const change = Math.max(0, parseNum(tendered) - total);
 
   const m = useMutation({
-    mutationFn: () => api("/sales", { method: "POST", json: { lines: lines.map((l) => ({ item_id: l.item.id, name: l.item.name, quantity: l.q, unit_price: l.item.selling_price, unit: l.item.unit })), method, account_id: account?.id ?? null, tendered: method === "cash" ? parseNum(tendered) || total : total } }),
-    onSuccess: (sale) => { ["items", "low-stock", "dashboard", "accounts", "sales", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); setTender(false); setSaved(sale); },
-    onError: (e: Error) => toast.show(e.message),
+    mutationFn: () => {
+      const json = { lines: lines.map((l) => ({ item_id: l.item.id, name: l.item.name, quantity: l.q, unit_price: l.item.selling_price, unit: l.item.unit })), method, account_id: account?.id ?? null, tendered: method === "cash" ? parseNum(tendered) || total : total };
+      return edit ? api(`/sales/${edit}`, { method: "PUT", json }) : api("/sales", { method: "POST", json });
+    },
+    onSuccess: (sale) => {
+      ["items", "low-stock", "dashboard", "accounts", "sales", "sale", "activity", "reports-summary"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      setTender(false);
+      if (edit) { toast.show("Sale corrected", (sale as any)?.number); return router.replace(`/sales/${edit}`); }
+      setSaved(sale);
+    },
+    onError: (e: Error) => toast.show(e.message, undefined, "bad"),
   });
+
+  // Prefill the till from the sale being corrected.
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const d = editQ.data;
+    if (!d || loaded || !items.length) return;
+    setLoaded(true);
+    setCart(Object.fromEntries((d.lines ?? []).filter((l: any) => l.item_id).map((l: any) => [l.item_id, l.quantity])));
+    setMethod(d.method ?? "cash");
+    setAccountId(d.account_id ?? null);
+    setTendered(d.tendered ? String(d.tendered) : "");
+  }, [editQ.data, items.length, loaded]);
 
   const reset = () => { setCart({}); setTendered(""); setSaved(null); setMethod("cash"); setAccountId(null); };
 
@@ -104,8 +127,8 @@ export default function QuickSale() {
       const chosen: any = settings.data ?? {};
       const logo = chosen.logo_url ? await photoDataUri(chosen.logo_url) : "";
       const html = buildReceiptHtml(full, { ...DEFAULT_BRAND, ...chosen, logo_url: logo });
-      if (print) return await printHtml(html);
       const name = pdfName([(full as any).business?.name, (full as any).customer_name, (full as any).number]);
+      if (print) return await printHtml(html, name);
       const res = await sharePdf(html, name);
       if (!res.shared) toast.show(`${name} is ready — sharing is not available in this preview`);
     } catch (e: any) {
@@ -132,7 +155,7 @@ export default function QuickSale() {
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="quick-sale-screen">
-      <AppBar title="Quick sale" close right={<IconBtn name="barcode-outline" testID="quick-sale-scan" onPress={() => setScan(true)} />} />
+      <AppBar title={edit ? "Edit sale" : "Quick sale"} close right={<IconBtn name="barcode-outline" testID="quick-sale-scan" onPress={() => setScan(true)} />} />
       <View style={{ paddingHorizontal: 14 }}>
         <View style={s.search}><Ionicons name="search-outline" size={16} color={colors.ink60} /><TextInput testID="quick-sale-search" value={search} onChangeText={setSearch} placeholder="Search or scan" placeholderTextColor={colors.ink40} style={s.input} /><Pressable onPress={() => setScan(true)} hitSlop={8} testID="quick-sale-search-scan"><Ionicons name="barcode-outline" size={18} color={colors.green700} /></Pressable></View>
       </View>
@@ -182,7 +205,7 @@ export default function QuickSale() {
           <PickerField label="Money goes into" value={account?.id ?? null} options={accountOptions} onPick={setAccountId}
             title="Which account takes this money?" style={{ marginBottom: 8, minHeight: 46 }} testID="quick-sale-account" />
         ) : null}
-        <Btn label="Take payment" disabled={!lines.length} onPress={() => (method === "cash" ? setTender(true) : m.mutate())} loading={m.isPending && !tender} testID="quick-sale-take-payment" />
+        <Btn label={edit ? "Save the correction" : "Take payment"} disabled={!lines.length} onPress={() => (method === "cash" ? setTender(true) : m.mutate())} loading={m.isPending && !tender} testID="quick-sale-take-payment" />
       </View>
 
       <Scanner visible={scan} onClose={() => setScan(false)} onScan={onScan} title="Scan to sell"

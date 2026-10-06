@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
 import logging
 
-from deps import (VAT_RATE, DUMMY_HASH, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
+from deps import (VAT_RATE, DUMMY_HASH, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
                   db, decorate_invoice, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_totals, log_activity, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, users_roles
@@ -408,7 +408,7 @@ async def get_item(iid: str, user: Annotated[dict, Depends(current_user)]):
                 sold_qty += l.get("quantity") or 0
                 revenue += l.get("total") or 0
                 cost += (l.get("quantity") or 0) * (i.get("cost_price") or 0)
-    async for s in db.sales.find(f):
+    async for s in db.sales.find({**f, **LIVE_QUICK}):
         for l in s.get("lines", []):
             if l.get("item_id") == iid:
                 sold_qty += l.get("quantity") or 0
@@ -461,7 +461,7 @@ async def item_stats(user: Annotated[dict, Depends(current_user)]):
             if k:
                 sold[k] = round(sold.get(k, 0) + (l.get("quantity") or 0), 3)
                 revenue[k] = round(revenue.get(k, 0) + (l.get("total") or 0), 2)
-    async for s in db.sales.find(f):
+    async for s in db.sales.find({**f, **LIVE_QUICK}):
         for l in s.get("lines", []):
             k = l.get("item_id")
             if k:
@@ -498,7 +498,7 @@ async def low_stock(user: Annotated[dict, Depends(current_user)], days: int = 30
         for l in inv.get("lines", []):
             if l.get("item_id"):
                 sold[l["item_id"]] = sold.get(l["item_id"], 0) + (l.get("quantity") or 0)
-    async for s in db.sales.find({**f, "created_at": {"$gte": since}}):
+    async for s in db.sales.find({**f, **LIVE_QUICK, "created_at": {"$gte": since}}):
         for l in s.get("lines", []):
             if l.get("item_id"):
                 sold[l["item_id"]] = sold.get(l["item_id"], 0) + (l.get("quantity") or 0)
@@ -894,6 +894,88 @@ async def get_sale(sid: str, user: Annotated[dict, Depends(current_user)]):
     return d
 
 
+@api.put("/sales/{sid}")
+async def update_sale(sid: str, data: SaleIn, user: Annotated[dict, Depends(current_user)]):
+    """Correct a quick sale that was keyed wrong.
+
+    Stock and money are both re-laid: the old lines go back on the shelf, the
+    new ones come off, and the payment that came with it is re-stated so the
+    account balance never drifts.
+    """
+    f = biz_filter(user)
+    s = await db.sales.find_one({"_id": oid(sid), **f})
+    if not s:
+        raise HTTPException(404, "Sale not found")
+    if s.get("cancelled_at"):
+        raise HTTPException(400, "This sale is cancelled — restore it before editing")
+    if not data.lines:
+        raise HTTPException(400, "Add at least one item")
+    shop = s.get("shop", "")
+    for l in s.get("lines", []):                       # put the old basket back
+        await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "edit", s["number"], user, "Sale edited", shop)
+    lines = [line_totals(l) for l in data.lines]
+    totals = invoice_totals(lines, "amount", 0, 0)
+    change = round(max(0.0, data.tendered - totals["total"]), 2) if data.method == "cash" and data.tendered else 0
+    await db.sales.update_one({"_id": s["_id"]}, {"$set": {
+        "lines": lines, "totals": totals, "method": data.method, "tendered": data.tendered, "change": change,
+        "customer_id": data.customer_id, "account_id": data.account_id,
+        "updated_at": now(), "updated_by": user.get("name", "")}})
+    for l in lines:                                    # and take the new one off
+        await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", s["number"], user, "Sale edited", shop)
+
+    await db.payments.delete_many({**f, "sale_id": sid})
+    if data.method != "credit":
+        await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": totals["total"], "account_id": data.account_id,
+                                      "method": data.method, "allocations": [], "sale_id": sid, "shop": shop,
+                                      "note": f"Quick sale · {s['number']}", "created_by": user.get("name", ""), "created_at": s["created_at"]})
+    await log_activity(f["business_id"], user, "sale", f"{s['number']} edited", data.method, totals["total"], sid, shop)
+    return await get_sale(sid, user)
+
+
+@api.post("/sales/{sid}/cancel")
+async def cancel_sale(sid: str, body: dict, user: Annotated[dict, Depends(current_user)]):
+    """Void a quick sale: stock back on the shelf, money out of the account, and
+    the number kept so the receipt book still adds up."""
+    f = biz_filter(user)
+    s = await db.sales.find_one({"_id": oid(sid), **f})
+    if not s:
+        raise HTTPException(404, "Sale not found")
+    if s.get("cancelled_at"):
+        raise HTTPException(400, "This sale is already cancelled")
+    reason = (body or {}).get("reason", "").strip()
+    shop = s.get("shop", "")
+    for l in s.get("lines", []):
+        await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "return", s["number"], user, reason or "Sale cancelled", shop)
+    await db.payments.delete_many({**f, "sale_id": sid})
+    await db.sales.update_one({"_id": s["_id"]}, {"$set": {"cancelled_at": now(), "cancelled_by": user.get("name", ""),
+                                                           "cancelled_reason": reason}})
+    await log_activity(f["business_id"], user, "sale", f"{s['number']} cancelled", reason or "Quick sale cancelled",
+                       s["totals"]["total"], sid, shop)
+    items = len(s.get("lines", []))
+    return {"ok": True, "message": f"{s['number']} is cancelled. {items} line{'' if items == 1 else 's'} went back on the shelf "
+                                   "and the money is out of the account."}
+
+
+@api.post("/sales/{sid}/uncancel")
+async def uncancel_sale(sid: str, user: Annotated[dict, Depends(current_user)]):
+    """Cancelled by mistake — put the sale back the way it was."""
+    f = biz_filter(user)
+    s = await db.sales.find_one({"_id": oid(sid), **f})
+    if not s or not s.get("cancelled_at"):
+        raise HTTPException(404, "No cancelled sale here")
+    shop = s.get("shop", "")
+    for l in s.get("lines", []):
+        await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", s["number"], user, "Cancellation reversed", shop)
+    if s.get("method") != "credit":
+        await db.payments.insert_one({**f, "customer_id": s.get("customer_id"), "amount": s["totals"]["total"],
+                                      "account_id": s.get("account_id"), "method": s.get("method"), "allocations": [],
+                                      "sale_id": sid, "shop": shop, "note": f"Quick sale · {s['number']}",
+                                      "created_by": user.get("name", ""), "created_at": s["created_at"]})
+    await db.sales.update_one({"_id": s["_id"]}, {"$unset": {"cancelled_at": "", "cancelled_by": "", "cancelled_reason": ""}})
+    await log_activity(f["business_id"], user, "sale", f"{s['number']} restored", "Cancellation reversed", s["totals"]["total"], sid, shop)
+    return await get_sale(sid, user)
+
+
 # ---------------------------------------------------------------- payments & accounts
 @api.get("/accounts")
 async def list_accounts(user: Annotated[dict, Depends(current_user)]):
@@ -1128,7 +1210,7 @@ async def dashboard(user: Annotated[dict, Depends(current_user)]):
         tot = 0.0
         async for inv in db.invoices.find({**f, "status": LIVE_SALE, "created_at": {"$gte": a, "$lt": b}}):
             tot += inv["totals"]["total"]
-        async for s in db.sales.find({**f, "created_at": {"$gte": a, "$lt": b}}):
+        async for s in db.sales.find({**f, **LIVE_QUICK, "created_at": {"$gte": a, "$lt": b}}):
             tot += s["totals"]["total"]
         return round(tot, 2)
 

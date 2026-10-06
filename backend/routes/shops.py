@@ -7,7 +7,7 @@ from bson import ObjectId
 
 from plans import TRIAL_DAYS
 
-from deps import (CurrentUser, LIVE_SALE, apply_stock, biz_filter, clean, db, ensure_feature, ensure_limit, log_activity, next_number,
+from deps import (CurrentUser, LIVE_QUICK, LIVE_SALE, apply_stock, biz_filter, clean, db, ensure_feature, ensure_limit, log_activity, next_number,
                   now, oid, period_range, date_query, shop_qty, shop_scope, stock_map)
 
 router = APIRouter(prefix="/api")
@@ -73,7 +73,7 @@ async def shop_sales(f: dict, shop: str, a, b, is_main: bool = False) -> float:
     total = 0.0
     async for inv in db.invoices.find(date_query({**f, "status": LIVE_SALE, **clause}, a, b)):
         total += inv["totals"]["total"]
-    async for s in db.sales.find(date_query({**f, **clause}, a, b)):
+    async for s in db.sales.find(date_query({**f, **clause, **LIVE_QUICK}, a, b)):
         total += s["totals"]["total"]
     return round(total, 2)
 
@@ -185,7 +185,7 @@ async def list_businesses(user: CurrentUser):
         sales = 0.0
         async for inv in db.invoices.find(date_query({**f, "status": LIVE_SALE}, a, b)):
             sales += inv["totals"]["total"]
-        async for s in db.sales.find(date_query(f, a, b)):
+        async for s in db.sales.find(date_query({**f, **LIVE_QUICK}, a, b)):
             sales += s["totals"]["total"]
         out.append({**clean(biz), "shops": shop_list(biz), "sales": round(sales, 2),
                     "users": await db.users.count_documents({"business_id": bid}),

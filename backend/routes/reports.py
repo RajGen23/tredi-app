@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
 from typing import Optional
 
-from deps import (CurrentUser, LIVE_SALE, biz_filter, date_query, db, invoice_paid, invoice_status, period_range, rep_clause,
+from deps import (CurrentUser, LIVE_QUICK, LIVE_SALE, biz_filter, date_query, db, invoice_paid, invoice_status, period_range, rep_clause,
                   scoped, shop_qty, shop_scope)
 
 router = APIRouter(prefix="/api/reports")
@@ -23,7 +23,7 @@ async def sale_docs(f: dict, a: Optional[datetime], b: datetime, rep: str = "") 
         out.append({"id": str(inv["_id"]), "number": inv.get("number", ""), "total": inv["totals"]["total"],
                     "lines": inv.get("lines", []), "created_at": inv["created_at"], "shop": inv.get("shop", ""),
                     "customer_id": inv.get("customer_id"), "rep": inv.get("rep") or inv.get("created_by", ""), "kind": "invoice"})
-    async for s in db.sales.find(date_query(q, a, b)):
+    async for s in db.sales.find(date_query({**q, **LIVE_QUICK}, a, b)):
         out.append({"id": str(s["_id"]), "number": s.get("number", ""), "total": s["totals"]["total"],
                     "lines": s.get("lines", []), "created_at": s["created_at"], "shop": s.get("shop", ""),
                     "customer_id": s.get("customer_id"), "rep": s.get("rep") or s.get("created_by", ""), "kind": "sale"})

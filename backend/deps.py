@@ -38,6 +38,9 @@ DUMMY_HASH = pwd_context.hash("dummy-password-used-only-for-timing")
 # A cancelled invoice keeps its number on the record but must never count as a
 # sale again — one clause, used by every figure in the app.
 LIVE_SALE = {"$nin": ["draft", "quote", "cancelled"]}
+# A quick sale counts until it is voided; older rows have no field at all, which
+# Mongo reads as None, so they stay live.
+LIVE_QUICK = {"cancelled_at": None}
 
 PyObjectId = Annotated[str, BeforeValidator(lambda v: str(v) if isinstance(v, ObjectId) else v)]
 

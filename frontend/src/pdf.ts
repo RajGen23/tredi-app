@@ -14,9 +14,20 @@ export function pdfName(parts: (string | null | undefined)[]): string {
   return `${name || "document"}.pdf`;
 }
 
-/** Print straight to the printer. */
-export async function printHtml(html: string) {
-  await Print.printAsync({ html });
+/** Open the system print dialog, with a dependable fallback.
+ *
+ *  expo-print keeps a module flag while a print is in flight and, on Android,
+ *  the native promise never settles when the dialog is swiped away — after that
+ *  every print throws "Another print request is already in progress". When that
+ *  happens we hand a real PDF to the system sheet instead, which still offers
+ *  Print (and Save as PDF). */
+export async function printHtml(html: string, filename = "tredi-print.pdf") {
+  if (Platform.OS === "web") return Print.printAsync({ html });
+  try {
+    await Print.printAsync({ html });
+  } catch {
+    await sharePdf(html, filename);
+  }
 }
 
 /** Save with a readable filename and open the share sheet.

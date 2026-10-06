@@ -446,3 +446,21 @@ Super-admin plan seed (`admin_seed.PLANS` / `FEATURE_GATES`) and
 `app/admin/subscriptions/plans.tsx` carry the same five plans.
 Verified by the testing agent, iteration 25 (18/18 backend + frontend sweep).
 Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as active forever.
+
+## Pass 12m — Quick sale: print fix, edit, cancel (June 2026)
+- **Print was broken everywhere, not only on quick sales**: expo-print keeps a module flag while a
+  print is in flight and on Android its native promise never settles when the dialog is swiped
+  away — after that every print throws "Another print request is already in progress" (exactly
+  the toast in the user's video). `printHtml` in `src/pdf.ts` now catches any expo-print failure
+  and hands the PDF to the system sheet instead (which still offers Print / Save as PDF), and
+  callers pass a proper filename.
+- **Edit a quick sale**: `PUT /api/sales/{sid}` puts the old basket back on the shelf, takes the
+  new one off, re-states the payment row (delete + insert, so no account drift) and stamps
+  `updated_at/updated_by`. The till reopens through `/quick-sale?edit=<id>` — cart, method,
+  account and tendered are prefilled, the bar reads "Edit sale" and the CTA "Save the correction".
+- **Cancel / restore**: `POST /api/sales/{sid}/cancel` (reason optional) returns the stock, deletes
+  the payment and keeps the number; `POST /api/sales/{sid}/uncancel` reverses it. `deps.LIVE_QUICK`
+  ({"cancelled_at": None}) now filters cancelled quick sales out of the dashboard, reports, rep
+  figures and shop overview. `/sales/[id]` shows the Cancelled badge, the reason, Restore, and an
+  "Edited …" stamp.
+- Verified by the testing agent, iteration 26 (9/9 backend + frontend edit/cancel/print flows).
