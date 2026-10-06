@@ -11,7 +11,7 @@ import { api } from "@/src/api";
 import { AppBar, Btn, Card, H4, IconBtn, Loading, Row, Seg, Sub, Tag } from "@/src/components/ui";
 import { InvoicePaper } from "@/src/components/invoice-paper";
 import { useToast } from "@/src/components/sheet";
-import { buildInvoiceHtml, DEFAULT_BRAND, TEMPLATES } from "@/src/invoice-templates";
+import { buildInvoiceHtml, DEFAULT_BRAND } from "@/src/invoice-templates";
 import { pdfName, printHtml, sharePdf } from "@/src/pdf";
 import { photoDataUri } from "@/src/uploads";
 import { useBottomPad } from "@/src/safe";
@@ -39,8 +39,7 @@ export default function PdfViewer() {
   // The invoice's own photo switch wins over the global default.
   const brand = { ...DEFAULT_BRAND, ...chosen, logo_url: logo,
     show_photos: chosen.photos_allowed === false ? false : (q.data?.show_photos ?? chosen.show_photos ?? false),
-    template: format === "professional" ? "t7" : (chosen.template === "t7" ? "t3" : chosen.template ?? "t3") };
-  const simpleName = TEMPLATES.find((t) => t.key === brand.template)?.name ?? "Template 3";
+    template: format === "professional" ? "t7" : "receipt" };
 
   useEffect(() => {
     if (chosen.export_format) setFormat(chosen.export_format);
@@ -88,13 +87,13 @@ export default function PdfViewer() {
           {/* Say plainly what changes between the two, so nobody has to guess. */}
           <Card style={s.note} testID="pdf-format-note">
             <Row between>
-              <H4 style={{ fontSize: 12.5 }}>{format === "professional" ? "Professional — full document" : `Simple — ${simpleName}`}</H4>
-              <Tag>{format === "professional" ? "1 page · 4-column header" : "1 page · short header"}</Tag>
+              <H4 style={{ fontSize: 12.5 }}>{format === "professional" ? "Professional — full document" : "Simple — counter receipt"}</H4>
+              <Tag>{format === "professional" ? "A4 · images and bank details" : "80mm · till slip"}</Tag>
             </Row>
             <Sub style={{ marginTop: 4, lineHeight: 16 }}>
               {format === "professional"
                 ? "Large INVOICE title, issue and due dates, your business and the customer side by side, branch, rep and TIN, a dark item table with an image column, and terms plus bank details in two columns."
-                : "Your letterhead, one Bill-to block, a light item table and the totals stacked underneath. Shorter, friendlier, and it follows the template you picked in Invoice templates."}
+                : "The slip you hand across the counter: narrow 80mm paper, your shop name centred, one line per item with quantity and price, the total, what was paid and a thank-you. No images, no bank block."}
             </Sub>
           </Card>
           <InvoicePaper inv={inv} format={format} brand={brand as any} linePhotos={linePhotos} logo={logo} />

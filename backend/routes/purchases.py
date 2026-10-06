@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Literal
 from bson import ObjectId
 
-from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, line_totals, log_activity, next_number, now, oid, scoped, writing_shop)
+from deps import (CurrentUser, LIVE_PO, LineIn, apply_stock, biz_filter, clean, db, line_totals, log_activity, next_number, now, oid, scoped, writing_shop)
 from datetime import date as _date, datetime, timezone
 
 router = APIRouter(prefix="/api")
@@ -79,7 +79,7 @@ async def supplier_owed(f: dict, sid: str) -> float:
     owed = 0.0
     s = await db.suppliers.find_one({"_id": oid(sid)})
     owed += (s or {}).get("opening_balance", 0)
-    async for p in db.purchases.find({**f, "supplier_id": sid}):
+    async for p in db.purchases.find({**f, "supplier_id": sid, **LIVE_PO}):
         owed += (p.get("total") or 0) - (p.get("paid") or 0)
     async for p in db.supplier_payments.find({**f, "supplier_id": sid}):
         # purchases.paid already carries the allocated part, so only the
@@ -95,7 +95,7 @@ async def list_suppliers(user: CurrentUser):
     async for s in db.suppliers.find(f).sort("name", 1):
         d = clean(s)
         d["owed"] = await supplier_owed(f, d["id"])
-        d["purchases"] = await db.purchases.count_documents({**f, "supplier_id": d["id"]})
+        d["purchases"] = await db.purchases.count_documents({**f, "supplier_id": d["id"], **LIVE_PO})
         last = await db.purchases.find_one({**f, "supplier_id": d["id"]}, sort=[("created_at", -1)])
         d["last_purchase"] = last["created_at"].isoformat() if last else None
         out.append(d)
@@ -173,6 +173,75 @@ async def create_purchase(data: PurchaseIn, user: CurrentUser):
     return clean(await db.purchases.find_one({"_id": res.inserted_id}))
 
 
+@router.put("/purchases/{pid}")
+async def update_purchase(pid: str, data: PurchaseIn, user: CurrentUser):
+    """Correct a purchase order. The old delivery comes back off the shelf, the
+    new one goes on, and what you owe the supplier is restated."""
+    f = biz_filter(user)
+    p = await db.purchases.find_one({"_id": oid(pid), **f})
+    if not p:
+        raise HTTPException(404, "Purchase not found")
+    if p.get("cancelled_at"):
+        raise HTTPException(400, "This order is cancelled — restore it before editing")
+    if not data.lines:
+        raise HTTPException(400, "Add at least one item")
+    sup = await db.suppliers.find_one({"_id": oid(data.supplier_id), **f})
+    if not sup:
+        raise HTTPException(404, "Supplier not found")
+    shop = p.get("shop", "")
+    for l in p.get("lines", []):
+        await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "edit", p["number"], user, "Order edited", shop)
+    lines = [{**l.model_dump(), "total": round(l.quantity * l.unit_cost, 2)} for l in data.lines]
+    total = round(sum(l["total"] for l in lines), 2)
+    await db.purchases.update_one({"_id": p["_id"]}, {"$set": {
+        "supplier_id": data.supplier_id, "supplier_name": sup["name"], "lines": lines, "total": total,
+        "paid": min(data.paid, total), "account_id": data.account_id, "method": data.method,
+        "due_date": data.due_date, "note": data.note,
+        "updated_at": now(), "updated_by": user.get("name", "")}})
+    for l in lines:
+        await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "purchase", p["number"], user, sup["name"], shop)
+        if data.update_cost and l.get("item_id") and ObjectId.is_valid(l["item_id"]) and l["unit_cost"]:
+            await db.items.update_one({"_id": ObjectId(l["item_id"]), **f}, {"$set": {"cost_price": l["unit_cost"], "updated_at": now()}})
+    await log_activity(f["business_id"], user, "purchase", f"Purchase {p['number']} edited", sup["name"], total, pid, shop)
+    return clean(await db.purchases.find_one({"_id": p["_id"]}))
+
+
+@router.post("/purchases/{pid}/cancel")
+async def cancel_purchase(pid: str, body: dict, user: CurrentUser):
+    """Void an order: the goods come off the shelf again and what you owed the
+    supplier goes away. The PO number stays in the book."""
+    f = biz_filter(user)
+    p = await db.purchases.find_one({"_id": oid(pid), **f})
+    if not p:
+        raise HTTPException(404, "Purchase not found")
+    if p.get("cancelled_at"):
+        raise HTTPException(400, "This order is already cancelled")
+    reason = (body or {}).get("reason", "").strip()
+    shop = p.get("shop", "")
+    for l in p.get("lines", []):
+        await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "cancel", p["number"], user, reason or "Order cancelled", shop)
+    await db.purchases.update_one({"_id": p["_id"]}, {"$set": {"cancelled_at": now(), "cancelled_by": user.get("name", ""),
+                                                               "cancelled_reason": reason}})
+    await log_activity(f["business_id"], user, "purchase", f"Purchase {p['number']} cancelled", reason or p.get("supplier_name", ""),
+                       p.get("total", 0), pid, shop)
+    return {"ok": True, "message": f"{p['number']} is cancelled. The goods came off {shop or 'stock'} and "
+                                   f"{p.get('supplier_name', 'the supplier')} is no longer owed for it."}
+
+
+@router.post("/purchases/{pid}/uncancel")
+async def uncancel_purchase(pid: str, user: CurrentUser):
+    f = biz_filter(user)
+    p = await db.purchases.find_one({"_id": oid(pid), **f})
+    if not p or not p.get("cancelled_at"):
+        raise HTTPException(404, "No cancelled order here")
+    shop = p.get("shop", "")
+    for l in p.get("lines", []):
+        await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "purchase", p["number"], user, "Cancellation reversed", shop)
+    await db.purchases.update_one({"_id": p["_id"]}, {"$unset": {"cancelled_at": "", "cancelled_by": "", "cancelled_reason": ""}})
+    await log_activity(f["business_id"], user, "purchase", f"Purchase {p['number']} restored", p.get("supplier_name", ""), p.get("total", 0), pid, shop)
+    return clean(await db.purchases.find_one({"_id": p["_id"]}))
+
+
 @router.get("/purchases")
 async def list_purchases(user: CurrentUser):
     f = await scoped(user, "stock")
@@ -219,7 +288,7 @@ async def pay_supplier(data: SupplierPaymentIn, user: CurrentUser):
     if not sup:
         raise HTTPException(404, "Supplier not found")
     remaining = data.amount
-    async for p in db.purchases.find({**f, "supplier_id": data.supplier_id}).sort("created_at", 1):
+    async for p in db.purchases.find({**f, "supplier_id": data.supplier_id, **LIVE_PO}).sort("created_at", 1):
         due = (p.get("total") or 0) - (p.get("paid") or 0)
         if due <= 0 or remaining <= 0:
             continue

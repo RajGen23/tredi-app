@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
-import { AppBar, Av, Badge, Btn, Card, H4, Li, Loading, Money, Radio, Row, Sub } from "@/src/components/ui";
+import { AppBar, Av, Badge, Btn, Card, H4, IconBtn, Li, Loading, Money, Radio, Row, Sub } from "@/src/components/ui";
 import { useToast } from "@/src/components/sheet";
 import { initials, money } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -51,12 +51,13 @@ export default function Shops() {
                 </Li>
               ) : null}
               {d.shops.map((sh: any, i: number) => (
-                <Li key={sh.name} last={i === d.shops.length - 1} testID={`shop-${sh.name}`} onPress={() => pick.mutate(sh.name)}>
+                <Li key={sh.name} last={i === d.shops.length - 1} testID={`shop-${sh.name}`} onPress={() => (sh.dormant ? toast.show(`${sh.name} is dormant — reopen it to work there`) : pick.mutate(sh.name))}>
                   <Av text={initials(sh.name)} tone={d.active === sh.name ? "green" : "sq"} />
                   <View style={{ flex: 1 }}>
                     <Row between><H4>{sh.name}</H4>{sh.sells ? <Money>{money(sh.sales)}</Money> : <Badge tone="draft">Stock only</Badge>}</Row>
-                    <Sub>{sh.is_main ? "Main · " : ""}{sh.address || (sh.sells ? "this month" : "no sales")}</Sub>
+                    <Sub>{sh.is_main ? "Main · " : ""}{sh.dormant ? "Dormant — nothing new is recorded here" : sh.address || (sh.sells ? "this month" : "no sales")}</Sub>
                   </View>
+                  {d.can_see_all ? <IconBtn name="create-outline" testID={`shop-edit-${sh.name}`} onPress={() => router.push(`/shops/new?edit=${encodeURIComponent(sh.name)}`)} /> : null}
                   {d.active === sh.name ? <Ionicons name="checkmark" size={16} color={colors.brandPrimary} /> : null}
                 </Li>
               ))}

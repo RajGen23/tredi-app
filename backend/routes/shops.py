@@ -83,8 +83,17 @@ def shop_list(biz: dict) -> list[dict]:
     for i, s in enumerate(shops):
         s.setdefault("sells", True)
         s.setdefault("phone", "")
+        s.setdefault("dormant", False)
         s.setdefault("is_main", i == 0)
     return shops
+
+
+# Everywhere a shop name is written on a record, so a rename carries the history
+# with it instead of orphaning it.
+SHOP_FIELDS = [("invoices", "shop"), ("sales", "shop"), ("expenses", "shop"), ("payments", "shop"),
+               ("quotes", "shop"), ("purchases", "shop"), ("returns", "shop"), ("receipts", "shop"),
+               ("waybills", "shop"), ("movements", "shop"), ("activity", "shop"),
+               ("transfers", "from_shop"), ("transfers", "to_shop")]
 
 
 @router.get("/shops")
@@ -93,7 +102,8 @@ async def list_shops(user: CurrentUser, period: str = "month"):
     biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})
     a, b, label = period_range(period)
     sc = await shop_scope(user, "sales")
-    shops = [s for s in shop_list(biz) if s["name"] in sc["visible"]]
+    # The owner still sees a dormant branch here — that is where it is woken up.
+    shops = [s for s in shop_list(biz) if not sc["locked"] or s["name"] in sc["visible"]]
     out = []
     for i, sh in enumerate(shops):
         sales = await shop_sales(f, sh["name"], a, b, is_main=sh["name"] == sc["main"])
@@ -119,15 +129,55 @@ async def add_shop(data: ShopIn, user: CurrentUser):
 
 @router.put("/shops/{name}")
 async def update_shop(name: str, data: ShopIn, user: CurrentUser):
+    """Correct a location. Renaming carries every record that was written there
+    with it — the shop keeps its history."""
     f = biz_filter(user)
     biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})
     shops = shop_list(biz)
     idx = next((i for i, s in enumerate(shops) if s["name"] == name), None)
     if idx is None:
         raise HTTPException(404, "Shop not found")
-    shops[idx] = data.model_dump()
+    if data.name != name and any(s["name"].lower() == data.name.lower() for s in shops):
+        raise HTTPException(409, "A shop with that name already exists")
+    shops[idx] = {**shops[idx], **data.model_dump()}
     await db.businesses.update_one({"_id": biz["_id"]}, {"$set": {"shops": shops}})
+    if data.name != name:
+        for col, field in SHOP_FIELDS:
+            await db[col].update_many({"business_id": f["business_id"], field: name}, {"$set": {field: data.name}})
+        await db.users.update_many({"business_id": f["business_id"], "shop": name}, {"$set": {"shop": data.name}})
+        await db.users.update_many({"business_id": f["business_id"], "shops": name}, {"$set": {"shops.$": data.name}})
+        await db.items.update_many({"business_id": f["business_id"], "location": name}, {"$set": {"location": data.name}})
+        await db.items.update_many({"business_id": f["business_id"], "stock.shop": name},
+                                   {"$set": {"stock.$.shop": data.name}})
+    await log_activity(f["business_id"], user, "shop", f"Shop {data.name} updated" if data.name == name
+                       else f"Shop {name} renamed to {data.name}")
     return {"shops": shops}
+
+
+@router.post("/shops/{name}/dormant")
+async def set_shop_dormant(name: str, body: dict, user: CurrentUser):
+    """Shops are never deleted. Making one dormant takes it out of the pickers
+    and off the switcher; every past record stays and it can be woken up again.
+    """
+    f = biz_filter(user)
+    biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})
+    shops = shop_list(biz)
+    idx = next((i for i, s in enumerate(shops) if s["name"] == name), None)
+    if idx is None:
+        raise HTTPException(404, "Shop not found")
+    dormant = bool((body or {}).get("dormant", True))
+    if dormant and shops[idx].get("is_main"):
+        raise HTTPException(400, "The main branch cannot go dormant — make another shop the main one first")
+    if dormant and sum(1 for s in shops if not s.get("dormant")) <= 1:
+        raise HTTPException(400, "This is your only working location")
+    shops[idx]["dormant"] = dormant
+    await db.businesses.update_one({"_id": biz["_id"]}, {"$set": {"shops": shops}})
+    # Nobody should be left standing in a shop that just closed.
+    if dormant:
+        main = next(s["name"] for s in shops if not s.get("dormant"))
+        await db.users.update_many({"business_id": f["business_id"], "shop": name}, {"$set": {"shop": main}})
+    await log_activity(f["business_id"], user, "shop", f"Shop {name} {'made dormant' if dormant else 'reopened'}")
+    return {"shops": shops, "message": f"{name} is {'dormant — nothing new can be recorded there' if dormant else 'open again'}."}
 
 
 @router.post("/shops/active")

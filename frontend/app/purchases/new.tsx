@@ -30,7 +30,7 @@ export default function NewPurchase() {
   const insets = useSafeAreaInsets();
   const pad = useBottomPad();
   const router = useRouter();
-  const params = useLocalSearchParams<{ supplier?: string; item?: string }>();
+  const params = useLocalSearchParams<{ supplier?: string; item?: string; edit?: string }>();
   const toast = useToast();
   const qc = useQueryClient();
 
@@ -69,18 +69,34 @@ export default function NewPurchase() {
     }
   }, [params.item, items.data, lines.length, draft, supplierId, suppliers.data]);
 
+  // `?edit=<id>` reopens an order already on the books.
+  const editQ = useQuery({ queryKey: ["purchase", params.edit], queryFn: () => api<any>(`/purchases/${params.edit}`), enabled: !!params.edit });
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    const d = editQ.data;
+    if (!d || loaded) return;
+    setLoaded(true);
+    setSupplierId(d.supplier_id ?? null);
+    setPickSupplier(false);
+    setLines((d.lines ?? []).map((l: any) => ({ item_id: l.item_id ?? null, name: l.name, unit: l.unit ?? "", quantity: l.quantity, unit_cost: l.unit_cost })));
+    setPaid(d.paid ? String(d.paid) : "");
+    setMethod(d.method ?? "credit");
+    setAccountId(d.account_id ?? null);
+    setDate(dayjs(d.created_at).format("YYYY-MM-DD"));
+  }, [editQ.data, loaded]);
+
   const save = useMutation({
-    mutationFn: () => api("/purchases", {
-      method: "POST",
-      json: { supplier_id: supplierId, lines, paid: parseNum(paid), method, update_cost: updateCost, date,
-              account_id: method === "credit" ? null : account?.id ?? null },
-    }),
+    mutationFn: () => {
+      const json = { supplier_id: supplierId, lines, paid: parseNum(paid), method, update_cost: updateCost, date,
+                     account_id: method === "credit" ? null : account?.id ?? null };
+      return params.edit ? api(`/purchases/${params.edit}`, { method: "PUT", json }) : api("/purchases", { method: "POST", json });
+    },
     onSuccess: (r: any) => {
       qc.invalidateQueries();
-      toast.show(`${money(r.total)} recorded`, r.number);
+      toast.show(params.edit ? `${money(r.total)} corrected` : `${money(r.total)} recorded`, r.number);
       router.replace(`/purchases/${r.id}`);
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   // Add a supplier in the middle of a purchase and come straight back to it.
@@ -109,7 +125,7 @@ export default function NewPurchase() {
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-purchase-screen">
-      <AppBar title="Record purchase" close right={<Badge tone="draft">Draft</Badge>} />
+      <AppBar title={params.edit ? "Edit purchase" : "Record purchase"} close right={<Badge tone="draft">{params.edit ? "Editing" : "Draft"}</Badge>} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
         <Card testID="purchase-supplier-card">
           {supplier ? (
@@ -162,7 +178,7 @@ export default function NewPurchase() {
         <Row between>
           <View><Lbl>Total · {parseNum(paid) >= total && total > 0 ? "paid" : "unpaid"}</Lbl><Text style={s.total} testID="purchase-total">{money(total)}</Text></View>
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Btn label="Save purchase" disabled={!supplierId || lines.length === 0} loading={save.isPending} testID="purchase-save" onPress={() => save.mutate()} />
+            <Btn label={params.edit ? "Save the correction" : "Save purchase"} disabled={!supplierId || lines.length === 0} loading={save.isPending} testID="purchase-save" onPress={() => save.mutate()} />
           </View>
         </Row>
       </View>

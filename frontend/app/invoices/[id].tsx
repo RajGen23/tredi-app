@@ -158,12 +158,25 @@ export default function InvoiceDetail() {
             </Card>
           ) : null}
 
-          {!draft && !cancelled && inv.due > 0 ? (
+          {cancelled ? null : draft ? (
+            // The till is not open on a draft, but saying so beats hiding the button.
             <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}>
               <Btn small variant="ghost" label="Record payment" style={{ flex: 1 }} testID="invoice-record-payment"
-                onPress={() => router.push({ pathname: "/payments/new", params: { customer_id: inv.customer_id, invoice_id: inv.id } })} />
-              <Btn small variant="deep" label="Send reminder" style={{ flex: 1 }} testID="invoice-send-reminder" onPress={() => router.push(`/invoices/reminder/${id}`)} />
+                onPress={() => toast.show("Confirm and issue it first — a draft has not been sold yet", "Still a draft")} />
+              <Btn small variant="deep" label="Confirm & issue" style={{ flex: 1 }} testID="invoice-issue-shortcut" onPress={() => setIssueOpen(true)} />
             </View>
+          ) : (
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}>
+              <Btn small variant="ghost" label={inv.due > 0 ? "Record payment" : "Record another payment"} style={{ flex: 1 }} testID="invoice-record-payment"
+                onPress={() => router.push({ pathname: "/payments/new", params: { customer_id: inv.customer_id, invoice_id: inv.id } })} />
+              <Btn small variant="deep" label={inv.due > 0 ? "Send reminder" : "Send receipt"} style={{ flex: 1 }} testID="invoice-send-reminder"
+                onPress={() => router.push(inv.due > 0 ? `/invoices/reminder/${id}` : `/invoices/pdf/${id}`)} />
+            </View>
+          )}
+          {!draft && !cancelled && inv.due <= 0 ? (
+            <Sub style={{ marginTop: 6 }} testID="invoice-paid-note">
+              This one is settled. Anything extra you record becomes credit on {inv.customer_name}’s account.
+            </Sub>
           ) : null}
 
           <Card style={{ marginTop: 9, paddingVertical: 4 }}>

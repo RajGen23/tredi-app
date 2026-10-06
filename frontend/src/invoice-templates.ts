@@ -3,7 +3,8 @@
 // photos) is read from /settings/invoice so one setting drives every document.
 import { longDate, money } from "@/src/format";
 
-export type TemplateKey = "t1" | "t2" | "t3" | "t4" | "t5" | "t6" | "t7";
+// "receipt" is not a pickable look: it is what the Simple format prints.
+export type TemplateKey = "t1" | "t2" | "t3" | "t4" | "t5" | "t6" | "t7" | "receipt";
 
 export type Brand = {
   template: TemplateKey;
@@ -187,8 +188,52 @@ function professionalHtml(inv: any, brand: Brand): string {
   </body></html>`;
 }
 
+/** The printed twin of the Simple preview: an 80mm till slip. A trader hands
+ *  this across the counter; the Professional document is the one they email. */
+function receiptInvoiceHtml(inv: any, brand: Brand): string {
+  const b = inv.business ?? {};
+  const t = inv.totals ?? {};
+  const paid = inv.paid ?? 0;
+  const title = inv.status === "quote" ? "QUOTATION" : "INVOICE";
+  const kv = (k: string, v: string, cls = "") => `<div class="kv ${cls}"><span>${k}</span><span>${v}</span></div>`;
+  return `<html><head><meta charset="utf-8"><style>
+  @page{size:80mm auto;margin:4mm}
+  body{font-family:"Courier New",Courier,monospace;color:#000;font-size:11px;width:72mm;margin:0 auto}
+  .c{text-align:center}.name{font-size:14px;font-weight:700;letter-spacing:1px}
+  .rule{border-top:1px dashed #555;margin:6px 0}
+  .kv{display:flex;justify-content:space-between;gap:8px}
+  .big{font-size:13px;font-weight:700;margin:3px 0}
+  .ln{margin-bottom:3px}.q{padding-left:8px}
+  .mut{color:#444;font-size:10px}
+  </style></head><body>
+  <div class="c">
+    ${brand.logo_url ? `<img src="${esc(brand.logo_url)}" style="height:34px;max-width:60%;object-fit:contain"/><br/>` : ""}
+    <div class="name">${esc(String(b.name ?? "").toUpperCase())}</div>
+    ${b.address ? `<div class="mut">${esc(b.address)}</div>` : ""}
+    ${b.phone ? `<div class="mut">${esc(b.phone)}</div>` : ""}
+    ${b.tin ? `<div class="mut">TIN ${esc(b.tin)}</div>` : ""}
+  </div>
+  <div class="rule"></div>
+  <div class="c">${title} ${esc(inv.number)}<br/><span class="mut">${longDate(inv.created_at)}</span>
+    ${inv.customer_name ? `<br/><span class="mut">Customer: ${esc(inv.customer_name)}</span>` : ""}</div>
+  <div class="rule"></div>
+  ${(inv.lines ?? []).map((l: any) => `<div class="ln">${esc(l.name)}
+    ${kv(`<span class="q">${l.quantity} ${esc(l.unit || "")} x ${money(l.unit_price, { symbol: false })}</span>`, money(l.total, { symbol: false }))}</div>`).join("")}
+  <div class="rule"></div>
+  ${kv("Subtotal", money(t.taxable ?? t.gross ?? 0, { symbol: false }))}
+  ${t.vat ? kv(`VAT ${inv.vat_rate ?? ""}%`, money(t.vat, { symbol: false })) : ""}
+  ${t.shipping ? kv("Shipping", money(t.shipping, { symbol: false })) : ""}
+  ${kv("TOTAL", money(t.total ?? 0), "big")}
+  ${paid > 0 ? kv("Paid", money(paid, { symbol: false })) : ""}
+  ${paid > 0 ? kv("Balance", money(inv.due ?? (t.total ?? 0) - paid, { symbol: false }), "big") : ""}
+  <div class="rule"></div>
+  <div class="c">Thank you for your patronage<div class="mut">${esc(brand.footer || "Goods sold in good condition")}</div></div>
+  </body></html>`;
+}
+
 export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   const brand: Brand = { ...DEFAULT_BRAND, ...(brandIn ?? {}) };
+  if (brand.template === "receipt") return receiptInvoiceHtml(inv, brand);
   if (brand.template === "t7") return professionalHtml(inv, brand);
   const c = brand.brand_color || DEFAULT_BRAND.brand_color;
   const onC = readable(c);

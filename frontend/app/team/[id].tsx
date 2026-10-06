@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
-import { AppBar, Av, Badge, Btn, Card, Check, H4, Lbl, Li, Loading, Row, Sub, Switch } from "@/src/components/ui";
+import { AppBar, Av, Badge, Btn, Card, Check, Field, H4, Lbl, Li, Loading, Row, Sub, Switch } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { initials } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
@@ -45,9 +45,22 @@ export default function Permissions() {
   useEffect(() => { if (q.data && !state) setState(q.data); }, [q.data]);
 
   const save = useMutation({
-    mutationFn: () => api(`/team/${id}`, { method: "PUT", json: { role: state.role, shops: state.shops, can: state.can, scopes: state.scopes } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["team"] }); toast.show("Access updated", state.name); router.back(); },
-    onError: (e: any) => toast.show(e.message),
+    mutationFn: () => api(`/team/${id}`, { method: "PUT", json: { role: state.role, shops: state.shops, can: state.can,
+                                                                 scopes: state.scopes, name: state.name, phone: state.phone ?? "" } }),
+    onSuccess: () => { ["team", "reps", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast.show("Member updated", state.name); router.back(); },
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
+  });
+
+  // People are never deleted — a dormant account cannot sign in, but every sale
+  // they recorded stays on the books.
+  const sleep = useMutation({
+    mutationFn: () => api<any>(`/team/${id}/dormant`, { method: "POST", json: { dormant: state.active } }),
+    onSuccess: (r) => {
+      ["team", "reps"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      setState({ ...state, active: r.active });
+      toast.show(r.message, r.active ? "Reinstated" : "Dormant");
+    },
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   if (!state) return <View style={[s.root, { paddingTop: insets.top }]}><AppBar title="Permissions" back /><Loading /></View>;
@@ -61,8 +74,15 @@ export default function Permissions() {
           <Row style={{ gap: 10 }}>
             <Av text={initials(state.name)} tone="sq" size={40} />
             <View style={{ flex: 1 }}><H4>{state.role_label}</H4><Sub>Role · tap to change</Sub></View>
+            {state.active === false ? <Badge tone="draft">Dormant</Badge> : null}
             <Btn label="Change" variant="ghost" small testID="permissions-change-role" onPress={() => setPickRole(true)} />
           </Row>
+          <View style={{ gap: 8, marginTop: 11 }}>
+            <Field label="Name" value={state.name} onChangeText={(v) => setState({ ...state, name: v })} testID="member-name" />
+            <Field label="Phone" value={state.phone ?? ""} keyboardType="phone-pad" placeholder="+234 …"
+              onChangeText={(v) => setState({ ...state, phone: v })} testID="member-phone" />
+            <Sub>{state.email} · sign-in email cannot be changed</Sub>
+          </View>
         </Card>
 
         <Row between style={{ marginTop: 14, marginBottom: 6 }}>
@@ -114,10 +134,17 @@ export default function Permissions() {
         </Card>
 
         <Btn label={`See what ${first} sees`} variant="deep" style={{ marginTop: 14 }} testID="permissions-preview" onPress={() => router.push(`/team/preview/${id}`)} />
-        {!state.is_you ? (
-          <Btn label={`Remove ${first}`} variant="coral" style={{ marginTop: 8 }} testID="permissions-remove" onPress={() => router.push(`/team/remove/${id}`)} />
+        {!state.is_you && state.role !== "owner" ? (
+          <Btn variant={state.active === false ? "ghost" : "coral"} style={{ marginTop: 8 }} loading={sleep.isPending} testID="member-dormant"
+            label={state.active === false ? `Reinstate ${first}` : `Make ${first} dormant`} onPress={() => sleep.mutate()} />
         ) : null}
         <Btn label="Save changes" style={{ marginTop: 8 }} loading={save.isPending} testID="permissions-save" onPress={() => save.mutate()} />
+        {!state.is_you && state.role !== "owner" ? (
+          <Sub style={{ marginTop: 9 }}>
+            Nobody is ever deleted. A dormant member cannot sign in and stops showing as a rep on new entries, while every sale,
+            payment and stock count they recorded stays exactly where it is. Reinstate them any time.
+          </Sub>
+        ) : null}
       </ScrollView>
 
       <Sheet visible={pickRole} onClose={() => setPickRole(false)} testID="permissions-role-sheet">

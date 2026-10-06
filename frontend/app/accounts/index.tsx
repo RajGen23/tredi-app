@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
-import { AppBar, Av, Card, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
+import { AppBar, Av, Badge, Card, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { AddAccountSheet } from "@/src/components/account-form";
 import { money, shortDate } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -28,12 +28,14 @@ export default function Accounts() {
   const q = useQuery({ queryKey: ["accounts"], queryFn: () => api("/accounts") });
   const d = q.data;
   const [add, setAdd] = useState(false);
+  // One sheet does both jobs: a blank form adds, a row's pencil edits.
+  const [editing, setEditing] = useState<any>(null);
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="accounts-screen">
       <AppBar title="Accounts" back right={<>
         <IconBtn name="arrow-down-outline" testID="accounts-payment-in" onPress={() => router.push("/payments/new")} />
-        <IconBtn name="add" testID="accounts-add" onPress={() => setAdd(true)} />
+        <IconBtn name="add" testID="accounts-add" onPress={() => { setEditing(null); setAdd(true); }} />
       </>} />
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}>
         {!d ? <Loading /> : (
@@ -51,13 +53,17 @@ export default function Accounts() {
                 <Pressable key={a.id} testID={`account-${a.id}`} onPress={() => router.push(`/accounts/${a.id}`)} style={({ pressed }) => pressed && { opacity: 0.8 }}>
                   <Card style={{ paddingVertical: 11, flexDirection: "row", alignItems: "center", gap: 9 }}>
                     <Av icon={a.kind === "cash" ? "cash-outline" : a.kind === "bank" ? "business-outline" : "phone-portrait-outline"} tone={a.kind === "cash" ? "green" : a.kind === "bank" ? "blue" : "mint"} />
-                    <View style={{ flex: 1 }}><H4>{a.name}</H4><Tag>{a.detail ? `${a.detail} · ` : ""}{a.entries} entr{a.entries === 1 ? "y" : "ies"} · tap for the statement</Tag></View>
+                    <View style={{ flex: 1 }}>
+                      <Row style={{ gap: 6 }}><H4>{a.name}</H4>{a.dormant ? <Badge tone="draft">Dormant</Badge> : null}</Row>
+                      <Tag>{a.detail ? `${a.detail} · ` : ""}{a.entries} entr{a.entries === 1 ? "y" : "ies"} · tap for the statement</Tag>
+                    </View>
                     <Money>{money(a.balance)}</Money>
+                    <IconBtn name="create-outline" testID={`account-edit-${a.id}`} onPress={() => { setEditing(a); setAdd(true); }} />
                     <Ionicons name="chevron-forward" size={15} color={colors.ink40} />
                   </Card>
                 </Pressable>
               ))}
-              <Pressable testID="accounts-add-row" onPress={() => setAdd(true)} style={({ pressed }) => pressed && { opacity: 0.8 }}>
+              <Pressable testID="accounts-add-row" onPress={() => { setEditing(null); setAdd(true); }} style={({ pressed }) => pressed && { opacity: 0.8 }}>
                 <Card style={{ paddingVertical: 11, flexDirection: "row", alignItems: "center", gap: 9, borderStyle: "dashed" }}>
                   <Av icon="add" tone="green" />
                   <View style={{ flex: 1 }}><H4>Add a bank account</H4><Sub>Cash till, bank or mobile money</Sub></View>
@@ -84,7 +90,7 @@ export default function Accounts() {
         )}
       </ScrollView>
 
-      <AddAccountSheet visible={add} onClose={() => setAdd(false)} />
+      <AddAccountSheet visible={add} account={editing} onClose={() => { setAdd(false); setEditing(null); }} />
     </View>
   );
 }

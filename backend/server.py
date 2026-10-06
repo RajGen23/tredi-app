@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
 import logging
 
-from deps import (VAT_RATE, DUMMY_HASH, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
+from deps import (VAT_RATE, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
                   db, decorate_invoice, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_totals, log_activity, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, users_roles
@@ -166,6 +166,8 @@ async def login(form: Annotated[OAuth2PasswordRequestForm, Depends()]):
         raise HTTPException(401, "Incorrect email or password", headers={"WWW-Authenticate": "Bearer"})
     if not verify_password(form.password, user["password_hash"]):
         raise HTTPException(401, "Incorrect email or password", headers={"WWW-Authenticate": "Bearer"})
+    if not user.get("active", True):
+        raise HTTPException(403, "This account is dormant. Ask the owner to reinstate it.")
     return {"access_token": create_access_token(str(user["_id"])), "token_type": "bearer", "user": public_user(user)}
 
 
@@ -429,7 +431,7 @@ async def get_item(iid: str, user: Annotated[dict, Depends(current_user)]):
     d["returned_value"] = round(returned_value, 2)
 
     supply = []
-    async for po in db.purchases.find(f).sort("created_at", -1):
+    async for po in db.purchases.find({**f, **LIVE_PO}).sort("created_at", -1):
         for l in po.get("lines", []):
             if l.get("item_id") == iid:
                 supply.append({"id": str(po["_id"]), "number": po.get("number", ""), "supplier": po.get("supplier_name", ""),
@@ -1053,6 +1055,34 @@ async def create_account(data: AccountIn, user: Annotated[dict, Depends(current_
     f = biz_filter(user)
     res = await db.accounts.insert_one({**data.model_dump(), **f, "created_at": now()})
     return clean(await db.accounts.find_one({"_id": res.inserted_id}))
+
+
+@api.put("/accounts/{aid}")
+async def update_account(aid: str, data: AccountIn, user: Annotated[dict, Depends(current_user)]):
+    """Rename an account or correct its opening balance."""
+    f = biz_filter(user)
+    r = await db.accounts.update_one({"_id": oid(aid), **f}, {"$set": {**data.model_dump(), "updated_at": now()}})
+    if not r.matched_count:
+        raise HTTPException(404, "Account not found")
+    await log_activity(f["business_id"], user, "account", f"{data.name} updated", data.kind, 0, aid)
+    return clean(await db.accounts.find_one({"_id": oid(aid)}))
+
+
+@api.post("/accounts/{aid}/dormant")
+async def set_account_dormant(aid: str, body: dict, user: Annotated[dict, Depends(current_user)]):
+    """Accounts are never deleted — a dormant one drops out of the pickers while
+    its statement and balance stay exactly as they were."""
+    f = biz_filter(user)
+    acc = await db.accounts.find_one({"_id": oid(aid), **f})
+    if not acc:
+        raise HTTPException(404, "Account not found")
+    dormant = bool((body or {}).get("dormant", True))
+    if dormant and await db.accounts.count_documents({**f, "dormant": {"$ne": True}}) <= 1:
+        raise HTTPException(400, "This is your only working account")
+    await db.accounts.update_one({"_id": acc["_id"]}, {"$set": {"dormant": dormant}})
+    await log_activity(f["business_id"], user, "account", f"{acc['name']} {'made dormant' if dormant else 'reopened'}", "", 0, aid)
+    return {"ok": True, "dormant": dormant,
+            "message": f"{acc['name']} is {'dormant — it stays in your reports but cannot take new money' if dormant else 'open again'}."}
 
 
 @api.post("/payments", status_code=201)

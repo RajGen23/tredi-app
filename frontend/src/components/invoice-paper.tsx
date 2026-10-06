@@ -5,7 +5,7 @@ import { Image, Text, View } from "react-native";
 
 import { Divider, H4, Lbl, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { longDate, money } from "@/src/format";
-import { Brand, readable, TEMPLATES } from "@/src/invoice-templates";
+import { Brand, readable } from "@/src/invoice-templates";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const MARK = require("../../assets/images/tredi-wordmark.png");
@@ -31,6 +31,14 @@ const useStyles = makeStyles((c) => ({
   accent: { position: "absolute", left: 0, top: 0, bottom: 0, width: 7, borderTopLeftRadius: 6, borderBottomLeftRadius: 6 },
   foot: { marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: c.border, alignItems: "center" },
   mark: { width: 42, height: 13 },
+  rcpWrap: { alignItems: "center", paddingVertical: 10 },
+  rcpPaper: { width: 268, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderRadius: 4, padding: 14, gap: 1 },
+  rcpName: { fontFamily: fonts.extrabold, fontSize: 13, letterSpacing: 0.6, color: c.onSurface, textAlign: "center" },
+  rcpCentre: { fontFamily: fonts.mono, fontSize: 9.5, color: c.ink60, textAlign: "center" },
+  rcpText: { fontFamily: fonts.mono, fontSize: 10, color: c.onSurface },
+  rcpNum: { fontFamily: fonts.monoSemibold },
+  rcpStrong: { fontFamily: fonts.monoSemibold, fontSize: 11.5, color: c.onSurface },
+  rcpRule: { fontFamily: fonts.mono, fontSize: 9, color: c.ink40, marginVertical: 5, textAlign: "center" },
 }));
 
 const discCell = (l: any) => (!l.discount ? "0.00%" : l.discount_type === "percent" ? `${Number(l.discount_value).toFixed(2)}%` : money(l.discount, { symbol: false }));
@@ -215,105 +223,59 @@ function Professional({ inv, brand, linePhotos, logo }: Props) {
   );
 }
 
-/** The one-page summary, in whichever of the six looks the shop picked. */
-function Simple({ inv, brand, linePhotos, logo }: Props) {
+/** Simple = the slip a customer gets at the counter: narrow paper, centred
+ *  shop name, one line per item and a thank-you. Deliberately nothing like the
+ *  Professional document, which is the full A4 invoice. */
+function Simple({ inv, brand, logo }: Props) {
   const s = useStyles();
   const { colors } = useTheme();
-  const colour = brand.brand_color;
-  const head = brand.header_color || colour;
-  const onHead = readable(head);
   const b = inv.business ?? {};
-  const photos = !!brand.show_photos;
-  const t = brand.template === "t7" ? "t3" : brand.template;
-  const dark = t === "t2" || t === "t5";
-  const title = inv.status === "quote" ? "Quotation" : "Invoice";
-  const tplName = TEMPLATES.find((x) => x.key === t)?.note ?? "";
-
-  const meta = (invert?: boolean) => (
-    <View style={{ alignItems: "flex-end" }}>
-      <Lbl style={invert ? { color: onHead, opacity: 0.75 } : undefined}>{title}</Lbl>
-      <Money size={12} style={invert ? { color: onHead } : undefined}>{inv.number}</Money>
-      <Tag style={invert ? { color: onHead, opacity: 0.75 } : undefined}>{longDate(inv.created_at)}</Tag>
-      {inv.due_date ? <Tag style={invert ? { color: onHead, opacity: 0.75 } : undefined}>Due {longDate(inv.due_date)}</Tag> : null}
-    </View>
-  );
-  const bizBlock = (invert?: boolean) => (
-    <View style={{ flex: 1 }}>
-      {logo && t !== "t6" ? <Image source={{ uri: logo }} style={{ width: brand.logo_size * 1.4, height: brand.logo_size * 0.45, marginBottom: 5 }} resizeMode="contain" testID="pdf-logo" /> : null}
-      <Text style={[s.biz, { color: invert ? onHead : colour }]}>{b.name}</Text>
-      <Tag style={invert ? { color: onHead, opacity: 0.75 } : undefined}>{b.address}</Tag>
-      <Tag style={invert ? { color: onHead, opacity: 0.75 } : undefined}>{[b.tin ? `TIN ${b.tin}` : "", b.phone].filter(Boolean).join(" · ")}</Tag>
-    </View>
+  const t = inv.totals ?? {};
+  const paid = inv.paid ?? 0;
+  const title = inv.status === "quote" ? "QUOTATION" : "INVOICE";
+  const rule = <Text style={s.rcpRule}>- - - - - - - - - - - - - - - - - - - - - - - -</Text>;
+  const kv = (k: string, v: string, strong?: boolean) => (
+    <Row between key={k}>
+      <Text style={[s.rcpText, strong && s.rcpStrong]}>{k}</Text>
+      <Text style={[s.rcpText, s.rcpNum, strong && s.rcpStrong]}>{v}</Text>
+    </Row>
   );
 
   return (
-    <View style={[s.paper, t === "t4" ? { paddingLeft: 20 } : null]} testID="pdf-paper">
-      {t === "t4" ? <View style={[s.accent, { backgroundColor: head }]} /> : null}
-
-      {t === "t3" ? (
-        <>
-          <View style={{ alignItems: "center", paddingBottom: 10 }} testID="paper-simple-head">
-            {logo ? <Image source={{ uri: logo }} style={{ width: brand.logo_size * 1.4, height: brand.logo_size * 0.45, marginBottom: 6 }} resizeMode="contain" testID="pdf-logo" /> : null}
-            <Text style={[s.biz, { fontSize: 19, color: colour }]}>{b.name}</Text>
-            <Tag>{[b.address, b.phone].filter(Boolean).join(" · ")}</Tag>
-          </View>
-          <Row between style={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, paddingVertical: 8, alignItems: "flex-start" }}>
-            <View style={{ flex: 1 }}><Lbl>Bill to</Lbl><H4>{inv.customer_name}</H4><Tag>{inv.customer_phone}</Tag></View>
-            {meta()}
-          </Row>
-        </>
-      ) : dark ? (
-        <>
-          <Row between style={[s.band, { backgroundColor: head, alignItems: "flex-start" }]} testID="paper-simple-head">
-            {bizBlock(true)}
-            {meta(true)}
-          </Row>
-          <View style={{ marginTop: 10 }}><Lbl>Bill to</Lbl><H4>{inv.customer_name}</H4><Tag>{inv.customer_phone}</Tag></View>
-        </>
-      ) : (
-        <>
-          <Row between style={{ alignItems: "flex-start" }} testID="paper-simple-head">
-            {bizBlock()}
-            {meta()}
-          </Row>
-          <Divider />
-          <View><Lbl>Bill to</Lbl><H4>{inv.customer_name}</H4><Tag>{inv.customer_phone}</Tag></View>
-        </>
-      )}
-
-      <View style={{ marginTop: 10 }}>
-        <Row style={{ paddingVertical: 4 }}>
-          <Text style={[s.th, { flex: 2 }]}>ITEM</Text>
-          <Text style={[s.th, { flex: 0.6, textAlign: "right" }]}>QTY</Text>
-          <Text style={[s.th, { flex: 1, textAlign: "right" }]}>RATE</Text>
-          <Text style={[s.th, { flex: 1, textAlign: "right" }]}>DISCOUNT</Text>
-          <Text style={[s.th, { flex: 1.1, textAlign: "right" }]}>AMOUNT</Text>
-        </Row>
+    <View style={s.rcpWrap} testID="pdf-paper">
+      <View style={s.rcpPaper} testID="paper-receipt">
+        <View style={{ alignItems: "center", gap: 2 }}>
+          {logo ? <Image source={{ uri: logo }} style={{ width: 110, height: 34, marginBottom: 4 }} resizeMode="contain" testID="pdf-logo" /> : null}
+          <Text style={s.rcpName}>{String(b.name ?? "").toUpperCase()}</Text>
+          {b.address ? <Text style={s.rcpCentre}>{b.address}</Text> : null}
+          {b.phone ? <Text style={s.rcpCentre}>{b.phone}</Text> : null}
+          {b.tin ? <Text style={s.rcpCentre}>TIN {b.tin}</Text> : null}
+        </View>
+        {rule}
+        <Text style={s.rcpCentre}>{title} {inv.number}</Text>
+        <Text style={s.rcpCentre}>{longDate(inv.created_at)}</Text>
+        {inv.customer_name ? <Text style={s.rcpCentre}>Customer: {inv.customer_name}</Text> : null}
+        {rule}
         {(inv.lines ?? []).map((l: any, i: number) => (
-          <Row key={i} style={[s.rowLight, t === "t5" && i % 2 ? { backgroundColor: colors.faint } : null]}>
-            <Row style={{ flex: 2, gap: 6 }}>
-              {photos && linePhotos[l.photo_url] ? <Image source={{ uri: linePhotos[l.photo_url] }} style={s.thumb} /> : null}
-              <Text style={[s.td, { flex: 1 }]}>{l.name}</Text>
+          <View key={i} style={{ marginBottom: 3 }}>
+            <Text style={s.rcpText}>{l.name}</Text>
+            <Row between>
+              <Text style={[s.rcpText, s.rcpNum]}>  {l.quantity} {l.unit || ""} x {money(l.unit_price, { symbol: false })}</Text>
+              <Text style={[s.rcpText, s.rcpNum]}>{money(l.total, { symbol: false })}</Text>
             </Row>
-            <Money size={10.5} style={{ flex: 0.6, textAlign: "right" }}>{l.quantity}</Money>
-            <Money size={10.5} style={{ flex: 1, textAlign: "right" }}>{money(l.unit_price, { symbol: false })}</Money>
-            <Money size={10.5} style={{ flex: 1, textAlign: "right" }}>{discCell(l)}</Money>
-            <Money size={10.5} style={{ flex: 1.1, textAlign: "right" }}>{money(l.total, { symbol: false })}</Money>
-          </Row>
+          </View>
         ))}
+        {rule}
+        {kv("Subtotal", money(t.taxable ?? t.gross ?? 0, { symbol: false }))}
+        {t.vat ? kv(`VAT ${inv.vat_rate ?? ""}%`, money(t.vat, { symbol: false })) : null}
+        {t.shipping ? kv("Shipping", money(t.shipping, { symbol: false })) : null}
+        {kv("TOTAL", money(t.total ?? 0), true)}
+        {paid > 0 ? kv("Paid", money(paid, { symbol: false })) : null}
+        {paid > 0 ? kv("Balance", money(inv.due ?? (t.total ?? 0) - paid, { symbol: false }), true) : null}
+        {rule}
+        <Text style={s.rcpCentre}>Thank you for your patronage</Text>
+        <Text style={[s.rcpCentre, { color: colors.ink40 }]}>{brand.footer || "Goods sold in good condition"}</Text>
       </View>
-
-      <Divider />
-      <Totals inv={inv} accent={colour} wide />
-      <Blocks inv={inv} colour={colour} compact />
-      <Tag style={{ marginTop: 10, lineHeight: 15 }}>{inv.note || "Goods sold are not returnable after 7 days. Thank you for your business."}</Tag>
-      <Row between style={s.foot}>
-        <Tag numberOfLines={1} style={{ flex: 1 }}>{brand.footer || tplName}</Tag>
-        <Row style={{ gap: 5 }}>
-          <Tag style={{ fontFamily: fonts.bold }}>Made with</Tag>
-          <Image source={MARK} style={s.mark} resizeMode="contain" testID="pdf-tredi-mark" />
-        </Row>
-      </Row>
     </View>
   );
 }

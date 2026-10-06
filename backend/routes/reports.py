@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
 from typing import Optional
 
-from deps import (CurrentUser, LIVE_QUICK, LIVE_SALE, biz_filter, date_query, db, invoice_paid, invoice_status, period_range, rep_clause,
+from deps import (CurrentUser, LIVE_PO, LIVE_QUICK, LIVE_SALE, biz_filter, date_query, db, invoice_paid, invoice_status, period_range, rep_clause,
                   scoped, shop_qty, shop_scope)
 
 router = APIRouter(prefix="/api/reports")
@@ -272,7 +272,7 @@ async def receivables(user: CurrentUser):
                      "due": st["due"], "days_overdue": d})
     rows.sort(key=lambda r: -r["days_overdue"])
     payables = 0.0
-    async for p in db.purchases.find(bf):
+    async for p in db.purchases.find({**bf, **LIVE_PO}):
         payables += round((p.get("total") or 0) - (p.get("paid") or 0), 2)
     # Every open invoice is returned: the buckets and the list have to add up to
     # the same figure, or the report is lying about what is owed.

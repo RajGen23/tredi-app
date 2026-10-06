@@ -41,6 +41,8 @@ LIVE_SALE = {"$nin": ["draft", "quote", "cancelled"]}
 # A quick sale counts until it is voided; older rows have no field at all, which
 # Mongo reads as None, so they stay live.
 LIVE_QUICK = {"cancelled_at": None}
+# Same idea for a purchase order that was voided.
+LIVE_PO = {"cancelled_at": None}
 
 PyObjectId = Annotated[str, BeforeValidator(lambda v: str(v) if isinstance(v, ObjectId) else v)]
 
@@ -184,9 +186,10 @@ def biz_filter(user: dict) -> dict:
 # Every figure in the app belongs to a shop. The owner can look at one shop or
 # at all of them; a rep only ever sees the shops they were given. Records saved
 # before shops existed carry no tag, so they count as the main branch.
-async def business_shops(business_id: str) -> List[str]:
+async def business_shops(business_id: str, working_only: bool = False) -> List[str]:
     biz = await db.businesses.find_one({"_id": ObjectId(business_id)})
-    names = [s.get("name", "") for s in ((biz or {}).get("shops") or []) if s.get("name")]
+    rows = ((biz or {}).get("shops") or [])
+    names = [s.get("name", "") for s in rows if s.get("name") and not (working_only and s.get("dormant"))]
     return names or ["Main branch"]
 
 
@@ -215,7 +218,9 @@ async def shop_scope(user: dict, area: str = "sales") -> dict:
         sel = list(allowed) if allowed else None
     return {"business_id": f["business_id"], "shops": sel, "main": main, "all": all_shops,
             "own": sc == "own", "locked": locked, "active": active,
-            "visible": allowed if allowed else all_shops}
+            # A dormant shop keeps its history but is no longer somewhere you can
+            # stand and write.
+            "visible": allowed if allowed else await business_shops(f["business_id"], working_only=True)}
 
 
 def scope_clause(sc: dict, user: Optional[dict] = None, own_field: str = "created_by") -> dict:

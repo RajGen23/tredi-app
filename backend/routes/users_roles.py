@@ -56,6 +56,8 @@ class PermissionsIn(BaseModel):
     shops: List[str] = []
     can: Dict[str, bool] = {}
     scopes: Dict[str, Literal["own", "shop", "all"]] = {}
+    name: str = ""
+    phone: str = ""
 
 
 class RoleIn(BaseModel):
@@ -151,7 +153,8 @@ async def get_member(uid: str, user: CurrentUser):
         raise HTTPException(404, "User not found")
     base = await resolve_role(f["business_id"], u.get("role", "owner"))
     biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})
-    return {"id": uid, "name": u.get("name", ""), "email": u["email"], "role": u.get("role", "owner"), "role_label": base["label"],
+    return {"id": uid, "name": u.get("name", ""), "email": u["email"], "phone": u.get("phone", ""),
+            "role": u.get("role", "owner"), "role_label": base["label"],
             "shops": u.get("shops", []), "can": {**base["can"], **(u.get("can") or {})}, "scopes": {**base["scopes"], **(u.get("scopes") or {})},
             "active": u.get("active", True), "all_shops": [s["name"] for s in (biz.get("shops") or [])],
             "abilities": [{"key": k, "label": l} for k, l in ABILITIES], "scope_keys": [{"key": k, "label": l} for k, l in SCOPE_KEYS],
@@ -162,13 +165,36 @@ async def get_member(uid: str, user: CurrentUser):
 async def update_member(uid: str, data: PermissionsIn, user: CurrentUser):
     f = biz_filter(user)
     base = await resolve_role(f["business_id"], data.role)
-    r = await db.users.update_one({"_id": oid(uid), "business_id": f["business_id"]},
-                                  {"$set": {"role": data.role, "shops": data.shops,
-                                            "can": {**base["can"], **data.can}, "scopes": {**base["scopes"], **data.scopes}}})
+    fields = {"role": data.role, "shops": data.shops,
+              "can": {**base["can"], **data.can}, "scopes": {**base["scopes"], **data.scopes}}
+    if data.name.strip():
+        fields["name"] = data.name.strip()
+    if data.phone.strip():
+        fields["phone"] = data.phone.strip()
+    r = await db.users.update_one({"_id": oid(uid), "business_id": f["business_id"]}, {"$set": fields})
     if not r.matched_count:
         raise HTTPException(404, "User not found")
-    await log_activity(f["business_id"], user, "user", "Permissions changed", base["label"], 0, uid)
+    await log_activity(f["business_id"], user, "user", f"{fields.get('name', 'Permissions')} updated", base["label"], 0, uid)
     return await get_member(uid, user)
+
+
+@router.post("/team/{uid}/dormant")
+async def set_member_dormant(uid: str, body: dict, user: CurrentUser):
+    """People are never deleted. A dormant account cannot sign in and stops
+    appearing as a rep, but every sale they ever recorded stays on the books."""
+    f = biz_filter(user)
+    u = await db.users.find_one({"_id": oid(uid), "business_id": f["business_id"]})
+    if not u:
+        raise HTTPException(404, "User not found")
+    if str(u["_id"]) == str(user["_id"]):
+        raise HTTPException(400, "You cannot put your own account to sleep")
+    if u.get("role") == "owner":
+        raise HTTPException(400, "The owner's account stays open")
+    active = not bool((body or {}).get("dormant", True))
+    await db.users.update_one({"_id": u["_id"]}, {"$set": {"active": active}})
+    await log_activity(f["business_id"], user, "user", f"{u.get('name', 'Member')} {'reinstated' if active else 'made dormant'}", "", 0, uid)
+    return {"ok": True, "active": active,
+            "message": f"{u.get('name', 'They')} {'can sign in again' if active else 'cannot sign in — their records stay on the books'}."}
 
 
 @router.get("/roles")

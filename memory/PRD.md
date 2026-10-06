@@ -464,3 +464,32 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
   figures and shop overview. `/sales/[id]` shows the Cancelled badge, the reason, Restore, and an
   "Edited …" stamp.
 - Verified by the testing agent, iteration 26 (9/9 backend + frontend edit/cancel/print flows).
+
+## Pass 12n — payment affordance, PO edit/cancel, dormant shops/accounts/people, Simple = receipt (June 2026)
+- **Record payment was only drawn on an unpaid issued invoice**, so on a draft or a settled
+  invoice the button simply vanished (the user read that as missing). The row is now always
+  there: on a draft it explains "confirm and issue it first" and offers **Confirm & issue**;
+  when settled it reads **Record another payment** with a note that extra money becomes credit.
+- **Purchase orders** got the same treatment as quick sales: `PUT /api/purchases/{pid}` re-lays
+  stock and the supplier balance, `POST …/cancel` (reason) takes the goods back off and
+  `…/uncancel` reverses it. `deps.LIVE_PO` keeps cancelled orders out of supplier owed,
+  purchase reports and an item's supply history. `/purchases/new?edit=<id>` reopens the form.
+- **Nothing is deleted, things go dormant** (the user's rule):
+  - Shops: `PUT /api/shops/{name}` now also carries a rename across invoices, sales, expenses,
+    payments, quotes, purchases, returns, receipts, waybills, movements, activity, transfers
+    (both ends), users.shop/shops and item location/stock rows. `POST /api/shops/{name}/dormant`
+    hides a branch from the switcher and every picker (`business_shops(working_only=True)` feeds
+    `shop_scope.visible`), refuses on the main branch or the last working one, and moves anyone
+    standing there back to main. The owner still sees it in /shops to reopen it.
+  - Accounts: `PUT /api/accounts/{aid}` + `POST /api/accounts/{aid}/dormant` (never the last
+    working account). The add sheet doubles as the edit sheet.
+  - People: `PUT /api/team/{uid}` now takes name/phone, `POST /api/team/{uid}/dormant` blocks
+    sign-in (login returns 403 "This account is dormant…") but keeps every record. The dead
+    "Remove" button that pointed at a non-existent `/team/remove/{id}` screen is gone.
+- **Invoice templates**: the screen seeded `f` from every refetch, so a Save could drop the
+  pick — it now seeds once, shows a checkmark on the chosen card and "Now using <name>".
+  **Simple is a real counter receipt**: new `receiptInvoiceHtml` (80mm page, caps shop name,
+  dashed rules, qty × price, TOTAL, thank-you) and a matching `Simple` component in
+  invoice-paper.tsx (template key `receipt`). Professional stays the full A4 document with the
+  image column and bank details, so the two no longer look alike.
+- Verified by the testing agent, iteration 27 (9/9 backend + every frontend testID).

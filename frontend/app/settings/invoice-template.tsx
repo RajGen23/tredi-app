@@ -132,7 +132,9 @@ export default function InvoiceTemplates() {
   const [f, setF] = useState<any>(null);
   const [logo, setLogo] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (q.data && !f) setF(q.data); }, [q.data, f]);
+  // Only seed from the server once: a refetch after Save must not wipe what the
+  // owner is in the middle of picking.
+  useEffect(() => { setF((cur: any) => cur ?? q.data ?? null); }, [q.data]);
   useEffect(() => {
     if (!f?.logo_url) return setLogo("");
     photoSource(f.logo_url).then((src) => setLogo(src.uri));
@@ -270,7 +272,7 @@ export default function InvoiceTemplates() {
         <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Default export format</Lbl>
         <Card>
           <Row style={{ gap: 8 }}>
-            {[{ k: "simple", t: "Simple", n: "One-page summary" }, { k: "professional", t: "Professional", n: "Full quotation" }].map((o) => (
+            {[{ k: "simple", t: "Simple", n: "Counter receipt · 80mm" }, { k: "professional", t: "Professional", n: "Full A4 invoice" }].map((o) => (
               <Pressable key={o.k} testID={`templates-format-${o.k}`} onPress={() => setF({ ...f, export_format: o.k })}
                 style={[s.size, (f.export_format ?? "professional") === o.k && s.sizeOn]}>
                 <Text style={s.sizeText}>{o.t}</Text>
@@ -278,20 +280,34 @@ export default function InvoiceTemplates() {
               </Pressable>
             ))}
           </Row>
-          <Sub style={{ marginTop: 8 }}>You can still switch format on any invoice before you share it.</Sub>
+          <Sub style={{ marginTop: 8 }}>
+            Simple prints like the slip you get in a store — narrow paper, item lines, total, thank-you. Professional is the
+            full invoice with your letterhead, item images and bank details. You can still switch on any invoice before sharing.
+          </Sub>
         </Card>
 
-        <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Choose template</Lbl>
+        <Row between style={{ marginTop: 14, marginBottom: 6 }}>
+          <Lbl>Choose template</Lbl>
+          <Sub style={{ fontSize: 10.5 }} testID="templates-current">
+            Now using {TEMPLATES.find((t) => t.key === f.template)?.name ?? "Template 1"}
+          </Sub>
+        </Row>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "space-between" }}>
           {TEMPLATES.map((t) => (
             <Pressable key={t.key} testID={`templates-pick-${t.key}`} onPress={() => setF({ ...f, template: t.key })}
               style={[s.card, f.template === t.key && s.cardOn]}>
               <Thumb tpl={t.key} color={/^#[0-9A-F]{6}$/i.test(f.brand_color ?? "") ? f.brand_color : "#014747"} />
-              <Text style={s.cardName}>{t.name}</Text>
+              <Row style={{ gap: 3, justifyContent: "center" }}>
+                {f.template === t.key ? <Ionicons name="checkmark-circle" size={12} color={colors.brandPrimary} /> : null}
+                <Text style={s.cardName}>{t.name}</Text>
+              </Row>
             </Pressable>
           ))}
         </View>
-        <Sub style={{ marginTop: 8 }}>{TEMPLATES.find((t) => t.key === f.template)?.note}</Sub>
+        <Sub style={{ marginTop: 8 }}>
+          {TEMPLATES.find((t) => t.key === f.template)?.note} · This look is used by the Professional export and by quotations.
+          The Simple export is always the counter receipt.
+        </Sub>
 
         <Btn label="Save template" style={{ marginTop: 16 }} loading={save.isPending} testID="templates-save" onPress={() => save.mutate()} />
         <Sub style={{ marginTop: 8, textAlign: "center" }}>Open any invoice and tap View PDF to see it applied.</Sub>
