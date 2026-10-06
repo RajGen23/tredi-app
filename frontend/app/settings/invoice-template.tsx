@@ -1,6 +1,6 @@
 // 04.10b Invoice templates — logo, brand colour, logo size, item photos and the
-// six document layouts. Saved once, applied to every invoice and quotation.
-import { useEffect, useState } from "react";
+// seven document layouts. Saved once, applied to every invoice — old and new.
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Image, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,10 +8,12 @@ import * as ImagePicker from "expo-image-picker";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
+import { useAuth } from "@/src/auth";
 import { photoSource, uploadPhoto } from "@/src/uploads";
 import { AppBar, Av, Btn, Card, Field, H4, Lbl, Loading, Row, Sub, Switch } from "@/src/components/ui";
+import { InvoicePaper } from "@/src/components/invoice-paper";
 import { useToast } from "@/src/components/sheet";
-import { LOGO_SIZES, SWATCHES, TEMPLATES, TemplateKey } from "@/src/invoice-templates";
+import { DEFAULT_BRAND, LOGO_SIZES, SWATCHES, TEMPLATES, TemplateKey } from "@/src/invoice-templates";
 import { parseNum } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 import { useBottomPad } from "@/src/safe";
@@ -24,6 +26,8 @@ const useStyles = makeStyles((c) => ({
   size: { flex: 1, paddingVertical: 9, borderRadius: 11, borderWidth: 1, borderColor: c.border, alignItems: "center", backgroundColor: c.surfaceSecondary },
   sizeOn: { borderColor: c.brandPrimary, backgroundColor: c.brandTertiary },
   sizeText: { fontFamily: fonts.bold, fontSize: 12, color: c.onSurface },
+  chip: { height: 34, paddingHorizontal: 12, borderRadius: 11, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center", backgroundColor: c.surfaceSecondary },
+  board: { backgroundColor: c.pdfBoard, borderRadius: 14, padding: 12 },
   card: { width: "31.5%", borderRadius: 12, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surfaceSecondary, padding: 6, gap: 5 },
   cardOn: { borderColor: c.brandPrimary, backgroundColor: c.brandTertiary },
   cardName: { fontFamily: fonts.bold, fontSize: 10, color: c.onSurface, textAlign: "center" },
@@ -121,6 +125,27 @@ function Thumb({ tpl, color }: { tpl: TemplateKey; color: string }) {
   );
 }
 
+/** A realistic stand-in invoice so the owner can see the look before any real
+ *  invoice exists. Business details come from their own profile. */
+function sampleInvoice(business: any, rep?: string) {
+  const day = 86400000;
+  return {
+    number: "INV-1042", created_at: new Date().toISOString(), due_date: new Date(Date.now() + 7 * day).toISOString(), status: "sent",
+    customer_name: "Adeola Stores", customer_phone: "0803 000 0000", customer_address: "14 Allen Avenue, Ikeja",
+    shop: business?.shops?.[0]?.name || "Head office", created_by: rep || "", vat_rate: 7.5,
+    lines: [
+      { name: "Cement 50kg", quantity: 10, unit: "Bag", unit_price: 7900, total: 79000, discount: 0 },
+      { name: "Roofing nails", quantity: 2, unit: "Carton", unit_price: 12500, total: 25000, discount: 0 },
+    ],
+    totals: { gross: 104000, discount_total: 0, taxable: 104000, vat: 7800, total: 111800 },
+    paid: 50000, due: 61800,
+    payments: [{ method: "transfer", amount: 50000 }],
+    bank_accounts: [{ id: "sample", holder: business?.name || "Your business", bank: "GTBank", number: "0123456789" }],
+    terms: null, note: "",
+    business: { name: business?.name || "Your business", address: business?.address || "", phone: business?.phone || "", tin: business?.tin || "" },
+  };
+}
+
 export default function InvoiceTemplates() {
   const s = useStyles();
   const { colors } = useTheme();
@@ -128,6 +153,7 @@ export default function InvoiceTemplates() {
   const pad = useBottomPad();
   const toast = useToast();
   const qc = useQueryClient();
+  const { user, business } = useAuth();
   const q = useQuery({ queryKey: ["invoice-settings"], queryFn: () => api("/settings/invoice") });
   const [f, setF] = useState<any>(null);
   const [logo, setLogo] = useState("");
@@ -139,6 +165,19 @@ export default function InvoiceTemplates() {
     if (!f?.logo_url) return setLogo("");
     photoSource(f.logo_url).then((src) => setLogo(src.uri));
   }, [f?.logo_url]);
+
+  const format: "simple" | "professional" = f?.export_format === "simple" ? "simple" : "professional";
+  const validHex = /^#[0-9A-F]{6}$/i.test(f?.brand_color ?? "");
+  // What the live preview draws: the unsaved picks, on a sample invoice.
+  const previewBrand = useMemo(() => ({
+    ...DEFAULT_BRAND, ...(f ?? {}),
+    brand_color: validHex ? f.brand_color : DEFAULT_BRAND.brand_color,
+    header_color: /^#[0-9A-F]{6}$/i.test(f?.header_color ?? "") ? f.header_color : "",
+    logo_size: Math.min(240, Math.max(30, parseNum(String(f?.logo_size ?? 90)) || 90)),
+    show_photos: false,
+    template: format === "simple" ? "receipt" : (f?.template ?? DEFAULT_BRAND.template),
+  }), [f, format, validHex]);
+  const sample = useMemo(() => sampleInvoice(business, user?.name), [business, user?.name]);
 
   const save = useMutation({
     mutationFn: () => api("/settings/invoice", {
@@ -232,7 +271,7 @@ export default function InvoiceTemplates() {
           <Sub>Used behind the header block on Templates 2, 5 and Professional. Leave it on “Match brand” to follow the colour above.</Sub>
           <Row style={{ gap: 8, flexWrap: "wrap", marginTop: 9 }}>
             <Pressable testID="templates-header-match" onPress={() => setF({ ...f, header_color: "" })}
-              style={[s.size, { flexGrow: 0, paddingHorizontal: 12 }, !f.header_color && s.sizeOn]}>
+              style={[s.chip, !f.header_color && s.sizeOn]}>
               <Text style={s.sizeText}>Match brand</Text>
             </Pressable>
             {["#0B0B0B", "#06241F", "#FFFFFF", "#2C6ECB", "#7A4BD0"].map((hex) => (
@@ -286,28 +325,45 @@ export default function InvoiceTemplates() {
           </Sub>
         </Card>
 
+        {format === "professional" ? (
+          <>
+            <Row between style={{ marginTop: 14, marginBottom: 6 }}>
+              <Lbl>Choose template</Lbl>
+              <Sub style={{ fontSize: 10.5 }} testID="templates-current">
+                Now using {TEMPLATES.find((t) => t.key === f.template)?.name ?? "Template 1"}
+              </Sub>
+            </Row>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "space-between" }} testID="templates-grid">
+              {TEMPLATES.map((t) => (
+                <Pressable key={t.key} testID={`templates-pick-${t.key}`} onPress={() => setF({ ...f, template: t.key })}
+                  style={[s.card, f.template === t.key && s.cardOn]}>
+                  <Thumb tpl={t.key} color={validHex ? f.brand_color : DEFAULT_BRAND.brand_color} />
+                  <Row style={{ gap: 3, justifyContent: "center" }}>
+                    {f.template === t.key ? <Ionicons name="checkmark-circle" size={12} color={colors.brandPrimary} /> : null}
+                    <Text style={s.cardName}>{t.name}</Text>
+                  </Row>
+                </Pressable>
+              ))}
+            </View>
+            <Sub style={{ marginTop: 8 }}>
+              {TEMPLATES.find((t) => t.key === f.template)?.note} · Every invoice, old and new, opens in the template you save here.
+            </Sub>
+          </>
+        ) : (
+          <Card style={{ marginTop: 14 }} testID="templates-simple-note">
+            <H4>Simple always prints the counter receipt</H4>
+            <Sub style={{ marginTop: 3 }}>Templates only apply to the Professional format. Switch to Professional above to pick a layout.</Sub>
+          </Card>
+        )}
+
         <Row between style={{ marginTop: 14, marginBottom: 6 }}>
-          <Lbl>Choose template</Lbl>
-          <Sub style={{ fontSize: 10.5 }} testID="templates-current">
-            Now using {TEMPLATES.find((t) => t.key === f.template)?.name ?? "Template 1"}
-          </Sub>
+          <Lbl>Live preview</Lbl>
+          <Sub style={{ fontSize: 10.5 }}>{format === "simple" ? "Counter receipt · 80mm" : `${TEMPLATES.find((t) => t.key === f.template)?.name ?? "Template"} · A4`}</Sub>
         </Row>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "space-between" }}>
-          {TEMPLATES.map((t) => (
-            <Pressable key={t.key} testID={`templates-pick-${t.key}`} onPress={() => setF({ ...f, template: t.key })}
-              style={[s.card, f.template === t.key && s.cardOn]}>
-              <Thumb tpl={t.key} color={/^#[0-9A-F]{6}$/i.test(f.brand_color ?? "") ? f.brand_color : "#014747"} />
-              <Row style={{ gap: 3, justifyContent: "center" }}>
-                {f.template === t.key ? <Ionicons name="checkmark-circle" size={12} color={colors.brandPrimary} /> : null}
-                <Text style={s.cardName}>{t.name}</Text>
-              </Row>
-            </Pressable>
-          ))}
+        <View style={s.board} testID="templates-live-preview">
+          <InvoicePaper inv={sample} format={format} brand={previewBrand as any} linePhotos={{}} logo={logo} />
         </View>
-        <Sub style={{ marginTop: 8 }}>
-          {TEMPLATES.find((t) => t.key === f.template)?.note} · This look is used by the Professional export and by quotations.
-          The Simple export is always the counter receipt.
-        </Sub>
+        <Sub style={{ marginTop: 8 }}>Sample figures — your real invoices use their own items, totals and bank details.</Sub>
 
         <Btn label="Save template" style={{ marginTop: 16 }} loading={save.isPending} testID="templates-save" onPress={() => save.mutate()} />
         <Sub style={{ marginTop: 8, textAlign: "center" }}>Open any invoice and tap View PDF to see it applied.</Sub>

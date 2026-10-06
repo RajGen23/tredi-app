@@ -520,3 +520,16 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
   run one real POST before handing over.
 - Housekeeping: deleted the TEST_* litter earlier testing agents left in the demo tenant
   (92 customers, 49 suppliers, 11 items, 46 POs, 34 payments, 26 invoices, 2 shops, 1 account).
+
+## Pass 30 — Invoice templates: chooser gating, live preview, template actually applied
+- Root cause of "template changing not working": `invoices/pdf/[id].tsx` hard-coded `template: t7` for
+  the Professional format. It now uses the saved `settings.template` (t1–t7); Simple is always `receipt`.
+- `src/components/invoice-paper.tsx` draws all seven looks on screen (`Styled` for t1–t6 mirrors the HTML
+  headers: classic / banner / centred / accent bar / dark bold with stripes / compact; `Professional` = t7).
+- `/settings/invoice-template`: template grid only shows for the Professional format (Simple shows a note);
+  new **Live preview** board renders a sample invoice (`sampleInvoice`) with the unsaved picks; the
+  "Match brand" pill (flex-basis 0 bug → vertical text) is now a fixed-height chip.
+- Simple receipt (screen + HTML) footer carries "Powered by" + tredi mark (respects `tredi_mark`).
+- Decision (user): the template is global — every invoice, old and new, opens in the currently saved look.
+- t7 renamed "Template 7" in the picker so the PDF note reads "Professional — Template 7".
+- Verified by the testing agent (frontend, all passes).

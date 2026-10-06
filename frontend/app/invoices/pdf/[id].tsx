@@ -11,7 +11,7 @@ import { api } from "@/src/api";
 import { AppBar, Btn, Card, H4, IconBtn, Loading, Row, Seg, Sub, Tag } from "@/src/components/ui";
 import { InvoicePaper } from "@/src/components/invoice-paper";
 import { useToast } from "@/src/components/sheet";
-import { buildInvoiceHtml, DEFAULT_BRAND } from "@/src/invoice-templates";
+import { buildInvoiceHtml, DEFAULT_BRAND, TEMPLATES } from "@/src/invoice-templates";
 import { pdfName, printHtml, sharePdf } from "@/src/pdf";
 import { photoDataUri } from "@/src/uploads";
 import { useBottomPad } from "@/src/safe";
@@ -36,10 +36,11 @@ export default function PdfViewer() {
   const [format, setFormat] = useState<"simple" | "professional">("professional");
   const inv = q.data;
   const chosen: any = settings.data ?? {};
-  // The invoice's own photo switch wins over the global default.
+  // The invoice's own photo switch wins over the global default. Professional
+  // draws the look picked in Invoice templates; Simple is always the receipt.
   const brand = { ...DEFAULT_BRAND, ...chosen, logo_url: logo,
     show_photos: chosen.photos_allowed === false ? false : (q.data?.show_photos ?? chosen.show_photos ?? false),
-    template: format === "professional" ? "t7" : "receipt" };
+    template: format === "professional" ? (chosen.template ?? DEFAULT_BRAND.template) : "receipt" };
 
   useEffect(() => {
     if (chosen.export_format) setFormat(chosen.export_format);
@@ -87,12 +88,12 @@ export default function PdfViewer() {
           {/* Say plainly what changes between the two, so nobody has to guess. */}
           <Card style={s.note} testID="pdf-format-note">
             <Row between>
-              <H4 style={{ fontSize: 12.5 }}>{format === "professional" ? "Professional — full document" : "Simple — counter receipt"}</H4>
-              <Tag>{format === "professional" ? "A4 · images and bank details" : "80mm · till slip"}</Tag>
+              <H4 style={{ fontSize: 12.5 }}>{format === "professional" ? `Professional — ${TEMPLATES.find((t) => t.key === chosen.template)?.name ?? "Template 3"}` : "Simple — counter receipt"}</H4>
+              <Tag>{format === "professional" ? "A4 · full invoice" : "80mm · till slip"}</Tag>
             </Row>
             <Sub style={{ marginTop: 4, lineHeight: 16 }}>
               {format === "professional"
-                ? "Large INVOICE title, issue and due dates, your business and the customer side by side, branch, rep and TIN, a dark item table with an image column, and terms plus bank details in two columns."
+                ? `${TEMPLATES.find((t) => t.key === chosen.template)?.note ?? ""} · Your letterhead, item lines, totals, terms and bank details. Change the look under More › Invoice templates.`
                 : "The slip you hand across the counter: narrow 80mm paper, your shop name centred, one line per item with quantity and price, the total, what was paid and a thank-you. No images, no bank block."}
             </Sub>
           </Card>

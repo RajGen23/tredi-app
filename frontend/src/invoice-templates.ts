@@ -26,7 +26,7 @@ export const TEMPLATES: { key: TemplateKey; name: string; note: string }[] = [
   { key: "t4", name: "Template 4", note: "Accent · colour bar down the side" },
   { key: "t5", name: "Template 5", note: "Bold · dark header, striped rows" },
   { key: "t6", name: "Template 6", note: "Compact · tight type, no blocks" },
-  { key: "t7", name: "Professional", note: "Full quotation · From/To, TIN, terms, bank details" },
+  { key: "t7", name: "Template 7", note: "Full document · From/To, TIN, terms, bank details" },
 ];
 
 export const SWATCHES = ["#06241F", "#FFFFFF", "#00C98D", "#014747", "#2C6ECB", "#7A4BD0", "#D93F45", "#E58A1A"];
@@ -228,6 +228,7 @@ function receiptInvoiceHtml(inv: any, brand: Brand): string {
   ${paid > 0 ? kv("Balance", money(inv.due ?? (t.total ?? 0) - paid, { symbol: false }), "big") : ""}
   <div class="rule"></div>
   <div class="c">Thank you for your patronage<div class="mut">${esc(brand.footer || "Goods sold in good condition")}</div></div>
+  ${brand.tredi_mark === false ? "" : `<div class="c mut" style="display:flex;justify-content:center;align-items:center;gap:4px;margin-top:6px;font-size:9px">Powered by <img src="${TREDI_MARK}" width="36" height="11" style="display:block"/></div>`}
   </body></html>`;
 }
 

@@ -1,0 +1,31 @@
+{
+  "summary": "Frontend-only verification of Invoice templates rework on /settings/invoice-template plus PDF viewer (/invoices/pdf/{id}). All five requested features pass: (1) Choose-template grid testID templates-grid with templates-pick-t1..t7 is only shown when export format Professional is active; selecting Simple hides it and shows templates-simple-note; toggling back to Professional restores the grid. (2) templates-live-preview redraws instantly as template, colour, header-background and format change: t4 renders paper-accent, t7 renders paper-pro-title + paper-pro-meta, t1-t6 render paper-bill-to + paper-number, and tapping templates-color-2C6ECB updates the brand colour in the preview. (3) Match-brand chip (templates-header-match) measures 99x34px — well below the 44px tall threshold. (4) Save flow: picking t5 + tapping templates-save produced the toast 'Saved · Every invoice will use this look' and GET /api/settings/invoice returned template='t5', export_format='professional', brand_color='#2C6ECB'. Opening a real invoice at /invoices/pdf/{id} with Professional selected rendered the t5 Styled paper (paper-bill-to + paper-number, no paper-pro-title) and pdf-format-note read 'Professional — Template 5'. Switching the Seg to Simple rendered paper-receipt with receipt-powered ('Powered by' + tredi mark); switching back restored the t5 look. pdf-download and pdf-print buttons fired without throwing any error toast. (5) After re-saving template='t7' the Professional view correctly rendered paper-pro-title + paper-pro-meta; the setting was then restored to 't3' as requested. Regression: /quick-sale smoke-loaded without errors.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "invoices/pdf/[id] — pdf-format-note",
+        "issues": [
+          "When saved template is 't7', the note card title reads 'Professional — Professional' because TEMPLATES.find(t7).name is literally 'Professional'. Not a blocker (spec only required 'Professional — Template 5' for t5) but the duplication is awkward UX — consider renaming t7 to 'Full invoice' or stripping the dash when name equals format."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_30.json"],
+  "action_items": [
+    "Optional cosmetic: avoid 'Professional — Professional' in pdf-format-note when the saved template's name already equals 'Professional' (t7 case). All functional requirements already pass."
+  ],
+  "critical_code_review_comments": [
+    "invoice-template.tsx (373 lines) and invoice-paper.tsx (431 lines) are approaching the 700-line split threshold but still readable; no refactor needed yet.",
+    "No deprecated expo-av/expo-barcode-scanner/expo-background-fetch imports in reviewed files."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "seed_data_creation": "None. Saved template toggled to t5 then t7 for verification, then restored to t3 as requested by the review brief.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Owner creds owner@tredi.app / tredi1234. Direct URL /invoices/pdf/{id} works after sign-in (SPA state picks up). To reach an invoice ID without clicking: fetch /api/invoices?limit=5 with Bearer from localStorage key 'tredi_token' (JSON-encoded string). The pdf-format Seg has no per-option testID — click by inner text 'Simple'/'Professional'."
+}
