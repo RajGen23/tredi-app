@@ -569,3 +569,11 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
   Rows with a blank supplier are opening stock (`kind="opening"`), no PO raised.
 - Import screen shows "Orders this upload will raise" before committing, flags new suppliers, and the
   success toast reads "N items in on M purchase orders".
+
+## Pass 34 — Real legal text and contacts (user supplied)
+- `src/legal.ts` now mirrors the official documents from tredibooks.com: TERMS (15 clauses,
+  updated 12 Oct 2025), PRIVACY (12 clauses), and a new DELETION doc from /account-deletion.
+  Each doc carries a `web` link and the reader shows a "Read it on tredibooks.com" button.
+- New route `/legal/account-deletion`; linked from More → Help & legal and from Help → Legal.
+- Contacts: WhatsApp & phone +2347063921091, support email sales@tredihq.com (CONTACT in
+  routes/support.py). Legal/DPO address stays support@tredibooks.com as published on the site.

@@ -125,9 +125,14 @@ export default function Help() {
               <View style={{ flex: 1 }}><H4>Terms & conditions</H4><Sub>What we promise, what we ask of you</Sub></View>
               <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
             </Li>
-            <Li testID="help-privacy" last onPress={() => router.push("/legal/privacy")}>
+            <Li testID="help-privacy" onPress={() => router.push("/legal/privacy")}>
               <Av icon="lock-closed-outline" tone="sq" />
               <View style={{ flex: 1 }}><H4>Privacy policy</H4><Sub>What we hold and the control you have</Sub></View>
+              <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
+            </Li>
+            <Li testID="help-deletion" last onPress={() => router.push("/legal/account-deletion")}>
+              <Av icon="trash-outline" tone="sq" />
+              <View style={{ flex: 1 }}><H4>Account & data deletion</H4><Sub>How to close your account and erase your data</Sub></View>
               <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
             </Li>
           </Card>

@@ -44,6 +44,7 @@ const GROUPS: { title: string; items: { label: string; sub: string; icon: IonNam
     { label: "Help & support", sub: "Common questions, or write to us", icon: "help-buoy-outline", route: "/help", testID: "more-help" },
     { label: "Terms & conditions", sub: "What we promise, what we ask of you", icon: "document-text-outline", route: "/legal/terms", testID: "more-legal-terms" },
     { label: "Privacy policy", sub: "What we hold and the control you have", icon: "lock-closed-outline", route: "/legal/privacy", testID: "more-legal-privacy" },
+    { label: "Account & data deletion", sub: "Close your account and erase your data", icon: "trash-outline", route: "/legal/account-deletion", testID: "more-legal-deletion" },
   ] },
 ];
 

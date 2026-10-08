@@ -15,11 +15,15 @@ router = APIRouter(prefix="/api/support")
 TOPICS = ["Invoices & PDFs", "Payments & plan", "Stock & items", "Users & access", "Something is broken", "Other"]
 
 CONTACT = {
-    "email": "support@tredi.app",
-    "phone": "+234 800 000 0000",
-    "whatsapp": "+234 800 000 0000",
+    "email": "sales@tredihq.com",
+    "phone": "+2347063921091",
+    "whatsapp": "+2347063921091",
     "hours": "Monday to Saturday · 8am – 7pm WAT",
     "reply_within": "We reply within one working day",
+    "legal_email": "support@tredibooks.com",
+    "terms_url": "https://tredibooks.com/terms",
+    "privacy_url": "https://tredibooks.com/privacy-policy",
+    "deletion_url": "https://tredibooks.com/account-deletion",
 }
 
 FAQS = [

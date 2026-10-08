@@ -1,9 +1,9 @@
 // Shared reader for the terms and the privacy policy.
-import { ScrollView, Text, View } from "react-native";
+import { Linking, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { LegalDoc } from "@/src/legal";
-import { AppBar, Card, Sub } from "@/src/components/ui";
+import { AppBar, Btn, Card, Sub } from "@/src/components/ui";
 import { fonts, makeStyles } from "@/src/theme";
 import { useBottomPad } from "@/src/safe";
 
@@ -34,7 +34,9 @@ export function LegalReader({ doc, testID }: { doc: LegalDoc; testID: string }) 
               {sec.p.map((line, i) => <Text key={i} style={s.p}>{line}</Text>)}
             </View>
           ))}
-          <Sub style={{ marginTop: 12 }}>TREDI · Made with tredi</Sub>
+          <Btn label="Read it on tredibooks.com" variant="ghost" small style={{ marginTop: 14 }}
+            testID="legal-web" onPress={() => Linking.openURL(doc.web)} />
+          <Sub style={{ textAlign: "center", marginTop: 10 }}>TREDI Technologies Ltd · Lagos, Nigeria</Sub>
         </Card>
       </ScrollView>
     </View>
