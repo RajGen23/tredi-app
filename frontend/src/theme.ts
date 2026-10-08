@@ -99,6 +99,11 @@ export const fonts = {
   mono: "IBMPlexMono-Regular",
   monoMedium: "IBMPlexMono-Medium",
   monoSemibold: "IBMPlexMono-SemiBold",
+  // Poppins — printed documents and their on-screen preview only.
+  doc: "Poppins-Regular",
+  docMedium: "Poppins-Medium",
+  docSemibold: "Poppins-SemiBold",
+  docBold: "Poppins-Bold",
 };
 
 export const radius = { sm: 6, md: 11, lg: 14, xl: 20, pill: 999 };

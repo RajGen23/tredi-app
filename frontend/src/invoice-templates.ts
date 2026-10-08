@@ -2,6 +2,7 @@
 // the HTML that prints them. Everything branded (logo, colour, logo size, item
 // photos) is read from /settings/invoice so one setting drives every document.
 import { longDate, money } from "@/src/format";
+import { DOC_FONT, invoiceFontCss } from "@/src/invoice-fonts";
 
 // "receipt" is not a pickable look: it is what the Simple format prints.
 export type TemplateKey = "t1" | "t2" | "t3" | "t4" | "t5" | "t6" | "t7" | "receipt";
@@ -122,34 +123,37 @@ function professionalHtml(inv: any, brand: Brand): string {
     <td class="r">${discCell(l)}</td>
     <td class="r">${money(l.total, { symbol: false })}</td></tr>`).join("");
 
-  return `<html><head><meta charset="utf-8"><style>
-  body{font-family:-apple-system,Helvetica,Arial;color:#0B0B0B;padding:30px 28px 62px;font-size:11.5px}
-  .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${head};padding-bottom:14px}
-  .title{font-size:26px;font-weight:800;letter-spacing:-0.5px;text-align:right}
-  .num{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#555;text-align:right}
-  .meta{display:flex;gap:18px;margin-top:16px}
+  return `<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+  ${invoiceFontCss()}
+  html,body{-webkit-text-size-adjust:none;text-size-adjust:none}
+  *{max-height:1000000px}
+  body{font-family:${DOC_FONT};color:#0B0B0B;padding:20px 22px 54px;font-size:11px;margin:0}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${head};padding-bottom:10px}
+  .title{font-size:24px;font-weight:700;letter-spacing:-0.5px;text-align:right}
+  .num{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#555;text-align:right}
+  .meta{display:flex;gap:14px;margin-top:12px}
   .meta>div{flex:1}
-  .lbl{font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:#8A8A8A;font-weight:700}
-  .val{font-weight:700;font-size:12px;margin-top:2px}
-  .mut{color:#8A8A8A;font-size:10px;line-height:15px}
-  table{width:100%;border-collapse:collapse;margin-top:20px}
-  th{background:${head};color:${onHead};font-size:8.5px;letter-spacing:.09em;text-align:left;padding:8px 6px}
+  .lbl{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#8A8A8A;font-weight:600}
+  .val{font-weight:600;font-size:11px;margin-top:1px}
+  .mut{color:#8A8A8A;font-size:9.5px;line-height:14px}
+  table{width:100%;border-collapse:collapse;margin-top:14px}
+  th{background:${head};color:${onHead};font-size:8px;letter-spacing:.09em;text-align:left;padding:6px 6px;font-weight:600}
   th.r,td.r{text-align:right}
-  td{padding:9px 6px;border-bottom:1px solid #EDEDED;vertical-align:middle;font-variant-numeric:tabular-nums}
-  .nm{font-weight:700}
-  .thumb{width:34px;height:34px;object-fit:cover;border-radius:4px}
-  .totals{width:48%;margin-left:52%;margin-top:14px}
-  .tot{display:flex;justify-content:space-between;padding:4px 0;font-variant-numeric:tabular-nums}
-  .tot.strong{font-weight:700;border-top:1px solid #EDEDED}
-  .due{display:flex;justify-content:space-between;background:${head};color:${onHead};padding:9px 11px;border-radius:6px;margin-top:6px;font-weight:800}
-  .cols{display:flex;gap:22px;margin-top:26px}
+  td{padding:6px 6px;border-bottom:1px solid #EDEDED;vertical-align:middle;font-variant-numeric:tabular-nums;font-size:11px}
+  .nm{font-weight:600}
+  .thumb{width:30px;height:30px;object-fit:cover;border-radius:4px}
+  .totals{width:48%;margin-left:52%;margin-top:10px}
+  .tot{display:flex;justify-content:space-between;padding:3px 0;font-variant-numeric:tabular-nums;font-size:11px}
+  .tot.strong{font-weight:600;border-top:1px solid #EDEDED}
+  .due{display:flex;justify-content:space-between;background:${head};color:${onHead};padding:7px 10px;border-radius:6px;margin-top:5px;font-weight:700;font-size:12px}
+  .cols{display:flex;gap:18px;margin-top:18px}
   .cols>div{flex:1}
-  .block{margin-bottom:16px}
-  .btitle{font-weight:800;font-size:12.5px;color:${c};border-bottom:1px solid #EDEDED;padding-bottom:5px;margin-bottom:8px}
-  .tgroup{margin-bottom:8px}
-  .tbody{font-size:10.5px;line-height:16px;margin-top:2px}
-  .kv{display:flex;justify-content:space-between;font-size:10.5px;padding:2px 0}
-  .foot{position:fixed;left:28px;right:28px;bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #EDEDED;padding-top:9px;color:#8A8A8A;font-size:10px}
+  .block{margin-bottom:12px}
+  .btitle{font-weight:700;font-size:11.5px;color:${c};border-bottom:1px solid #EDEDED;padding-bottom:4px;margin-bottom:6px}
+  .tgroup{margin-bottom:6px}
+  .tbody{font-size:10px;line-height:15px;margin-top:1px}
+  .kv{display:flex;justify-content:space-between;font-size:10px;padding:2px 0}
+  .foot{position:fixed;left:22px;right:22px;bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #EDEDED;padding-top:7px;color:#8A8A8A;font-size:9.5px}
   </style></head><body>
   <div class="top">
     <div>${logoTag(brand)}<div class="val" style="font-size:15px">${esc(b.name)}</div></div>
@@ -198,6 +202,8 @@ function receiptInvoiceHtml(inv: any, brand: Brand): string {
   const kv = (k: string, v: string, cls = "") => `<div class="kv ${cls}"><span>${k}</span><span>${v}</span></div>`;
   return `<html><head><meta charset="utf-8"><style>
   @page{size:80mm auto;margin:4mm}
+  html,body{-webkit-text-size-adjust:none;text-size-adjust:none}
+  *{max-height:1000000px}
   body{font-family:"Courier New",Courier,monospace;color:#000;font-size:11px;width:72mm;margin:0 auto}
   .c{text-align:center}.name{font-size:14px;font-weight:700;letter-spacing:1px}
   .rule{border-top:1px dashed #555;margin:6px 0}
@@ -269,40 +275,43 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   const billTo = brand.template === "t3" ? "" : `<div class="lbl mt">Bill to</div><div class="nm">${esc(inv.customer_name)}</div><div class="mut">${esc(inv.customer_phone)}</div>`;
 
   const perTemplate: Record<string, string> = {
-    t1: `.num{font-weight:800;font-size:15px}`,
-    t2: `.band{background:${head};color:${onHead};padding:16px 18px;border-radius:10px;display:flex;justify-content:space-between}
+    t1: `.num{font-weight:700;font-size:14px}`,
+    t2: `.band{background:${head};color:${onHead};padding:12px 14px;border-radius:9px;display:flex;justify-content:space-between}
          .band .mut,.band .lbl{color:${onHead};opacity:.75}.band .biz{color:${onHead}}`,
-    t3: `.center{text-align:center;padding-bottom:12px}.center img{margin:0 auto 8px;display:block}
-         .big{font-size:22px}.rule{border-top:1px solid #E5EEEB;border-bottom:1px solid #E5EEEB;padding:10px 0;margin-top:10px}`,
-    t4: `.accent{position:fixed;left:0;top:0;bottom:0;width:10px;background:${head}}body{padding-left:38px}.foot{left:38px}`,
-    t5: `.dark{background:${head};color:${onHead};padding:20px;border-radius:12px;display:flex;justify-content:space-between}
+    t3: `.center{text-align:center;padding-bottom:10px}.center img{margin:0 auto 6px;display:block}
+         .big{font-size:20px}.rule{border-top:1px solid #E5EEEB;border-bottom:1px solid #E5EEEB;padding:8px 0;margin-top:8px}`,
+    t4: `.accent{position:fixed;left:0;top:0;bottom:0;width:9px;background:${head}}body{padding-left:30px}.foot{left:30px}`,
+    t5: `.dark{background:${head};color:${onHead};padding:14px 16px;border-radius:10px;display:flex;justify-content:space-between}
          .inv{color:${onHead}}.dark .mut,.dark .lbl{color:${onHead};opacity:.7}
          table th{background:#F7FAF9}tr.z td{background:#FAFCFB}`,
-    t6: `body{font-size:11px;padding:20px 20px 56px}.compact .biz{font-size:14px}td,th{padding:5px 0}.foot{left:20px;right:20px}`,
+    t6: `body{font-size:10.5px;padding:16px 16px 50px}.compact .biz{font-size:13px}td,th{padding:4px 0}.foot{left:16px;right:16px}`,
   };
 
-  return `<html><head><meta charset="utf-8"><style>
-  body{font-family:-apple-system,Helvetica,Arial;color:#06241F;padding:28px 28px 60px;font-size:12px}
+  return `<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+  ${invoiceFontCss()}
+  html,body{-webkit-text-size-adjust:none;text-size-adjust:none}
+  *{max-height:1000000px}
+  body{font-family:${DOC_FONT};color:#06241F;padding:20px 22px 54px;font-size:11px;margin:0}
   .row{display:flex;justify-content:space-between;align-items:flex-start}
-  .right{text-align:right}.r{text-align:right}.mt{margin-top:14px}
-  .biz{font-size:18px;font-weight:800;color:${c}}
-  .num{font-weight:700;font-variant-numeric:tabular-nums}
-  .nm{font-weight:700}
-  .mut{color:#93A9A4;font-size:10.5px}
-  .lbl{font-size:9px;letter-spacing:.09em;color:#93A9A4;text-transform:uppercase;font-weight:700}
-  hr{border:0;border-top:1px solid #E5EEEB;margin:14px 0}
-  table{width:100%;border-collapse:collapse;margin-top:14px}
-  th{color:#93A9A4;font-size:9.5px;text-align:left;padding:6px 4px;letter-spacing:.06em}
-  td{padding:8px 4px;border-top:1px solid #E5EEEB;font-variant-numeric:tabular-nums;vertical-align:middle}
-  .thumb{width:26px;height:26px;border-radius:5px;object-fit:cover;margin-right:8px;vertical-align:middle}
-  .tot{display:flex;justify-content:space-between;margin-top:5px}
-  .tot.strong{font-weight:700}
-  .due{display:flex;justify-content:space-between;background:${c};color:${onC};padding:10px 12px;border-radius:8px;margin-top:10px;font-weight:800}
-  .block{margin-top:16px}
-  .btitle{font-weight:800;font-size:12px;color:${c};margin-bottom:5px}
-  .tgroup{margin-bottom:7px}.tbody{font-size:10.5px;line-height:16px;color:#3B4A47}
-  .kv{display:flex;justify-content:space-between;font-size:10.5px;padding:2px 0}
-  .foot{position:fixed;left:28px;right:28px;bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #E5EEEB;padding-top:9px;color:#93A9A4;font-size:10px}
+  .right{text-align:right}.r{text-align:right}.mt{margin-top:10px}
+  .biz{font-size:16px;font-weight:700;color:${c}}
+  .num{font-weight:600;font-variant-numeric:tabular-nums}
+  .nm{font-weight:600}
+  .mut{color:#93A9A4;font-size:9.5px}
+  .lbl{font-size:8px;letter-spacing:.09em;color:#93A9A4;text-transform:uppercase;font-weight:600}
+  hr{border:0;border-top:1px solid #E5EEEB;margin:10px 0}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th{color:#93A9A4;font-size:8.5px;text-align:left;padding:5px 4px;letter-spacing:.06em;font-weight:600}
+  td{padding:6px 4px;border-top:1px solid #E5EEEB;font-variant-numeric:tabular-nums;vertical-align:middle;font-size:11px}
+  .thumb{width:24px;height:24px;border-radius:5px;object-fit:cover;margin-right:7px;vertical-align:middle}
+  .tot{display:flex;justify-content:space-between;margin-top:3px;font-size:11px}
+  .tot.strong{font-weight:600}
+  .due{display:flex;justify-content:space-between;background:${c};color:${onC};padding:8px 10px;border-radius:7px;margin-top:7px;font-weight:700;font-size:12px}
+  .block{margin-top:12px}
+  .btitle{font-weight:700;font-size:11.5px;color:${c};margin-bottom:4px}
+  .tgroup{margin-bottom:6px}.tbody{font-size:10px;line-height:15px;color:#3B4A47}
+  .kv{display:flex;justify-content:space-between;font-size:10px;padding:2px 0}
+  .foot{position:fixed;left:22px;right:22px;bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #E5EEEB;padding-top:7px;color:#93A9A4;font-size:9.5px}
   ${perTemplate[brand.template] ?? ""}
   </style></head><body>
   ${headers[brand.template] ?? headers.t1}
@@ -311,7 +320,7 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   <hr/>
   ${totalsRows(inv, c, onC)}
   ${termsBlock(inv)}${bankBlock(inv)}${paymentsBlock(inv)}
-  <p class="mut" style="margin-top:18px">${esc(inv.note || "Goods sold are not returnable after 7 days.")}</p>
+  <p class="mut" style="margin-top:14px">${esc(inv.note || "Goods sold are not returnable after 7 days.")}</p>
   <div class="foot"><span>${esc(brand.footer || "Thank you for your business")}</span>${brand.tredi_mark === false ? "" : madeWith("Made with")}</div>
   </body></html>`;
 }
@@ -329,8 +338,10 @@ export function buildWaybillHtml(w: any, brandIn?: Partial<Brand>): string {
   const prices = !!w.show_prices;
   return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
   <style>
-    *{box-sizing:border-box}
-    body{margin:0;padding:26px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#06241F;background:#fff}
+    ${invoiceFontCss()}
+    html,body{-webkit-text-size-adjust:none;text-size-adjust:none}
+    *{box-sizing:border-box;max-height:1000000px}
+    body{margin:0;padding:22px;font-family:${DOC_FONT};color:#06241F;background:#fff}
     .paper{max-width:760px;margin:0 auto}
     .head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:3px solid ${c};padding-bottom:12px}
     .biz{font-size:19px;font-weight:800;color:${c};letter-spacing:-0.3px}
@@ -392,8 +403,10 @@ export function buildReceiptHtml(sale: any, brandIn?: Partial<Brand>): string {
   const method: Record<string, string> = { cash: "Cash", transfer: "Bank transfer", card: "Card", credit: "On credit" };
   return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
   <style>
-    *{box-sizing:border-box}
-    body{margin:0;padding:18px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#06241F;background:#fff}
+    ${invoiceFontCss()}
+    html,body{-webkit-text-size-adjust:none;text-size-adjust:none}
+    *{box-sizing:border-box;max-height:1000000px}
+    body{margin:0;padding:18px;font-family:${DOC_FONT};color:#06241F;background:#fff}
     .paper{max-width:420px;margin:0 auto}
     .head{text-align:center;border-bottom:2px solid ${c};padding-bottom:10px}
     .biz{font-size:18px;font-weight:800;color:${c};letter-spacing:-0.3px}

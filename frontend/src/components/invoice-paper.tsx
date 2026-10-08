@@ -2,9 +2,9 @@
 // format is always the 80mm counter receipt; the Professional format draws
 // whichever of the seven looks the owner picked in Invoice templates.
 import type { ReactNode } from "react";
-import { Image, Text, View } from "react-native";
+import { Image, Text, TextProps, View } from "react-native";
 
-import { H4, Lbl, Money, Row, Sub, Tag } from "@/src/components/ui";
+import { Row } from "@/src/components/ui";
 import { longDate, money } from "@/src/format";
 import { Brand, readable } from "@/src/invoice-templates";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
@@ -12,28 +12,32 @@ import { fonts, makeStyles, useTheme } from "@/src/theme";
 const MARK = require("../../assets/images/tredi-wordmark.png");
 
 const useStyles = makeStyles((c) => ({
-  paper: { backgroundColor: c.surfaceSecondary, borderRadius: 6, padding: 14, overflow: "hidden" },
-  biz: { fontFamily: fonts.extrabold, fontSize: 15, color: c.deep },
-  title: { fontFamily: fonts.extrabold, fontSize: 21, letterSpacing: -0.5, color: c.onSurface, textAlign: "right" },
-  num: { fontFamily: fonts.mono, fontSize: 10.5, color: c.ink60, textAlign: "right" },
-  th: { fontFamily: fonts.bold, fontSize: 8.5, letterSpacing: 0.6, color: c.ink40 },
-  thDark: { fontFamily: fonts.bold, fontSize: 8, letterSpacing: 0.6 },
-  tdName: { fontFamily: fonts.bold, fontSize: 10.5, color: c.onSurface },
-  meta: { flexDirection: "row", flexWrap: "wrap", marginTop: 12 },
-  metaCell: { width: "50%", paddingRight: 10, marginBottom: 8 },
-  row: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#EDEDED", alignItems: "center" },
-  rowLight: { paddingVertical: 6, borderTopWidth: 1, borderTopColor: c.border, alignItems: "center" },
-  thumb: { width: 26, height: 26, borderRadius: 4 },
-  block: { marginTop: 12 },
-  btitle: { fontFamily: fonts.extrabold, fontSize: 11.5, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: "#EDEDED", marginBottom: 6 },
-  hr: { height: 1, backgroundColor: c.border, marginVertical: 10 },
-  band: { padding: 12, borderRadius: 9, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  paper: { backgroundColor: c.surfaceSecondary, borderRadius: 6, padding: 12, overflow: "hidden" },
+  biz: { fontFamily: fonts.docBold, fontSize: 14, color: c.deep },
+  title: { fontFamily: fonts.docBold, fontSize: 20, letterSpacing: -0.5, color: c.onSurface, textAlign: "right" },
+  num: { fontFamily: fonts.mono, fontSize: 10, color: c.ink60, textAlign: "right" },
+  th: { fontFamily: fonts.docSemibold, fontSize: 8, letterSpacing: 0.6, color: c.ink40 },
+  thDark: { fontFamily: fonts.docSemibold, fontSize: 8, letterSpacing: 0.6 },
+  td: { fontFamily: fonts.doc, fontSize: 10, color: c.onSurface },
+  tdName: { fontFamily: fonts.docSemibold, fontSize: 10, color: c.onSurface },
+  sub: { fontFamily: fonts.doc, fontSize: 9.5, color: c.ink60, lineHeight: 13 },
+  lbl: { fontFamily: fonts.docSemibold, fontSize: 7.5, letterSpacing: 0.8, color: c.ink40, textTransform: "uppercase" },
+  val: { fontFamily: fonts.docSemibold, fontSize: 10.5, color: c.onSurface },
+  meta: { flexDirection: "row", flexWrap: "wrap", marginTop: 10 },
+  metaCell: { width: "50%", paddingRight: 10, marginBottom: 6 },
+  row: { paddingVertical: 4.5, borderBottomWidth: 1, borderBottomColor: "#EDEDED", alignItems: "center" },
+  rowLight: { paddingVertical: 4.5, borderTopWidth: 1, borderTopColor: c.border, alignItems: "center" },
+  thumb: { width: 24, height: 24, borderRadius: 4 },
+  block: { marginTop: 10 },
+  btitle: { fontFamily: fonts.docBold, fontSize: 11, paddingBottom: 3, borderBottomWidth: 1, borderBottomColor: "#EDEDED", marginBottom: 5 },
+  hr: { height: 1, backgroundColor: c.border, marginVertical: 8 },
+  band: { padding: 10, borderRadius: 9, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   accent: { position: "absolute", left: 0, top: 0, bottom: 0, width: 7 },
-  foot: { marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: c.border, alignItems: "center" },
+  foot: { marginTop: 10, paddingTop: 7, borderTopWidth: 1, borderTopColor: c.border, alignItems: "center" },
   mark: { width: 42, height: 13 },
   rcpWrap: { alignItems: "center", paddingVertical: 10 },
   rcpPaper: { width: 268, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderRadius: 4, padding: 14, gap: 1 },
-  rcpName: { fontFamily: fonts.extrabold, fontSize: 13, letterSpacing: 0.6, color: c.onSurface, textAlign: "center" },
+  rcpName: { fontFamily: fonts.docBold, fontSize: 13, letterSpacing: 0.6, color: c.onSurface, textAlign: "center" },
   rcpCentre: { fontFamily: fonts.mono, fontSize: 9.5, color: c.ink60, textAlign: "center" },
   rcpText: { fontFamily: fonts.mono, fontSize: 10, color: c.onSurface },
   rcpNum: { fontFamily: fonts.monoSemibold },
@@ -43,6 +47,17 @@ const useStyles = makeStyles((c) => ({
 }));
 
 const discCell = (l: any) => (!l.discount ? "0.00%" : l.discount_type === "percent" ? `${Number(l.discount_value).toFixed(2)}%` : money(l.discount, { symbol: false }));
+
+// Document typography — Poppins throughout, one size for every body line so no
+// row reads bigger than its neighbour. Mirrors the sizes in the printed CSS.
+function P({ style, ...p }: TextProps) { const s = useStyles(); return <Text style={[s.sub, style]} {...p} />; }
+function L({ style, ...p }: TextProps) { const s = useStyles(); return <Text style={[s.lbl, style]} {...p} />; }
+function V({ style, ...p }: TextProps) { const s = useStyles(); return <Text style={[s.val, style]} {...p} />; }
+function N({ style, size, tone, ...p }: TextProps & { size?: number; tone?: "pos" }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  return <Text style={[s.td, { fontFamily: fonts.docMedium, fontVariant: ["tabular-nums"] }, size ? { fontSize: size } : null, tone === "pos" ? { color: colors.green700 } : null, style]} {...p} />;
+}
 
 export function InvoicePaper({ inv, format, brand, linePhotos, logo }: {
   inv: any;
@@ -64,7 +79,7 @@ function Totals({ inv, accent, wide }: { inv: any; accent: string; wide?: boolea
   const on = readable(accent);
   const disc = t.discount_total ?? (t.line_discount ?? 0) + (t.invoice_discount ?? 0);
   const line = (label: string, value: string, tone?: "pos") => (
-    <Row between style={{ paddingVertical: 2.5 }}><Sub>{label}</Sub><Money size={10.5} tone={tone}>{value}</Money></Row>
+    <Row between style={{ paddingVertical: 2.5 }}><P>{label}</P><N tone={tone}>{value}</N></Row>
   );
   return (
     <View style={{ width: wide ? "100%" : "62%", alignSelf: wide ? "auto" : "flex-end", marginTop: 10 }} testID="paper-totals">
@@ -74,14 +89,14 @@ function Totals({ inv, accent, wide }: { inv: any; accent: string; wide?: boolea
       {line(`VAT${inv.vat_rate ? ` ${inv.vat_rate}%` : ""}`, money(t.vat, { symbol: false }))}
       {t.shipping ? line("Shipping Fee", money(t.shipping, { symbol: false })) : null}
       <Row between style={{ backgroundColor: accent, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 9, marginTop: 6 }}>
-        <H4 style={{ color: on }}>Grand Total</H4>
-        <Money size={13} style={{ color: on }} testID="paper-grand-total">{money(t.total)}</Money>
+        <V style={{ color: on, fontFamily: fonts.docBold, fontSize: 11 }}>Grand Total</V>
+        <N size={12} style={{ color: on, fontFamily: fonts.docBold }} testID="paper-grand-total">{money(t.total)}</N>
       </Row>
       {inv.paid > 0 ? (
         <>
           {line("Amount Received", money(inv.paid, { symbol: false }), "pos")}
           <Row between style={{ paddingTop: 4, marginTop: 2, borderTopWidth: 1, borderTopColor: "#EDEDED" }}>
-            <H4 style={{ fontSize: 12 }}>Balance Due</H4><Money size={12} testID="paper-balance">{money(inv.due, { symbol: false })}</Money>
+            <V>Balance Due</V><N style={{ fontFamily: fonts.docSemibold }} testID="paper-balance">{money(inv.due, { symbol: false })}</N>
           </Row>
         </>
       ) : null}
@@ -99,9 +114,9 @@ function Blocks({ inv, colour, compact }: { inv: any; colour: string; compact?: 
       {inv.terms ? (
         <View style={s.block} testID="paper-terms">
           <Text style={[s.btitle, { color: colour }]}>Terms of payment{compact || !inv.terms.name ? "" : ` · ${inv.terms.name}`}</Text>
-          {inv.terms.payment_structure ? <Tag style={{ lineHeight: 15 }}>{inv.terms.payment_structure}</Tag> : null}
-          {inv.terms.delivery_condition ? <Tag style={{ lineHeight: 15, marginTop: 3 }}>{inv.terms.delivery_condition}</Tag> : null}
-          {inv.terms.additional_notes ? <Tag style={{ lineHeight: 15, marginTop: 3 }}>{inv.terms.additional_notes}</Tag> : null}
+          {inv.terms.payment_structure ? <P style={{ lineHeight: 15 }}>{inv.terms.payment_structure}</P> : null}
+          {inv.terms.delivery_condition ? <P style={{ lineHeight: 15, marginTop: 3 }}>{inv.terms.delivery_condition}</P> : null}
+          {inv.terms.additional_notes ? <P style={{ lineHeight: 15, marginTop: 3 }}>{inv.terms.additional_notes}</P> : null}
         </View>
       ) : null}
       {banks.length ? (
@@ -109,9 +124,9 @@ function Blocks({ inv, colour, compact }: { inv: any; colour: string; compact?: 
           <Text style={[s.btitle, { color: colour }]}>Bank Details</Text>
           {banks.map((a, i) => (
             <View key={a.id ?? i} style={{ marginBottom: 5 }}>
-              <Tag>Account name: <Text style={{ fontFamily: fonts.bold }}>{a.holder || a.name}</Text></Tag>
-              {a.bank ? <Tag>Bank name: <Text style={{ fontFamily: fonts.bold }}>{a.bank}</Text></Tag> : null}
-              {a.number ? <Tag>Account number: <Text style={{ fontFamily: fonts.bold }}>{a.number}</Text></Tag> : null}
+              <P>Account name: <Text style={{ fontFamily: fonts.docSemibold }}>{a.holder || a.name}</Text></P>
+              {a.bank ? <P>Bank name: <Text style={{ fontFamily: fonts.docSemibold }}>{a.bank}</Text></P> : null}
+              {a.number ? <P>Account number: <Text style={{ fontFamily: fonts.docSemibold }}>{a.number}</Text></P> : null}
             </View>
           ))}
         </View>
@@ -120,7 +135,7 @@ function Blocks({ inv, colour, compact }: { inv: any; colour: string; compact?: 
         <View style={s.block} testID="paper-payments">
           <Text style={[s.btitle, { color: colour }]}>Payment method</Text>
           {pays.map((p, i) => (
-            <Row key={i} between style={{ paddingVertical: 1.5 }}><Tag>{label[p.method] ?? p.method}</Tag><Money size={10}>{money(p.amount, { symbol: false })}</Money></Row>
+            <Row key={i} between style={{ paddingVertical: 1.5 }}><P>{label[p.method] ?? p.method}</P><N>{money(p.amount, { symbol: false })}</N></Row>
           ))}
         </View>
       ) : null}
@@ -132,7 +147,7 @@ function MadeWith({ label }: { label: string }) {
   const s = useStyles();
   return (
     <Row style={{ gap: 5, alignItems: "center" }}>
-      <Tag style={{ fontFamily: fonts.bold }}>{label}</Tag>
+      <P style={{ fontFamily: fonts.docSemibold }}>{label}</P>
       <Image source={MARK} style={s.mark} resizeMode="contain" testID="pdf-tredi-mark" />
     </Row>
   );
@@ -157,25 +172,25 @@ function Styled({ inv, brand, linePhotos, logo }: Props) {
     const col = inverse ? { color: onHead } : null;
     return (
       <View style={{ alignItems: "flex-end" }}>
-        <Lbl style={[col, inverse && { opacity: 0.75 }]}>Invoice</Lbl>
-        <Money size={tpl === "t1" ? 14 : 12} style={col} testID="paper-number">{inv.number}</Money>
-        <Tag style={[col, inverse && { opacity: 0.75 }]}>{longDate(inv.created_at)}</Tag>
-        {inv.due_date ? <Tag style={[col, inverse && { opacity: 0.75 }]}>Due {longDate(inv.due_date)}</Tag> : null}
+        <L style={[col, inverse && { opacity: 0.75 }]}>Invoice</L>
+        <N size={tpl === "t1" ? 14 : 12} style={col} testID="paper-number">{inv.number}</N>
+        <P style={[col, inverse && { opacity: 0.75 }]}>{longDate(inv.created_at)}</P>
+        {inv.due_date ? <P style={[col, inverse && { opacity: 0.75 }]}>Due {longDate(inv.due_date)}</P> : null}
       </View>
     );
   };
   const biz = (inverse?: boolean, size = 15) => (
     <View style={{ flex: 1, paddingRight: 8 }}>
       <Text style={[s.biz, { color: inverse ? onHead : c, fontSize: size }]}>{b.name}</Text>
-      {b.address ? <Tag style={inverse ? { color: onHead, opacity: 0.75 } : null}>{b.address}</Tag> : null}
-      {b.tin || b.phone ? <Tag style={inverse ? { color: onHead, opacity: 0.75 } : null}>{[b.tin ? `TIN ${b.tin}` : "", b.phone].filter(Boolean).join(" · ")}</Tag> : null}
+      {b.address ? <P style={inverse ? { color: onHead, opacity: 0.75 } : null}>{b.address}</P> : null}
+      {b.tin || b.phone ? <P style={inverse ? { color: onHead, opacity: 0.75 } : null}>{[b.tin ? `TIN ${b.tin}` : "", b.phone].filter(Boolean).join(" · ")}</P> : null}
     </View>
   );
   const billTo = (
     <View style={{ marginTop: 10 }} testID="paper-bill-to">
-      <Lbl>Bill to</Lbl>
+      <L>Bill to</L>
       <Text style={s.tdName}>{inv.customer_name}</Text>
-      {inv.customer_phone ? <Tag>{inv.customer_phone}</Tag> : null}
+      {inv.customer_phone ? <P>{inv.customer_phone}</P> : null}
     </View>
   );
 
@@ -194,10 +209,10 @@ function Styled({ inv, brand, linePhotos, logo }: Props) {
         <View style={{ alignItems: "center", paddingBottom: 10 }}>
           {logoImg()}
           <Text style={[s.biz, { color: c, fontSize: 20, textAlign: "center" }]}>{b.name}</Text>
-          <Tag style={{ textAlign: "center" }}>{[b.address, b.phone].filter(Boolean).join(" · ")}</Tag>
+          <P style={{ textAlign: "center" }}>{[b.address, b.phone].filter(Boolean).join(" · ")}</P>
         </View>
         <Row between style={{ borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, paddingVertical: 8, alignItems: "flex-start" }}>
-          <View testID="paper-bill-to"><Lbl>Bill to</Lbl><Text style={s.tdName}>{inv.customer_name}</Text>{inv.customer_phone ? <Tag>{inv.customer_phone}</Tag> : null}</View>
+          <View testID="paper-bill-to"><L>Bill to</L><Text style={s.tdName}>{inv.customer_name}</Text>{inv.customer_phone ? <P>{inv.customer_phone}</P> : null}</View>
           {meta()}
         </Row>
       </>
@@ -253,22 +268,22 @@ function Styled({ inv, brand, linePhotos, logo }: Props) {
               {photos && linePhotos[l.photo_url] ? <Image source={{ uri: linePhotos[l.photo_url] }} style={s.thumb} /> : null}
               <View style={{ flex: 1 }}>
                 <Text style={s.tdName}>{l.name}</Text>
-                {l.note ? <Tag numberOfLines={2}>{l.note}</Tag> : null}
+                {l.note ? <P numberOfLines={2}>{l.note}</P> : null}
               </View>
             </Row>
-            <Money size={10} style={{ flex: 0.6, textAlign: "right" }}>{l.quantity}</Money>
-            <Money size={10} style={{ flex: 1, textAlign: "right" }}>{money(l.unit_price, { symbol: false })}</Money>
-            <Money size={10} style={{ flex: 1, textAlign: "right" }}>{discCell(l)}</Money>
-            <Money size={10} style={{ flex: 1.1, textAlign: "right" }}>{money(l.total, { symbol: false })}</Money>
+            <N style={{ flex: 0.6, textAlign: "right" }}>{l.quantity}</N>
+            <N style={{ flex: 1, textAlign: "right" }}>{money(l.unit_price, { symbol: false })}</N>
+            <N style={{ flex: 1, textAlign: "right" }}>{discCell(l)}</N>
+            <N style={{ flex: 1.1, textAlign: "right" }}>{money(l.total, { symbol: false })}</N>
           </Row>
         ))}
       </View>
       <View style={s.hr} />
       <Totals inv={inv} accent={c} wide />
       <Blocks inv={inv} colour={c} compact={compact} />
-      <Tag style={{ marginTop: 14 }}>{inv.note || "Goods sold are not returnable after 7 days."}</Tag>
+      <P style={{ marginTop: 14 }}>{inv.note || "Goods sold are not returnable after 7 days."}</P>
       <Row between style={s.foot}>
-        <Tag>{brand.footer || "Thank you for your business"}</Tag>
+        <P>{brand.footer || "Thank you for your business"}</P>
         {brand.tredi_mark === false ? null : <MadeWith label="Made with" />}
       </Row>
     </View>
@@ -299,21 +314,21 @@ function Professional({ inv, brand, linePhotos, logo }: Props) {
 
       <View style={s.meta} testID="paper-pro-meta">
         <View style={s.metaCell}>
-          <Lbl>Issue Date</Lbl><H4 style={{ fontSize: 11 }}>{longDate(inv.created_at)}</H4>
-          <Lbl style={{ marginTop: 7 }}>Due Date</Lbl><H4 style={{ fontSize: 11 }}>{inv.due_date ? longDate(inv.due_date) : "On receipt"}</H4>
+          <L>Issue Date</L><V>{longDate(inv.created_at)}</V>
+          <L style={{ marginTop: 7 }}>Due Date</L><V>{inv.due_date ? longDate(inv.due_date) : "On receipt"}</V>
         </View>
         <View style={s.metaCell}>
-          <Lbl>Customer</Lbl><H4 style={{ fontSize: 11 }}>{inv.customer_name}</H4>
-          <Tag>{inv.customer_phone}</Tag>{inv.customer_address ? <Tag>{inv.customer_address}</Tag> : null}
+          <L>Customer</L><V>{inv.customer_name}</V>
+          <P>{inv.customer_phone}</P>{inv.customer_address ? <P>{inv.customer_address}</P> : null}
         </View>
         <View style={s.metaCell}>
-          <Lbl>Business</Lbl><H4 style={{ fontSize: 11 }}>{b.name}</H4>
-          <Tag>{b.address}</Tag><Tag>{b.email || b.phone || ""}</Tag>
+          <L>Business</L><V>{b.name}</V>
+          <P>{b.address}</P><P>{b.email || b.phone || ""}</P>
         </View>
         <View style={s.metaCell}>
-          <Lbl>Branch</Lbl><H4 style={{ fontSize: 11 }}>{inv.shop || "Head office"}</H4>
-          <Tag>Rep: {inv.rep || inv.created_by || "—"}</Tag>
-          <Lbl style={{ marginTop: 7 }}>TIN</Lbl><H4 style={{ fontSize: 11 }}>{b.tin || "—"}</H4>
+          <L>Branch</L><V>{inv.shop || "Head office"}</V>
+          <P>Rep: {inv.rep || inv.created_by || "—"}</P>
+          <L style={{ marginTop: 7 }}>TIN</L><V>{b.tin || "—"}</V>
         </View>
       </View>
 
@@ -330,17 +345,17 @@ function Professional({ inv, brand, linePhotos, logo }: Props) {
           <Row key={i} style={[s.row, { paddingHorizontal: 6 }]}>
             <View style={{ flex: 2 }}>
               <Text style={s.tdName}>{l.name}</Text>
-              {l.note ? <Tag numberOfLines={2}>{l.note}</Tag> : null}
+              {l.note ? <P numberOfLines={2}>{l.note}</P> : null}
             </View>
             {photos ? (
               <View style={{ width: 40 }}>
                 {linePhotos[l.photo_url] ? <Image source={{ uri: linePhotos[l.photo_url] }} style={[s.thumb, { width: 30, height: 30 }]} /> : null}
               </View>
             ) : null}
-            <Money size={10} style={{ flex: 0.6, textAlign: "right" }}>{l.quantity}</Money>
-            <Money size={10} style={{ flex: 1, textAlign: "right" }}>{money(l.unit_price, { symbol: false })}</Money>
-            <Money size={10} style={{ flex: 1, textAlign: "right" }}>{discCell(l)}</Money>
-            <Money size={10} style={{ flex: 1.1, textAlign: "right" }}>{money(l.total, { symbol: false })}</Money>
+            <N style={{ flex: 0.6, textAlign: "right" }}>{l.quantity}</N>
+            <N style={{ flex: 1, textAlign: "right" }}>{money(l.unit_price, { symbol: false })}</N>
+            <N style={{ flex: 1, textAlign: "right" }}>{discCell(l)}</N>
+            <N style={{ flex: 1.1, textAlign: "right" }}>{money(l.total, { symbol: false })}</N>
           </Row>
         ))}
       </View>
@@ -354,13 +369,13 @@ function Professional({ inv, brand, linePhotos, logo }: Props) {
         <View style={{ flex: 1 }}>
           <Blocks inv={{ ...inv, terms: null, bank_accounts: [] }} colour={colour} />
           {inv.note ? (
-            <View style={s.block}><Text style={[s.btitle, { color: colour }]}>Notes</Text><Tag style={{ lineHeight: 15 }}>{inv.note}</Tag></View>
+            <View style={s.block}><Text style={[s.btitle, { color: colour }]}>Notes</Text><P style={{ lineHeight: 15 }}>{inv.note}</P></View>
           ) : null}
         </View>
       </Row>
 
       <Row between style={s.foot}>
-        <Tag>{brand.footer || "Thanks for your patronage."}</Tag>
+        <P>{brand.footer || "Thanks for your patronage."}</P>
         {brand.tredi_mark === false ? null : <MadeWith label="Crafted with" />}
       </Row>
     </View>

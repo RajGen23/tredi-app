@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { LogBox, View } from "react-native";
@@ -8,6 +9,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { ErrorBoundary } from "@/src/components/error-boundary";
+import { preloadInvoiceFonts } from "@/src/invoice-fonts";
 import { queryClient } from "@/src/query-client";
 import { AuthProvider } from "@/src/auth";
 import { ToastProvider } from "@/src/components/sheet";
@@ -27,7 +29,13 @@ export default function RootLayout() {
     "IBMPlexMono-Regular": require("../assets/fonts/IBMPlexMono-Regular.ttf"),
     "IBMPlexMono-Medium": require("../assets/fonts/IBMPlexMono-Medium.ttf"),
     "IBMPlexMono-SemiBold": require("../assets/fonts/IBMPlexMono-SemiBold.ttf"),
+    "Poppins-Regular": require("../assets/fonts/Poppins-Regular.ttf"),
+    "Poppins-Medium": require("../assets/fonts/Poppins-Medium.ttf"),
+    "Poppins-SemiBold": require("../assets/fonts/Poppins-SemiBold.ttf"),
+    "Poppins-Bold": require("../assets/fonts/Poppins-Bold.ttf"),
   });
+  // Inline the same faces for printed documents, so the PDF matches the preview.
+  useEffect(() => { preloadInvoiceFonts(); }, []);
 
   if (!loaded) return <View style={{ flex: 1, backgroundColor: "#00C98D" }} />;
 

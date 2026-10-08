@@ -533,3 +533,11 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - Decision (user): the template is global — every invoice, old and new, opens in the currently saved look.
 - t7 renamed "Template 7" in the picker so the PDF note reads "Professional — Template 7".
 - Verified by the testing agent (frontend, all passes).
+
+## Pass 31 — Invoice typography
+- Poppins (Regular/Medium/SemiBold/Bold) added to assets/fonts, loaded in _layout, exposed as `fonts.doc*`.
+- `src/invoice-fonts.ts` inlines the TTFs as @font-face data URIs (preloaded at start-up) so printed PDFs
+  use Poppins offline; `DOC_FONT` stack used by invoice, waybill and sales-receipt HTML.
+- Fixed oversized line items in Android PDFs (WebView font boosting): `text-size-adjust:none`,
+  `*{max-height:1000000px}` and explicit `td` font-size; tightened cell padding and page margins.
+- On-screen paper now uses the same Poppins sizes (local P/L/V/N text primitives) and tighter spacing.
