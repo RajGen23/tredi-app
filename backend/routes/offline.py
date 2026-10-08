@@ -2,8 +2,10 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Any, Dict, List, Literal, Optional
+import re
 
-from deps import (CurrentUser, LineIn, biz_filter, clean, db, invoice_totals, line_totals, log_activity, next_number, now)
+from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, invoice_totals, line_totals, log_activity,
+                  next_number, now, writing_shop)
 from dummy_photos import pick_dummy_photo
 
 router = APIRouter(prefix="/api")
@@ -113,7 +115,9 @@ async def backup_now(user: CurrentUser):
 
 # ---------------------------------------------------------------- 11.3 import
 CUSTOMER_COLS = ["name", "phone", "email", "address", "opening_balance"]
-ITEM_COLS = ["name", "category", "unit", "cost_price", "selling_price", "quantity", "barcode", "photo_url"]
+# A batch stock upload is a delivery: the supplier column is what turns it into
+# a purchase order instead of a quantity typed out of thin air.
+ITEM_COLS = ["name", "category", "supplier", "unit", "cost_price", "selling_price", "quantity", "barcode", "photo_url"]
 
 
 def _num(v: Any) -> Optional[float]:
@@ -159,6 +163,7 @@ async def validate_rows(f: dict, data: ImportIn) -> dict:
                 issues.append({"rows": [r.row], "title": f"Row {r.row} · bad number", "detail": "Cost, price or quantity is not a number.", "action": "Fix", "kind": "bad_number"})
                 continue
             ready.append({"row": r.row, "name": name, "category": v.get("category") or "General", "unit": v.get("unit") or "Piece",
+                          "supplier": v.get("supplier", ""),
                           "cost_price": cost, "selling_price": sell, "quantity": qty, "barcode": v.get("barcode", ""),
                           "photo_url": v.get("photo_url", "")})
     # group identical issue kinds the way the design shows them
@@ -177,11 +182,37 @@ async def validate_rows(f: dict, data: ImportIn) -> dict:
             "columns": CUSTOMER_COLS if data.target == "customers" else ITEM_COLS}
 
 
+async def purchase_plan(f: dict, rows: list[dict]) -> list[dict]:
+    """Group a batch stock upload by supplier — each group becomes one PO.
+
+    Rows with no supplier are not a delivery from anybody, so they land as
+    opening stock and raise no order.
+    """
+    groups: dict[str, dict] = {}
+    for r in rows:
+        name = (r.get("supplier") or "").strip()
+        g = groups.setdefault(name.lower(), {"supplier": name, "rows": [], "items": 0, "qty": 0.0, "value": 0.0})
+        g["rows"].append(r)
+        g["items"] += 1
+        g["qty"] = round(g["qty"] + r["quantity"], 3)
+        g["value"] = round(g["value"] + r["quantity"] * r["cost_price"], 2)
+    for g in groups.values():
+        g["new_supplier"] = bool(g["supplier"]) and not await db.suppliers.find_one(
+            {**f, "name": {"$regex": f"^{re.escape(g['supplier'])}$", "$options": "i"}})
+    return sorted(groups.values(), key=lambda g: (g["supplier"] == "", g["supplier"].lower()))
+
+
 @router.post("/import/preview")
 async def import_preview(data: ImportIn, user: CurrentUser):
     f = biz_filter(user)
     res = await validate_rows(f, data)
-    return {"filename": data.filename, "target": data.target, "total": len(data.rows), **res}
+    out = {"filename": data.filename, "target": data.target, "total": len(data.rows), **res}
+    if data.target == "items":
+        plan = await purchase_plan(f, res["ready"])
+        out["purchase_plan"] = [{k: v for k, v in g.items() if k != "rows"} for g in plan]
+        out["orders"] = len([g for g in plan if g["supplier"]])
+        out["opening_rows"] = sum(g["items"] for g in plan if not g["supplier"])
+    return out
 
 
 @router.post("/import/commit")
@@ -195,13 +226,56 @@ async def import_commit(data: ImportCommitIn, user: CurrentUser):
         await db.customers.insert_many([{**f, "name": r["name"], "phone": r["phone"], "email": r["email"], "address": r["address"],
                                          "opening_balance": r["opening_balance"], "opening_type": "owes_me", "price_list": "Retail",
                                          "credit_limit": None, "created_by": user.get("name", ""), "created_at": now()} for r in rows])
-    else:
-        await db.items.insert_many([{**f, "name": r["name"], "kind": "product", "category": r["category"], "unit": r["unit"], "barcode": r["barcode"],
-                                     "supplier": "", "location": "", "cost_price": r["cost_price"], "selling_price": r["selling_price"],
-                                     "wholesale_price": None, "track_stock": True, "quantity": r["quantity"], "alert_below": 0, "expiry": None,
-                                     "photo_url": r.get("photo_url") or pick_dummy_photo(r["name"], r["category"]), "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()} for r in rows])
-    await log_activity(f["business_id"], user, "import", f"Imported {len(rows)} {data.target}", data.filename)
-    return {"imported": len(rows), "target": data.target}
+        await log_activity(f["business_id"], user, "import", f"Imported {len(rows)} customers", data.filename)
+        return {"imported": len(rows), "target": data.target}
+
+    # Stock: the item cards are written first with nothing on the shelf, then the
+    # goods arrive on a purchase order per supplier — so the delivery is on the
+    # books, the supplier is owed, and every movement has a PO number behind it.
+    plan = await purchase_plan(f, rows)
+    shop = await writing_shop(user)
+    ids: dict[int, str] = {}
+    docs = [{**f, "name": r["name"], "kind": "product", "category": r["category"], "unit": r["unit"], "barcode": r["barcode"],
+             "supplier": r.get("supplier", ""), "location": "", "cost_price": r["cost_price"], "selling_price": r["selling_price"],
+             "wholesale_price": None, "track_stock": True, "quantity": 0, "alert_below": 0, "expiry": None,
+             "photo_url": r.get("photo_url") or pick_dummy_photo(r["name"], r["category"]),
+             "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()} for r in rows]
+    inserted = await db.items.insert_many(docs)
+    for r, _id in zip(rows, inserted.inserted_ids):
+        ids[r["row"]] = str(_id)
+
+    orders = []
+    for g in plan:
+        lines = [{"item_id": ids[r["row"]], "name": r["name"], "quantity": r["quantity"], "unit_cost": r["cost_price"],
+                  "unit": r["unit"], "total": round(r["quantity"] * r["cost_price"], 2)} for r in g["rows"] if r["row"] in ids]
+        if not lines:
+            continue
+        if not g["supplier"]:
+            # No supplier on the row: opening stock, counted onto the shelf.
+            for l in lines:
+                await apply_stock(f["business_id"], l["item_id"], l["quantity"], "opening", data.filename or "Import",
+                                  user, "Opening stock from import", shop)
+            continue
+        sup = await db.suppliers.find_one({**f, "name": {"$regex": f"^{re.escape(g['supplier'])}$", "$options": "i"}})
+        if not sup:
+            sid = (await db.suppliers.insert_one({**f, "name": g["supplier"], "phone": "", "email": "", "address": "",
+                                                  "category": "General", "opening_balance": 0, "note": "Added by stock import",
+                                                  "created_by": user.get("name", ""), "created_at": now()})).inserted_id
+            sup = await db.suppliers.find_one({"_id": sid})
+        total = round(sum(l["total"] for l in lines), 2)
+        number = await next_number(f["business_id"], "purchase", "PO", 400)
+        po = await db.purchases.insert_one({**f, "supplier_id": str(sup["_id"]), "supplier_name": sup["name"], "number": number,
+                                            "lines": lines, "total": total, "paid": 0, "account_id": None, "method": "credit",
+                                            "due_date": None, "shop": shop, "note": f"Batch stock upload · {data.filename or 'import'}",
+                                            "source": "import", "created_by": user.get("name", ""), "created_at": now()})
+        for l in lines:
+            await apply_stock(f["business_id"], l["item_id"], l["quantity"], "purchase", number, user, sup["name"], shop)
+        await log_activity(f["business_id"], user, "purchase", f"Purchase {number}", sup["name"], total, str(po.inserted_id), shop)
+        orders.append({"id": str(po.inserted_id), "number": number, "supplier": sup["name"], "items": len(lines), "total": total})
+
+    await log_activity(f["business_id"], user, "import", f"Imported {len(rows)} items", data.filename)
+    return {"imported": len(rows), "target": data.target, "orders": orders,
+            "opening_rows": sum(g["items"] for g in plan if not g["supplier"])}
 
 
 @router.get("/import/template")
@@ -209,6 +283,7 @@ async def import_template(target: str = "customers"):
     cols = CUSTOMER_COLS if target == "customers" else ITEM_COLS
     sample = ({"name": "Your customer name", "phone": "+234 800 000 0000", "email": "", "address": "Street, city", "opening_balance": "0"}
               if target == "customers" else
-              {"name": "Adeba Rice 50kg", "category": "Grains", "unit": "Bag", "cost_price": "52400", "selling_price": "62000", "quantity": "8", "barcode": "", "photo_url": ""})
+              {"name": "Adeba Rice 50kg", "category": "Grains", "supplier": "Dangote Depot", "unit": "Bag",
+               "cost_price": "52400", "selling_price": "62000", "quantity": "8", "barcode": "", "photo_url": ""})
     csv = ",".join(cols) + "\n" + ",".join(str(sample[c]) for c in cols) + "\n"
     return {"columns": cols, "csv": csv, "filename": f"tredi_{target}_template.csv"}

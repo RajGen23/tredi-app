@@ -15,6 +15,7 @@ import { useToast } from "@/src/components/sheet";
 import { makeStyles, useTheme } from "@/src/theme";
 import { useBottomPad } from "@/src/safe";
 import { shareCsv } from "@/src/report-export";
+import { money } from "@/src/format";
 
 type Target = "customers" | "items";
 type Rows = { row: number; values: Record<string, string> }[];
@@ -75,7 +76,8 @@ export default function Import() {
     mutationFn: () => api("/import/commit", { method: "POST", json: { target, filename, rows, skip_rows: [] } }),
     onSuccess: (r: any) => {
       qc.invalidateQueries();
-      toast.show(`${r.imported} ${r.target} imported`, "Done");
+      const po = (r.orders ?? []).length;
+      toast.show(po ? `${r.imported} items in on ${po} purchase order${po === 1 ? "" : "s"}` : `${r.imported} ${r.target} imported`, "Done");
       setReport(null);
       setRows([]);
       setFilename("");
@@ -135,6 +137,11 @@ export default function Import() {
               <Sub>{tpl.data ? tpl.data.columns.join(", ") : "The exact columns we read, with one example row"}</Sub>
             </View>
           </Row>
+          {target === "items" ? (
+            <Sub style={{ marginTop: 8 }}>
+              {"Put the supplier's name on each row. A batch upload is a delivery, so Tredi raises one purchase order per supplier — the goods come in against that PO and the supplier is owed. Leave supplier empty and the row counts as opening stock."}
+            </Sub>
+          ) : null}
           <Btn label="Download the template" variant="ghost" small style={{ marginTop: 10 }} loading={grab.isPending}
             testID="import-template" onPress={() => grab.mutate()} />
         </Card>
@@ -187,6 +194,25 @@ export default function Import() {
                       <View style={{ flex: 1 }}>
                         <Row between><H4>{iss.title}</H4><Badge tone={iss.kind === "blocked" ? "over" : "due"}>{iss.action}</Badge></Row>
                         <Sub>{iss.detail}</Sub>
+                      </View>
+                    </Li>
+                  ))}
+                </Card>
+              </>
+            ) : null}
+            {report.purchase_plan?.length ? (
+              <>
+                <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Orders this upload will raise</Lbl>
+                <Card style={{ paddingVertical: 4 }} testID="import-po-plan">
+                  {report.purchase_plan.map((g: any, i: number) => (
+                    <Li key={g.supplier || "opening"} last={i === report.purchase_plan.length - 1} testID={`import-po-${i}`}>
+                      <Av icon={g.supplier ? "receipt-outline" : "cube-outline"} tone={g.supplier ? "mint" : "sq"} />
+                      <View style={{ flex: 1 }}>
+                        <Row between>
+                          <H4>{g.supplier || "No supplier · opening stock"}</H4>
+                          {g.new_supplier ? <Badge tone="info">New supplier</Badge> : null}
+                        </Row>
+                        <Sub>{g.items} item{g.items === 1 ? "" : "s"} · {g.qty} units · {money(g.value)}{g.supplier ? " owed on one PO" : " counted onto the shelf"}</Sub>
                       </View>
                     </Li>
                   ))}

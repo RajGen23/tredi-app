@@ -557,3 +557,15 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
   urgency, status open|answered|closed, replies[], by, shop}.
 - Super Admin SA.18 Support has a third tab **Messages** (count badge) with reply + close:
   `POST /api/admin/support/messages/{id}/reply` and `/close`, both audited.
+
+## Pass 33 — Batch stock upload is a purchase order
+- `supplier` column added to the stock import template (ITEM_COLS / `/api/import/template?target=items`).
+- `purchase_plan()` in routes/offline.py groups the ready rows by supplier. Preview now returns
+  `purchase_plan` (supplier, items, qty, value, new_supplier), `orders` and `opening_rows`.
+- Commit: item cards are written with quantity 0, then one PO per supplier is raised
+  (`db.purchases`, method credit, paid 0, number PO-###, note "Batch stock upload · <file>",
+  `source: "import"`), stock comes in through `apply_stock(kind="purchase", ref=PO number)`, and the
+  supplier is owed. Unknown suppliers are created automatically (note "Added by stock import").
+  Rows with a blank supplier are opening stock (`kind="opening"`), no PO raised.
+- Import screen shows "Orders this upload will raise" before committing, flags new suppliers, and the
+  success toast reads "N items in on M purchase orders".
