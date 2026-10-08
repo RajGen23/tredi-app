@@ -10,7 +10,7 @@ import logging
 from deps import (VAT_RATE, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
                   db, decorate_invoice, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_cost, line_totals, log_activity, stamp_costs, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
-from routes import activity, admin, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, users_roles
+from routes import activity, admin, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, support, users_roles
 from plans import TRIAL_DAYS
 from dummy_photos import pick_dummy_photo
 
@@ -1365,6 +1365,7 @@ app.include_router(activity.router)
 app.include_router(lookups.router)
 app.include_router(storage.router)
 app.include_router(billing.router)
+app.include_router(support.router)
 app.include_router(admin.router)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 

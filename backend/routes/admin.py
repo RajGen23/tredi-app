@@ -733,7 +733,43 @@ async def support(admin: Admin):
                      async for r in db.admin_support.find({"kind": "request"}).sort("created_at", -1)],
         "broadcasts": [clean(b) async for b in db.admin_broadcasts.find({}).sort("created_at", -1).limit(5)],
         "audiences": ["Pro plan · Nigeria", "All tenants", "Trial · expiring", "Lapsed · read-only"],
+        # Messages shop owners send from Help & support inside the app.
+        "messages": [{"id": str(m["_id"]), "business": m.get("business_name", ""), "topic": m.get("topic", ""),
+                      "subject": m.get("subject", ""), "message": m.get("message", ""), "by": m.get("by", ""),
+                      "contact": m.get("contact", ""), "urgency": m.get("urgency", "normal"),
+                      "status": m.get("status", "open"), "replies": len(m.get("replies", [])),
+                      "created_at": aw(m["created_at"]).isoformat()}
+                     async for m in db.support_messages.find({}).sort("created_at", -1).limit(40)],
+        "messages_open": await db.support_messages.count_documents({"status": "open"}),
     }
+
+
+class ReplyIn(BaseModel):
+    message: str
+
+
+@router.post("/support/messages/{mid}/reply")
+async def reply_message(mid: str, body: ReplyIn, admin: Admin):
+    m = await db.support_messages.find_one({"_id": oid(mid)})
+    if not m:
+        raise HTTPException(404, "Message not found")
+    if len(body.message.strip()) < 4:
+        raise HTTPException(400, "Write a reply the owner can act on")
+    await db.support_messages.update_one({"_id": m["_id"]}, {
+        "$push": {"replies": {"by": admin.get("name", "Tredi support"), "message": body.message.strip(), "at": now()}},
+        "$set": {"status": "answered", "updated_at": now()}})
+    await audit(admin, m.get("business_name", ""), "Support message answered", m.get("subject", ""))
+    return {"ok": True, "message": f"Reply sent to {m.get('business_name', 'the business')}"}
+
+
+@router.post("/support/messages/{mid}/close")
+async def close_support_message(mid: str, admin: Admin):
+    m = await db.support_messages.find_one({"_id": oid(mid)})
+    if not m:
+        raise HTTPException(404, "Message not found")
+    await db.support_messages.update_one({"_id": m["_id"]}, {"$set": {"status": "closed", "updated_at": now()}})
+    await audit(admin, m.get("business_name", ""), "Support message closed", m.get("subject", ""))
+    return {"ok": True, "message": "Message closed"}
 
 
 @router.post("/support/session/end")

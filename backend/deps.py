@@ -104,7 +104,7 @@ CurrentUser = Annotated[dict, Depends(current_user)]
 # A lapsed subscription never hides anybody's books: reading stays open, only
 # saving stops. These paths keep working so the owner can always get back in.
 WRITE_ALWAYS_OK = ("/api/auth", "/api/admin", "/api/plans", "/api/subscription",
-                   "/api/shops/active", "/api/businesses/", "/api/settings/lock")
+                   "/api/shops/active", "/api/businesses/", "/api/settings/lock", "/api/support")
 
 
 def aware(d):

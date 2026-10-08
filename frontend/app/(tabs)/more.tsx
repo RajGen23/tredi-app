@@ -40,6 +40,11 @@ const GROUPS: { title: string; items: { label: string; sub: string; icon: IonNam
     { label: "Calculators", sub: "Margin, discount, VAT, instalments", icon: "calculator-outline", route: "/tools", testID: "more-tools" },
     { label: "Business card", sub: "Share your shop details", icon: "id-card-outline", route: "/tools/business-card", testID: "more-card" },
   ] },
+  { title: "Help & legal", items: [
+    { label: "Help & support", sub: "Common questions, or write to us", icon: "help-buoy-outline", route: "/help", testID: "more-help" },
+    { label: "Terms & conditions", sub: "What we promise, what we ask of you", icon: "document-text-outline", route: "/legal/terms", testID: "more-legal-terms" },
+    { label: "Privacy policy", sub: "What we hold and the control you have", icon: "lock-closed-outline", route: "/legal/privacy", testID: "more-legal-privacy" },
+  ] },
 ];
 
 const useStyles = makeStyles((c) => ({

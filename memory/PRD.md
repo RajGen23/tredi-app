@@ -541,3 +541,19 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - Fixed oversized line items in Android PDFs (WebView font boosting): `text-size-adjust:none`,
   `*{max-height:1000000px}` and explicit `td` font-size; tightened cell padding and page margins.
 - On-screen paper now uses the same Poppins sizes (local P/L/V/N text primitives) and tighter spacing.
+
+## Pass 32 — Legal & Help
+- More tab has a new "Help & legal" group: Help & support, Terms & conditions, Privacy policy.
+- `src/legal.ts` holds the Terms (9 clauses) and Privacy (8 clauses) text, Nigeria-appropriate
+  (NDPA 2023, FIRS caveat, 14-day trial / read-only-on-expiry wording, 30-day deletion grace).
+  `src/components/legal-doc.tsx` is the shared reader; routes `/legal/terms`, `/legal/privacy`.
+- `/help`: contact rails (WhatsApp / call / email via Linking — placeholders support@tredi.app,
+  +234 800 000 0000, to be swapped for the real ones), 7 FAQs as an accordion, the business's own
+  support messages with replies, and a "Send us a message" sheet (topic chips, title, body, contact,
+  normal/urgent).
+- Backend `routes/support.py` (`/api/support`): GET help centre (contact, topics, faqs, messages),
+  POST /messages, POST /messages/{id}/close. Added to `WRITE_ALWAYS_OK` so a lapsed plan can still
+  write to support. Collection: `support_messages` {business_id, topic, subject, message, contact,
+  urgency, status open|answered|closed, replies[], by, shop}.
+- Super Admin SA.18 Support has a third tab **Messages** (count badge) with reply + close:
+  `POST /api/admin/support/messages/{id}/reply` and `/close`, both audited.

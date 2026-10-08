@@ -21,6 +21,8 @@ export default function Support() {
   const toast = useToast();
   const [tab, setTab] = useState("access");
   const [audience, setAudience] = useState("Pro plan · Nigeria");
+  const [replying, setReplying] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const d = useQuery({ queryKey: ["admin-support"], queryFn: () => adminApi("/support") });
@@ -34,6 +36,15 @@ export default function Support() {
   const remind = useMutation({
     mutationFn: (id: string) => adminApi(`/support/requests/${id}/remind`, { method: "POST", json: {} }),
     onSuccess: (res: any) => toast.show(res.message, "Sent ·"),
+  });
+  const reply = useMutation({
+    mutationFn: ({ id, message }: { id: string; message: string }) => adminApi(`/support/messages/${id}/reply`, { method: "POST", json: { message } }),
+    onSuccess: (res: any) => { toast.show(res.message, "Sent ·"); setReplying(null); setReplyText(""); refresh(); },
+    onError: (e: any) => toast.show(e.message),
+  });
+  const closeMsg = useMutation({
+    mutationFn: (id: string) => adminApi(`/support/messages/${id}/close`, { method: "POST", json: {} }),
+    onSuccess: (res: any) => { toast.show(res.message, "Closed ·"); refresh(); },
   });
   const send = useMutation({
     mutationFn: (queue: boolean) => adminApi("/support/broadcast", { method: "POST", json: { audience, title, message, queue } }),
@@ -58,7 +69,7 @@ export default function Support() {
 
   return (
     <AdminShell title="Support" sub="admin.tredi.app/support"
-      actions={<Tabs items={[{ key: "access", label: "Access requests" }, { key: "broadcast", label: "Broadcast" }]} value={tab} onChange={setTab} />}
+      actions={<Tabs items={[{ key: "access", label: "Access requests" }, { key: "messages", label: `Messages${d.data?.messages_open ? ` · ${d.data.messages_open}` : ""}` }, { key: "broadcast", label: "Broadcast" }]} value={tab} onChange={setTab} />}
       testID="sa18-support">
       {!d.data ? <Loading /> : tab === "access" ? (
         <>
@@ -83,6 +94,42 @@ export default function Support() {
           <Panel pad={0} title="Requests" sub="A tenant must be able to say no, and the system records that they did">
             <Table cols={cols} rows={d.data.requests} minWidth={840} empty="No access requests" />
           </Panel>
+        </>
+      ) : tab === "messages" ? (
+        <>
+          <Note tone="info" title="Messages sent from Help & support inside the app">
+            {"Every reply lands in the owner's Help screen. Keep it plain, keep it short, and say what they should do next."}
+          </Note>
+          {d.data.messages.length === 0 ? (
+            <Panel title="No messages yet" sub="Nothing has come in from a shop owner" />
+          ) : d.data.messages.map((m: any) => (
+            <Panel key={m.id} title={m.subject} sub={`${m.business} · ${m.topic} · ${m.by} · ${ago(m.created_at)} ago`}
+              testID={`msg-${m.id}`}
+              right={<Row gap={8}>
+                <Pill label={m.status === "open" ? "Open" : m.status === "answered" ? "Answered" : "Closed"} tone={m.status === "open" ? "warn" : m.status === "answered" ? "ok" : "mut"} />
+                {m.urgency === "urgent" ? <Pill label="Shop is stuck" tone="bad" /> : null}
+              </Row>}>
+              <Text style={{ fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 19, color: colors.onSurface }}>{m.message}</Text>
+              <Sub style={{ marginTop: 6 }}>Reach them on {m.contact || "—"} · {m.replies} repl{m.replies === 1 ? "y" : "ies"} sent</Sub>
+              {replying === m.id ? (
+                <>
+                  <View style={{ marginTop: 10 }}>
+                    <Input value={replyText} onChangeText={setReplyText} multiline testID={`reply-text-${m.id}`}
+                      placeholder="Open the invoice, tap Share, then Save PDF — we have pushed a fix this morning." />
+                  </View>
+                  <Row gap={8} style={{ marginTop: 10 }}>
+                    <Btn label="Send reply" tone="primary" busy={reply.isPending} onPress={() => reply.mutate({ id: m.id, message: replyText })} testID={`reply-send-${m.id}`} />
+                    <Btn label="Cancel" onPress={() => { setReplying(null); setReplyText(""); }} testID={`reply-cancel-${m.id}`} />
+                  </Row>
+                </>
+              ) : (
+                <Row gap={8} style={{ marginTop: 10 }}>
+                  <Btn label="Reply" tone="primary" icon="send-outline" onPress={() => { setReplying(m.id); setReplyText(""); }} testID={`reply-${m.id}`} />
+                  {m.status !== "closed" ? <Btn label="Close" onPress={() => closeMsg.mutate(m.id)} testID={`close-msg-${m.id}`} /> : null}
+                </Row>
+              )}
+            </Panel>
+          ))}
         </>
       ) : (
         <>
