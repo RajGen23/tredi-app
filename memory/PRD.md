@@ -577,3 +577,14 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - New route `/legal/account-deletion`; linked from More → Help & legal and from Help → Legal.
 - Contacts: WhatsApp & phone +2347063921091, support email sales@tredihq.com (CONTACT in
   routes/support.py). Legal/DPO address stays support@tredibooks.com as published on the site.
+
+## Pass 35 — Product image size + supplier ordering
+- Invoice settings gained `photo_size` (default 30px, clamped 16–90): backend InvoiceSettingsIn,
+  `photoPx(brand)` helper + PHOTO_SIZES in src/invoice-templates.ts, used by the `.thumb` CSS in both
+  the simple receipt and the professional HTML, and by invoice-paper.tsx on screen.
+  Control sits under "Show product image on invoice" (Small 24 / Medium 30 / Large 48 + custom px) and
+  only shows when photos are on. Live preview now prints a sample product photo so the size is visible.
+  (Logo size was never removed — this was the missing control for the item photo.)
+- GET /api/suppliers now returns most-recent-purchase first (and `last_po` = that PO number) instead of
+  A–Z. Suppliers screen adds a search box and sort chips: Recent PO (default) / Most owed / Name A–Z,
+  and each row reads "Last PO-449 · 06 Oct" or "No purchase recorded yet".

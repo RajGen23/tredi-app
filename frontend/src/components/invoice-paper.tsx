@@ -6,7 +6,7 @@ import { Image, Text, TextProps, View } from "react-native";
 
 import { Row } from "@/src/components/ui";
 import { longDate, money } from "@/src/format";
-import { Brand, readable } from "@/src/invoice-templates";
+import { Brand, photoPx, readable } from "@/src/invoice-templates";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const MARK = require("../../assets/images/tredi-wordmark.png");
@@ -265,7 +265,7 @@ function Styled({ inv, brand, linePhotos, logo }: Props) {
         {(inv.lines ?? []).map((l: any, i: number) => (
           <Row key={i} style={[s.rowLight, { paddingHorizontal: 2 }, compact && { paddingVertical: 4 }, tpl === "t5" && i % 2 === 1 && { backgroundColor: "#FAFCFB" }]}>
             <Row style={{ flex: 2, gap: 6 }}>
-              {photos && linePhotos[l.photo_url] ? <Image source={{ uri: linePhotos[l.photo_url] }} style={s.thumb} /> : null}
+              {photos && linePhotos[l.photo_url] ? <Image source={{ uri: linePhotos[l.photo_url] }} style={[s.thumb, { width: photoPx(brand), height: photoPx(brand) }]} /> : null}
               <View style={{ flex: 1 }}>
                 <Text style={s.tdName}>{l.name}</Text>
                 {l.note ? <P numberOfLines={2}>{l.note}</P> : null}
@@ -349,7 +349,7 @@ function Professional({ inv, brand, linePhotos, logo }: Props) {
             </View>
             {photos ? (
               <View style={{ width: 40 }}>
-                {linePhotos[l.photo_url] ? <Image source={{ uri: linePhotos[l.photo_url] }} style={[s.thumb, { width: 30, height: 30 }]} /> : null}
+                {linePhotos[l.photo_url] ? <Image source={{ uri: linePhotos[l.photo_url] }} style={[s.thumb, { width: photoPx(brand), height: photoPx(brand) }]} /> : null}
               </View>
             ) : null}
             <N style={{ flex: 0.6, textAlign: "right" }}>{l.quantity}</N>

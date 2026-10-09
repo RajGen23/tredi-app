@@ -14,11 +14,16 @@ export type Brand = {
   logo_url: string;
   logo_size: number;
   show_photos?: boolean;
+  /** How big the item photo prints beside each line, in px. */
+  photo_size?: number;
   footer?: string;
   tredi_mark?: boolean;
 };
 
-export const DEFAULT_BRAND: Brand = { template: "t3", brand_color: "#014747", logo_url: "", logo_size: 90 };
+export const DEFAULT_BRAND: Brand = { template: "t3", brand_color: "#014747", logo_url: "", logo_size: 90, photo_size: 30 };
+
+/** Item photo on the invoice line — clamped so a big number cannot break the row. */
+export const photoPx = (b: Brand) => Math.min(90, Math.max(16, Number(b.photo_size) || 30));
 
 export const TEMPLATES: { key: TemplateKey; name: string; note: string }[] = [
   { key: "t1", name: "Template 1", note: "Classic · logo left, details right" },
@@ -35,6 +40,12 @@ export const LOGO_SIZES = [
   { key: 60, label: "Small", note: "60px" },
   { key: 90, label: "Medium", note: "90px" },
   { key: 120, label: "Large", note: "120px" },
+];
+
+export const PHOTO_SIZES = [
+  { key: 24, label: "Small", note: "24px" },
+  { key: 30, label: "Medium", note: "30px" },
+  { key: 48, label: "Large", note: "48px" },
 ];
 
 /** The tredi mark, inlined so a printed invoice never depends on the network. */
@@ -141,7 +152,7 @@ function professionalHtml(inv: any, brand: Brand): string {
   th.r,td.r{text-align:right}
   td{padding:6px 6px;border-bottom:1px solid #EDEDED;vertical-align:middle;font-variant-numeric:tabular-nums;font-size:11px}
   .nm{font-weight:600}
-  .thumb{width:30px;height:30px;object-fit:cover;border-radius:4px}
+  .thumb{width:${photoPx(brand)}px;height:${photoPx(brand)}px;object-fit:cover;border-radius:4px}
   .totals{width:48%;margin-left:52%;margin-top:10px}
   .tot{display:flex;justify-content:space-between;padding:3px 0;font-variant-numeric:tabular-nums;font-size:11px}
   .tot.strong{font-weight:600;border-top:1px solid #EDEDED}
@@ -303,7 +314,7 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   table{width:100%;border-collapse:collapse;margin-top:10px}
   th{color:#93A9A4;font-size:8.5px;text-align:left;padding:5px 4px;letter-spacing:.06em;font-weight:600}
   td{padding:6px 4px;border-top:1px solid #E5EEEB;font-variant-numeric:tabular-nums;vertical-align:middle;font-size:11px}
-  .thumb{width:24px;height:24px;border-radius:5px;object-fit:cover;margin-right:7px;vertical-align:middle}
+  .thumb{width:${photoPx(brand)}px;height:${photoPx(brand)}px;border-radius:5px;object-fit:cover;margin-right:7px;vertical-align:middle}
   .tot{display:flex;justify-content:space-between;margin-top:3px;font-size:11px}
   .tot.strong{font-weight:600}
   .due{display:flex;justify-content:space-between;background:${c};color:${onC};padding:8px 10px;border-radius:7px;margin-top:7px;font-weight:700;font-size:12px}

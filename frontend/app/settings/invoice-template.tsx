@@ -13,7 +13,7 @@ import { photoSource, uploadPhoto } from "@/src/uploads";
 import { AppBar, Av, Btn, Card, Field, H4, Lbl, Loading, Row, Sub, Switch } from "@/src/components/ui";
 import { InvoicePaper } from "@/src/components/invoice-paper";
 import { useToast } from "@/src/components/sheet";
-import { DEFAULT_BRAND, LOGO_SIZES, SWATCHES, TEMPLATES, TemplateKey } from "@/src/invoice-templates";
+import { DEFAULT_BRAND, LOGO_SIZES, PHOTO_SIZES, SWATCHES, TEMPLATES, TemplateKey } from "@/src/invoice-templates";
 import { parseNum } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 import { useBottomPad } from "@/src/safe";
@@ -125,6 +125,10 @@ function Thumb({ tpl, color }: { tpl: TemplateKey; color: string }) {
   );
 }
 
+/** Stand-in product photo for the live preview, so the image size control can be
+ *  judged before a real item photo exists. */
+const SAMPLE_PHOTOS = { "sample-photo": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/62/Portland_Cement_Bags.jpg/500px-Portland_Cement_Bags.jpg" };
+
 /** A realistic stand-in invoice so the owner can see the look before any real
  *  invoice exists. Business details come from their own profile. */
 function sampleInvoice(business: any, rep?: string) {
@@ -134,8 +138,8 @@ function sampleInvoice(business: any, rep?: string) {
     customer_name: "Adeola Stores", customer_phone: "0803 000 0000", customer_address: "14 Allen Avenue, Ikeja",
     shop: business?.shops?.[0]?.name || "Head office", created_by: rep || "", vat_rate: 7.5,
     lines: [
-      { name: "Cement 50kg", quantity: 10, unit: "Bag", unit_price: 7900, total: 79000, discount: 0 },
-      { name: "Roofing nails", quantity: 2, unit: "Carton", unit_price: 12500, total: 25000, discount: 0 },
+      { name: "Cement 50kg", quantity: 10, unit: "Bag", unit_price: 7900, total: 79000, discount: 0, photo_url: "sample-photo" },
+      { name: "Roofing nails", quantity: 2, unit: "Carton", unit_price: 12500, total: 25000, discount: 0, photo_url: "sample-photo" },
     ],
     totals: { gross: 104000, discount_total: 0, taxable: 104000, vat: 7800, total: 111800 },
     paid: 50000, due: 61800,
@@ -174,7 +178,8 @@ export default function InvoiceTemplates() {
     brand_color: validHex ? f.brand_color : DEFAULT_BRAND.brand_color,
     header_color: /^#[0-9A-F]{6}$/i.test(f?.header_color ?? "") ? f.header_color : "",
     logo_size: Math.min(240, Math.max(30, parseNum(String(f?.logo_size ?? 90)) || 90)),
-    show_photos: false,
+    photo_size: Math.min(90, Math.max(16, parseNum(String(f?.photo_size ?? 30)) || 30)),
+    show_photos: !!f?.show_photos && f?.photos_allowed !== false,
     template: format === "simple" ? "receipt" : (f?.template ?? DEFAULT_BRAND.template),
   }), [f, format, validHex]);
   const sample = useMemo(() => sampleInvoice(business, user?.name), [business, user?.name]);
@@ -187,6 +192,7 @@ export default function InvoiceTemplates() {
         prefix: f.prefix, next_number: parseNum(String(f.next_number)), vat_rate: parseNum(String(f.vat_rate)),
         template: f.template, brand_color: f.brand_color, header_color: f.header_color ?? "", logo_url: f.logo_url, export_format: f.export_format ?? "professional",
         logo_size: Math.min(240, Math.max(30, parseNum(String(f.logo_size)) || 90)), show_photos: f.show_photos,
+        photo_size: Math.min(90, Math.max(16, parseNum(String(f.photo_size ?? 30)) || 30)),
       },
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["invoice-settings"] }); toast.show("Every invoice will use this look", "Saved"); },
@@ -306,6 +312,22 @@ export default function InvoiceTemplates() {
             </View>
             <Switch on={!!f.show_photos && f.photos_allowed !== false} onChange={f.photos_allowed === false ? undefined : (v) => setF({ ...f, show_photos: v })} testID="templates-show-photos" />
           </Row>
+          {f.show_photos && f.photos_allowed !== false ? (
+            <>
+              <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Product image size</Lbl>
+              <Row style={{ gap: 8 }}>
+                {PHOTO_SIZES.map((o) => (
+                  <Pressable key={o.key} testID={`templates-photo-size-${o.key}`} onPress={() => setF({ ...f, photo_size: o.key })}
+                    style={[s.size, Number(f.photo_size ?? 30) === o.key && s.sizeOn]}>
+                    <Text style={s.sizeText}>{o.label}</Text>
+                    <Sub style={{ fontSize: 10 }}>{o.note}</Sub>
+                  </Pressable>
+                ))}
+              </Row>
+              <Field label="Custom size (px)" keyboardType="numeric" mono value={String(f.photo_size ?? 30)}
+                onChangeText={(v) => setF({ ...f, photo_size: v })} testID="templates-photo-custom" style={{ marginTop: 10 }} />
+            </>
+          ) : null}
         </Card>
 
         <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Default export format</Lbl>
@@ -361,7 +383,7 @@ export default function InvoiceTemplates() {
           <Sub style={{ fontSize: 10.5 }}>{format === "simple" ? "Counter receipt · 80mm" : `${TEMPLATES.find((t) => t.key === f.template)?.name ?? "Template"} · A4`}</Sub>
         </Row>
         <View style={s.board} testID="templates-live-preview">
-          <InvoicePaper inv={sample} format={format} brand={previewBrand as any} linePhotos={{}} logo={logo} />
+          <InvoicePaper inv={sample} format={format} brand={previewBrand as any} linePhotos={SAMPLE_PHOTOS} logo={logo} />
         </View>
         <Sub style={{ marginTop: 8 }}>Sample figures — your real invoices use their own items, totals and bank details.</Sub>
 

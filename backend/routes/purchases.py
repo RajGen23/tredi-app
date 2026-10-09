@@ -92,13 +92,17 @@ async def supplier_owed(f: dict, sid: str) -> float:
 async def list_suppliers(user: CurrentUser):
     f = biz_filter(user)
     out = []
-    async for s in db.suppliers.find(f).sort("name", 1):
+    async for s in db.suppliers.find(f):
         d = clean(s)
         d["owed"] = await supplier_owed(f, d["id"])
         d["purchases"] = await db.purchases.count_documents({**f, "supplier_id": d["id"], **LIVE_PO})
         last = await db.purchases.find_one({**f, "supplier_id": d["id"]}, sort=[("created_at", -1)])
         d["last_purchase"] = last["created_at"].isoformat() if last else None
+        d["last_po"] = last.get("number", "") if last else ""
         out.append(d)
+    # Most recent delivery first — who you bought from today matters more than
+    # who happens to start with "A". Suppliers with no order yet sit at the end.
+    out.sort(key=lambda x: (x["last_purchase"] or "", x["name"].lower()), reverse=True)
     total = round(sum(x["owed"] for x in out), 2)
     return {"suppliers": out, "owed": total, "count": len(out)}
 

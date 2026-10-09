@@ -25,6 +25,7 @@ class InvoiceSettingsIn(BaseModel):
     due_days: int = 7
     conditions: List[dict] = DEFAULT_CONDITIONS
     show_photos: bool = False
+    photo_size: int = 30  # how big the item photo prints beside each invoice line
     tredi_mark: bool = True
     print_format: Literal["a4", "80mm", "58mm"] = "a4"
     default_bank_account_id: Optional[str] = None
