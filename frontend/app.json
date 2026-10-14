@@ -13,7 +13,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Scan bar codes and snap supplier bills",
         "NSPhotoLibraryUsageDescription": "Attach a bill photo to an expense",
-        "NSFaceIDUsageDescription": "Unlock your books with Face ID"
+        "NSFaceIDUsageDescription": "Unlock your books with Face ID",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
