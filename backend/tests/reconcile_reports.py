@@ -11,7 +11,7 @@ import os
 import sys
 import requests
 
-BASE = os.environ.get("TREDI_BASE", "https://ui-flow-accurate.preview.emergentagent.com") + "/api"
+BASE = os.environ.get("TREDI_BASE", "") + "/api"
 EMAIL = os.environ.get("TREDI_EMAIL", "owner@tredi.app")
 PASSWORD = os.environ.get("TREDI_PASSWORD", "tredi1234")
 

@@ -1,4 +1,4 @@
-"""Emergent managed object storage — receipt and bill photos."""
+"""Brand Junction managed object storage — receipt and bill photos."""
 from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Query, Request
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool

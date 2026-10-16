@@ -3,7 +3,7 @@ import io
 import os
 import requests
 
-BASE = "https://ui-flow-accurate.preview.emergentagent.com/api"
+BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "") + "/api"
 
 tok = requests.post(f"{BASE}/auth/login", json={"email": "owner@tredi.app", "password": "tredi1234"}, timeout=60)
 print("login", tok.status_code)
@@ -19,5 +19,5 @@ r = requests.post(f"{BASE}/upload", files=files, headers={"Authorization": f"Bea
 print("upload", r.status_code, r.text[:600])
 if r.ok:
     url = r.json()["url"]
-    g = requests.get(f"https://ui-flow-accurate.preview.emergentagent.com{url}?token={token}", timeout=60)
+    g = requests.get(f"{os.environ.get('EXPO_PUBLIC_BACKEND_URL', '')}{url}?token={token}", timeout=60)
     print("download", g.status_code, g.headers.get("Content-Type"), len(g.content))

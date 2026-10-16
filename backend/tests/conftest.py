@@ -1,6 +1,6 @@
 import os, pytest, requests, uuid
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://ui-flow-accurate.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
 
 @pytest.fixture(scope="session")
 def base_url():

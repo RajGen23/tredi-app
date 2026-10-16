@@ -6,6 +6,8 @@ import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { adminApi } from "@/src/admin/api";
+import { exportCsv } from "@/src/admin/export";
+import { useToast } from "@/src/components/sheet";
 import {
   AdminShell, Avatar, Btn, Col, Fig, Lbl, Loading, PLAN_TONE, Panel, Pill, Row, STATUS_LABEL, STATUS_TONE, Sub, Table, Tabs,
 } from "@/src/admin/ui";
@@ -30,6 +32,20 @@ export default function Businesses() {
     queryKey: ["admin-businesses", tab, q, plan, region, sort, page],
     queryFn: () => adminApi(`/businesses?tab=${tab}&q=${encodeURIComponent(q)}&plan=${plan}&region=${region}&sort=${sort}&page=${page}`),
   });
+  const toast = useToast();
+  const [exporting, setExporting] = useState(false);
+  const doExport = async () => {
+    setExporting(true);
+    try {
+      const all = await adminApi(`/businesses?tab=${tab}&q=${encodeURIComponent(q)}&plan=${plan}&region=${region}&sort=${sort}&page=1&size=5000`);
+      const res = await exportCsv("Businesses", "tredi-businesses", all.rows.map((r: any) => ({
+        name: r.name, tin: r.tin, city: r.city, region: r.region, sector: r.sector, plan: r.plan, plan_expires: r.plan_expires,
+        shops: r.shops, users: r.users, volume_30d: r.volume_30d, storage_used_gb: r.storage_used_gb,
+        last_active: r.last_active, status: r.status, suspended: r.suspended,
+      })));
+      toast.show(res.message, "Exported ·");
+    } catch (e: any) { toast.show(e.message); } finally { setExporting(false); }
+  };
   const counts = d.data?.counts ?? {};
   const pages = d.data ? Math.max(1, Math.ceil(d.data.total / d.data.size)) : 1;
 
@@ -70,7 +86,7 @@ export default function Businesses() {
 
   return (
     <AdminShell title="Businesses" sub="admin.tredi.app/businesses" search={q} onSearch={(v) => { setQ(v); setPage(1); }}
-      actions={<Row gap={8}><Btn label="Export CSV" icon="download-outline" /><Btn label="Add business" icon="add" tone="primary" onPress={() => router.push("/admin/migration")} /></Row>}
+      actions={<Row gap={8}><Btn label="Export CSV" icon="download-outline" busy={exporting} onPress={doExport} testID="businesses-export" /><Btn label="Add business" icon="add" tone="primary" onPress={() => router.push("/admin/migration")} /></Row>}
       testID="sa3-businesses">
       <Tabs
         value={tab}

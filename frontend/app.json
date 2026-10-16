@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.uiflowaccurate.qntnxx",
+      "bundleIdentifier": "com.brandjunction.tredi",
       "infoPlist": {
         "NSCameraUsageDescription": "Scan bar codes and snap supplier bills",
         "NSPhotoLibraryUsageDescription": "Attach a bill photo to an expense",
@@ -22,7 +22,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "package": "com.emergent.uiflowaccurate.qntnxx",
+      "package": "com.brandjunction.tredi",
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES",

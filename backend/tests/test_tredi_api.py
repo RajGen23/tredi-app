@@ -2,7 +2,7 @@
 sales, payments, expenses, dashboard."""
 import os, requests, uuid, pytest
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://ui-flow-accurate.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
 
 # ---------- Health & Auth ----------
 def test_health():

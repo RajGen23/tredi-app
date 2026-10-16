@@ -135,6 +135,8 @@ async def overview(admin: Admin, window: str = "30"):
         "overdue": len([t for t in tenants if t["plan"] == "lapsed"]),
         "migrations": await db.admin_migrations.count_documents({"committed": False}),
         "support": await db.admin_support.count_documents({"kind": "session", "status": "active"}),
+        "messages": await db.support_messages.count_documents({"status": "open"}),
+        "plan_requests": await db.plan_requests.count_documents({"status": "pending"}),
     }
     recent = sorted(tenants, key=lambda t: aw(t["created_at"]), reverse=True)[:4]
     return {
@@ -412,7 +414,9 @@ async def roles(admin: Admin):
             seen.add(r["name"])
             unique.append(r)
     unique += [{"name": "Night cashier", "count": 6}, {"name": "Counter only", "count": 4}]
-    return {"templates": [{"name": r, "count": counts.get(r, 0), "system": True} for r in ROLE_TEMPLATES],
+    custom = [{"name": t["name"], "count": 0, "system": False, "based_on": t["based_on"]}
+              async for t in db.admin_role_templates.find({}).sort("created_at", 1)]
+    return {"templates": [{"name": r, "count": counts.get(r, 0), "system": True} for r in ROLE_TEMPLATES] + custom,
             "tenant_built": unique,
             "matrix": PERMISSION_MATRIX,
             "visibility": {"owner": "All", "manager": "Shop", "sales": "Own", "stock": "Shop", "accountant": "All"},
@@ -562,6 +566,7 @@ async def notify_device(sid: str, admin: Admin):
 async def system(admin: Admin, tab: str = "all"):
     await seed_admin()
     f = {} if tab == "all" else ({"level": "ERR"} if tab == "5xx" else {"service": {"$in": ["sync-worker", "api"]}})
+    cfg = await db.admin_config.find_one({"key": "global"}) or {}
     return {"metrics": [
         {"label": "API p95", "value": "218 ms", "delta": "target 400", "tone": "pos"},
         {"label": "Error rate", "value": "0.42%", "delta": "▼ 0.1", "tone": "pos"},
@@ -570,7 +575,7 @@ async def system(admin: Admin, tab: str = "all"):
     ], "services": [{"name": s["name"], "uptime": s["uptime"], "up": s["up"]} async for s in db.admin_services.find({})],
         "logs": [{"level": e["level"], "service": e["service"], "message": e["message"], "ts": e["created_at"].isoformat()}
                  async for e in db.admin_errors.find(f).sort("created_at", -1).limit(20)],
-        "incident": {"title": "PDF renderer is the weak service",
+        "incident": {"open": cfg.get("incident_open", False), "title": "PDF renderer is the weak service",
                      "note": "Two of today's errors are long invoices timing out and a missing ₦ glyph. Both are cheap fixes and both would reach the customer as “my invoice will not open”."}}
 
 
@@ -738,6 +743,8 @@ async def support(admin: Admin):
                       "subject": m.get("subject", ""), "message": m.get("message", ""), "by": m.get("by", ""),
                       "contact": m.get("contact", ""), "urgency": m.get("urgency", "normal"),
                       "status": m.get("status", "open"), "replies": len(m.get("replies", [])),
+                      "thread": [{"by": x.get("by", ""), "message": x.get("message", ""), "at": aw(x["at"]).isoformat()}
+                                 for x in m.get("replies", []) if x.get("at")],
                       "created_at": aw(m["created_at"]).isoformat()}
                      async for m in db.support_messages.find({}).sort("created_at", -1).limit(40)],
         "messages_open": await db.support_messages.count_documents({"status": "open"}),
@@ -825,6 +832,83 @@ async def broadcast(body: BroadcastIn, admin: Admin):
                                           "status": "queued" if body.queue else "sent", "created_at": now()})
     await audit(admin, body.audience, "Broadcast " + ("queued" if body.queue else "sent"), body.title)
     return {"ok": True, "message": f"Broadcast {'queued' if body.queue else 'sent'} to {body.audience}"}
+
+
+# ---------------------------------------------------------------- panel actions
+class ExportIn(BaseModel):
+    what: str
+    rows: int = 0
+
+
+@router.post("/exports")
+async def log_export(body: ExportIn, admin: Admin):
+    """Every CSV that leaves the panel is written to the audit log as a data export."""
+    await audit(admin, "Platform", "Data exported", f"{body.what} · {body.rows} rows", "export")
+    return {"ok": True, "message": f"{body.what} exported · {body.rows} rows"}
+
+
+class PlanIn(BaseModel):
+    name: str
+    price: int = 0
+    shops: str = "1"
+    users: str = "1"
+    storage: str = "2 GB"
+    businesses: str = "1"
+
+
+@router.post("/plans")
+async def create_plan(body: PlanIn, admin: Admin):
+    name = body.name.strip()
+    if len(name) < 2:
+        raise HTTPException(400, "Give the plan a name")
+    key = "".join(ch for ch in name.lower().replace(" ", "_") if ch.isalnum() or ch == "_")
+    if await db.admin_plans.find_one({"key": key}):
+        raise HTTPException(400, "A plan with that name already exists")
+    await db.admin_plans.insert_one({"key": key, "name": name, "cadence": "Monthly", "price": max(0, body.price),
+                                     "price_label": f"₦ {max(0, body.price):,}", "shops": body.shops, "users": body.users,
+                                     "storage": body.storage, "businesses": body.businesses, "note": "Draft",
+                                     "created_at": now()})
+    await audit(admin, "All tenants", "Plan drafted", f"{name} · ₦ {body.price:,}/month", "billing")
+    return {"ok": True, "message": f"{name} saved as a draft — it goes live on the next renewal cycle"}
+
+
+class TemplateIn(BaseModel):
+    name: str
+    based_on: str = "Sales"
+
+
+@router.post("/roles/templates")
+async def create_template(body: TemplateIn, admin: Admin):
+    name = body.name.strip()
+    if len(name) < 2:
+        raise HTTPException(400, "Give the template a name")
+    if body.based_on not in ROLE_TEMPLATES:
+        raise HTTPException(400, "Pick a system template to start from")
+    if name in ROLE_TEMPLATES or await db.admin_role_templates.find_one({"name": name}):
+        raise HTTPException(400, "A template with that name already exists")
+    await db.admin_role_templates.insert_one({"name": name, "based_on": body.based_on, "created_at": now()})
+    await audit(admin, "All tenants", "Role template created", f"{name} · based on {body.based_on}", "permission")
+    return {"ok": True, "message": f"{name} created from {body.based_on}"}
+
+
+@router.post("/system/incident")
+async def toggle_incident(admin: Admin):
+    cfg = await db.admin_config.find_one({"key": "global"}) or {}
+    opened = not cfg.get("incident_open", False)
+    await db.admin_config.update_one({"key": "global"}, {"$set": {"incident_open": opened, "incident_at": now()}}, upsert=True)
+    await audit(admin, "Platform", "Incident opened" if opened else "Incident resolved", "PDF renderer")
+    return {"ok": True, "open": opened, "message": "Incident opened — status page updated" if opened else "Incident resolved"}
+
+
+@router.get("/support/requests/{rid}/log")
+async def request_log(rid: str, admin: Admin):
+    r = await db.admin_support.find_one({"_id": oid(rid)})
+    if not r:
+        raise HTTPException(404, "Request not found")
+    rows = [{"id": str(a["_id"]), "ts": aw(a["created_at"]).isoformat(), "actor": a.get("actor", ""), "event": a["event"],
+             "entity": a.get("entity", "")}
+            async for a in db.admin_audit.find({"business": r["business"], "category": "impersonation"}).sort("created_at", -1).limit(30)]
+    return {"business": r["business"], "scope": r.get("scope", ""), "duration": r.get("duration", ""), "rows": rows}
 
 
 @router.post("/seed")

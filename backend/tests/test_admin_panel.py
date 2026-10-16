@@ -4,7 +4,7 @@ import time
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://ui-flow-accurate.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
 ADMIN_EMAIL = "superadmin@tredi.app"
 ADMIN_PASSWORD = "tredi1234"
 

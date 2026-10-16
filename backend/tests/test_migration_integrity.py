@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv("/app/backend/.env")
 import jwt
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://ui-flow-accurate.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = os.environ.get("JWT_ALGORITHM", "HS256")
 

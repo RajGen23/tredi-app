@@ -18,6 +18,8 @@ const ATTENTION: { key: string; label: string; route: string; tone: "bad" | "war
   { key: "overdue", label: "Payments overdue", route: "/admin/subscriptions", tone: "warn" },
   { key: "migrations", label: "Migrations queued", route: "/admin/migration", tone: "info" },
   { key: "support", label: "Support access open", route: "/admin/support", tone: "info" },
+  { key: "messages", label: "Help messages open", route: "/admin/support", tone: "warn" },
+  { key: "plan_requests", label: "Plan requests waiting", route: "/admin/subscriptions", tone: "warn" },
 ];
 
 export default function Overview() {

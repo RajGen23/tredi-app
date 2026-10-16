@@ -5,6 +5,7 @@ import { Text, View } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { adminApi } from "@/src/admin/api";
+import { exportCsv } from "@/src/admin/export";
 import { useToast } from "@/src/components/sheet";
 import {
   AdminShell, Avatar, Btn, Col, Fig, Lbl, Loading, Note, Panel, Pill, Row, Sub, Table, Tabs,
@@ -31,6 +32,18 @@ export default function Users() {
     onSuccess: (res: any) => { toast.show(res.message, "Unlocked ·"); qc.invalidateQueries({ queryKey: ["admin-users"] }); qc.invalidateQueries({ queryKey: ["admin-security"] }); },
     onError: (e: any) => toast.show(e.message),
   });
+  const [exporting, setExporting] = useState(false);
+  const doExport = async () => {
+    setExporting(true);
+    try {
+      const all = await adminApi(`/users?tab=${tab}&q=${encodeURIComponent(q)}&role=${role}&page=1&size=5000`);
+      const res = await exportCsv("Users", "tredi-users", all.rows.map((r: any) => ({
+        name: r.name, contact: r.contact, businesses: r.businesses, role: r.role, shops: r.shops,
+        devices: r.devices, last_seen: r.last_seen, status: r.status,
+      })));
+      toast.show(res.message, "Exported ·");
+    } catch (e: any) { toast.show(e.message); } finally { setExporting(false); }
+  };
   const counts = d.data?.counts ?? {};
   const pages = d.data ? Math.max(1, Math.ceil(d.data.total / d.data.size)) : 1;
 
@@ -61,7 +74,7 @@ export default function Users() {
 
   return (
     <AdminShell title="Users" sub="admin.tredi.app/users" search={q} onSearch={(v) => { setQ(v); setPage(1); }}
-      actions={<Btn label="Export" icon="download-outline" />} testID="sa8-users">
+      actions={<Btn label="Export" icon="download-outline" busy={exporting} onPress={doExport} testID="users-export" />} testID="sa8-users">
       <Tabs value={tab} onChange={(k) => { setTab(k); setPage(1); }}
         items={[{ key: "all", label: "All", count: counts.all }, { key: "owners", label: "Owners", count: counts.owners },
           { key: "staff", label: "Staff", count: counts.staff }, { key: "locked", label: "Locked", count: counts.locked },

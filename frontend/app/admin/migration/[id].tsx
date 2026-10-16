@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { adminApi } from "@/src/admin/api";
+import { exportCsv } from "@/src/admin/export";
 import { useToast } from "@/src/components/sheet";
 import {
   AdminShell, Btn, Col, Fig, Lbl, Loading, Note, Panel, Pill, Row, Sub, Table, useWide,
@@ -40,6 +41,17 @@ export default function MigrationConsole() {
   });
 
   const m = d.data;
+  const downloadReport = async () => {
+    try {
+      const rows = [
+        { section: "Summary", item: m.file, detail: `${m.rows_read} read · ${m.will_import} will import · ${m.need_decision} need a decision`, action: m.committed ? "Committed" : "Not committed" },
+        ...m.mappings.map((x: any) => ({ section: "Mapping", item: x.source, detail: x.target || "not mapped", action: x.ok ? "OK" : "Needs a decision" })),
+        ...m.conflicts.map((x: any) => ({ section: "Conflict", item: x.issue, detail: `${x.rows} rows`, action: x.action })),
+      ];
+      const res = await exportCsv(`Migration report · ${m.tenant}`, `migration-${m.tenant}`, rows);
+      toast.show(res.message, "Downloaded ·");
+    } catch (e: any) { toast.show(e.message); }
+  };
   const mapCols: Col<any>[] = [
     { key: "source", label: "Source column", flex: 1.6, render: (r) => <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, color: colors.onSurface }}>{r.source}</Text> },
     { key: "target", label: "Maps to", flex: 1.6, render: (r) => (
@@ -62,7 +74,7 @@ export default function MigrationConsole() {
       actions={<Row gap={8}>
         <Btn label="Back" icon="arrow-back" onPress={() => router.push("/admin/migration")} />
         <Pill label={m?.committed ? "Committed" : "Dry run · nothing written"} tone={m?.committed ? "ok" : "warn"} />
-        <Btn label="Download report" icon="download-outline" />
+        <Btn label="Download report" icon="download-outline" disabled={!m} onPress={downloadReport} testID="download-report" />
         <Btn label="Commit import" tone="primary" busy={commit.isPending} disabled={m?.committed} onPress={() => commit.mutate()} testID="commit-import" />
       </Row>}
       testID="sa17-console">

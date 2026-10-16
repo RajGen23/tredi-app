@@ -2,9 +2,10 @@
 // that is what an engineer expects to scan; the amber card translates it.
 import { useState } from "react";
 import { Text, View } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { adminApi } from "@/src/admin/api";
+import { useToast } from "@/src/components/sheet";
 import { AdminShell, Btn, Fig, Lbl, Loading, Metrics, Note, Panel, Pill, Row, Sub, Tabs, useWide } from "@/src/admin/ui";
 import { stamp } from "@/src/admin/format";
 import { fonts, radius, useTheme } from "@/src/theme";
@@ -15,11 +16,19 @@ export default function SystemHealth() {
   const [tab, setTab] = useState("all");
   const d = useQuery({ queryKey: ["admin-system", tab], queryFn: () => adminApi(`/system?tab=${tab}`), refetchInterval: 30000 });
 
+  const qc = useQueryClient();
+  const toast = useToast();
+  const incident = useMutation({
+    mutationFn: () => adminApi("/system/incident", { method: "POST", json: {} }),
+    onSuccess: (res: any) => { toast.show(res.message, "Incident ·"); qc.invalidateQueries({ queryKey: ["admin-system"] }); },
+    onError: (e: any) => toast.show(e.message),
+  });
+
   const tone = (l: string) => (l === "ERR" ? colors.coralSoft : l === "WRN" ? "#E8C67A" : "#8FD8BE");
 
   return (
     <AdminShell title="System health" sub="admin.tredi.app/system"
-      actions={<Row gap={8}><Pill label="All services up" tone="ok" /><Sub>Updated 30s ago</Sub></Row>} testID="sa14-system">
+      actions={<Row gap={8}><Pill label={d.data?.incident?.open ? "Incident open" : "All services up"} tone={d.data?.incident?.open ? "warn" : "ok"} /><Sub>Updated 30s ago</Sub></Row>} testID="sa14-system">
       {!d.data ? <Loading /> : (
         <>
           <Metrics items={d.data.metrics} />
@@ -47,7 +56,8 @@ export default function SystemHealth() {
                   ))}
                 </View>
               </Panel>
-              <Note tone="warn" title={d.data.incident.title} action={<Btn label="Open incident" />}>
+              <Note tone="warn" title={d.data.incident.title} action={<Btn label={d.data.incident.open ? "Resolve incident" : "Open incident"} tone={d.data.incident.open ? "primary" : "ghost"}
+                busy={incident.isPending} onPress={() => incident.mutate()} testID="incident-toggle" />}>
                 {d.data.incident.note}
               </Note>
             </View>

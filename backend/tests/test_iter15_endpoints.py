@@ -23,7 +23,7 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL",
-                          "https://ui-flow-accurate.preview.emergentagent.com").rstrip("/")
+                          "").rstrip("/")
 
 
 # ---------- helpers ----------

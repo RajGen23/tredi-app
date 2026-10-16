@@ -20,7 +20,7 @@ from uuid import uuid4
 # inside a single class on the same worker (loadscope). We use a dict to pass ids.
 STATE: dict = {}
 
-BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://ui-flow-accurate.preview.emergentagent.com").rstrip("/")
+BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
 API = f"{BASE}/api"
 
 

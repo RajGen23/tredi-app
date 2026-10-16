@@ -1,4 +1,4 @@
-// Upload helper for Emergent object storage. The body shape and the way an
+// Upload helper for Brand Junction object storage. The body shape and the way an
 // image is displayed both differ between web and native.
 import { Platform } from "react-native";
 

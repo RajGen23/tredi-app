@@ -11,7 +11,7 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/") or \
-    "https://ui-flow-accurate.preview.emergentagent.com"
+    ""
 OWNER = {"username": "owner@tredi.app", "password": "tredi1234"}
 
 

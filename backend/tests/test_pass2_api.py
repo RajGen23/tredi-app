@@ -4,7 +4,7 @@ receipts/waybills/card, search/notifications/activity/history/shortcuts."""
 import os, uuid, requests, pytest
 from datetime import date, timedelta
 
-BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://ui-flow-accurate.preview.emergentagent.com").rstrip("/")
+BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
 
 
 # ============================================================ Reports (7)

@@ -7,9 +7,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/src/admin/api";
 import { useToast } from "@/src/components/sheet";
 import {
-  AdminShell, Btn, Col, Fig, Input, Lbl, Loading, Note, Panel, Pill, Row, Sub, Table, Tabs, useWide,
+  AdminModal, AdminShell, Btn, Col, Fig, Input, Lbl, Loading, Note, Panel, Pill, Row, Sub, Table, Tabs, useWide,
 } from "@/src/admin/ui";
-import { ago, inFuture } from "@/src/admin/format";
+import { ago, inFuture, stamp } from "@/src/admin/format";
 import { fonts, useTheme } from "@/src/theme";
 
 const TONE: Record<string, "ok" | "warn" | "bad" | "mut"> = { waiting: "warn", declined: "bad", completed: "ok" };
@@ -25,7 +25,9 @@ export default function Support() {
   const [replyText, setReplyText] = useState("");
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
+  const [logFor, setLogFor] = useState<any>(null);
   const d = useQuery({ queryKey: ["admin-support"], queryFn: () => adminApi("/support") });
+  const log = useQuery({ queryKey: ["admin-support-log", logFor?.id], enabled: !!logFor, queryFn: () => adminApi(`/support/requests/${logFor.id}/log`) });
   const refresh = () => qc.invalidateQueries({ queryKey: ["admin-support"] });
 
   const end = useMutation({
@@ -61,7 +63,7 @@ export default function Support() {
     ) },
     { key: "act", label: "", flex: 0.9, align: "right", render: (r) => (
       r.status === "waiting" ? <Btn label="Remind" onPress={() => remind.mutate(r.id)} testID={`remind-${r.id}`} />
-        : r.status === "completed" ? <Btn label="View log" testID={`log-${r.id}`} /> : <Sub>—</Sub>
+        : r.status === "completed" ? <Btn label="View log" onPress={() => setLogFor(r)} testID={`log-${r.id}`} /> : <Sub>—</Sub>
     ) },
   ];
 
@@ -94,6 +96,19 @@ export default function Support() {
           <Panel pad={0} title="Requests" sub="A tenant must be able to say no, and the system records that they did">
             <Table cols={cols} rows={d.data.requests} minWidth={840} empty="No access requests" />
           </Panel>
+          <AdminModal visible={!!logFor} onClose={() => setLogFor(null)} title={`Session log · ${logFor?.business ?? ""}`}
+            sub={`${logFor?.scope ?? ""}${logFor?.duration ? ` · ${logFor.duration}` : ""} · the owner sees the same lines`} testID="log-modal"
+            footer={<Btn label="Close" tone="primary" onPress={() => setLogFor(null)} testID="log-close" />}>
+            {!log.data ? <Loading /> : (
+              <Table minWidth={460} empty="No support access lines recorded for this business"
+                rows={log.data.rows}
+                cols={[
+                  { key: "ts", label: "When", flex: 1, render: (r: any) => <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.ink60 }}>{stamp(r.ts)}</Text> },
+                  { key: "event", label: "Event", flex: 1.5, render: (r: any) => <Text style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface }} numberOfLines={1}>{r.event}</Text> },
+                  { key: "entity", label: "Detail", flex: 1.5, render: (r: any) => <Sub numberOfLines={2}>{r.entity || "—"}</Sub> },
+                ]} />
+            )}
+          </AdminModal>
         </>
       ) : tab === "messages" ? (
         <>
@@ -111,6 +126,12 @@ export default function Support() {
               </Row>}>
               <Text style={{ fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 19, color: colors.onSurface }}>{m.message}</Text>
               <Sub style={{ marginTop: 6 }}>Reach them on {m.contact || "—"} · {m.replies} repl{m.replies === 1 ? "y" : "ies"} sent</Sub>
+              {(m.thread ?? []).map((t: any, i: number) => (
+                <View key={i} style={{ marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: colors.surfaceSecondary, borderLeftWidth: 3, borderLeftColor: colors.brandPrimary }} testID={`thread-${m.id}-${i}`}>
+                  <Sub>{t.by} · {ago(t.at)} ago</Sub>
+                  <Text style={{ fontFamily: fonts.regular, fontSize: 12.5, lineHeight: 18, color: colors.onSurface, marginTop: 3 }}>{t.message}</Text>
+                </View>
+              ))}
               {replying === m.id ? (
                 <>
                   <View style={{ marginTop: 10 }}>

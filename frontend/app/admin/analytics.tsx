@@ -5,6 +5,8 @@ import { Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 
 import { adminApi } from "@/src/admin/api";
+import { exportCsv } from "@/src/admin/export";
+import { useToast } from "@/src/components/sheet";
 import {
   AdminShell, Bars, Btn, Col, Fig, Loading, Metrics, MiniTrend, Note, Panel, Row, Table, Tabs, useWide,
 } from "@/src/admin/ui";
@@ -22,6 +24,19 @@ export default function Analytics() {
   const [plan, setPlan] = useState("");
   const d = useQuery({ queryKey: ["admin-analytics", days, region, plan], queryFn: () => adminApi(`/analytics?days=${days}&region=${region}&plan=${plan}`) });
 
+  const toast = useToast();
+  const doExport = async () => {
+    try {
+      const rows = [
+        ...d.data.metrics.map((m: any) => ({ section: "Metric", label: m.label, value: m.value, note: m.delta })),
+        ...d.data.series.map((s: any) => ({ section: "Weekly", label: s.label, value: s.sales, note: `debt ${s.debt}` })),
+        ...d.data.categories.map((c: any) => ({ section: "Category", label: c.category, value: c.units, note: "" })),
+      ];
+      const res = await exportCsv("Platform analytics", `tredi-analytics-${days}d`, rows);
+      toast.show(res.message, "Exported ·");
+    } catch (e: any) { toast.show(e.message); }
+  };
+
   const cols: Col<any>[] = [
     { key: "cat", label: "Category", flex: 2, render: (r) => <Text style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface }}>{r.category}</Text> },
     { key: "units", label: "Units", flex: 1, align: "right", render: (r) => <Fig>{r.units >= 1_000_000 ? `${(r.units / 1_000_000).toFixed(1)}M` : `${Math.round(r.units / 1000)}K`}</Fig> },
@@ -30,7 +45,7 @@ export default function Analytics() {
 
   return (
     <AdminShell title="Analytics" sub="admin.tredi.app/analytics"
-      actions={<Btn label="Export" icon="download-outline" />} testID="sa12-analytics">
+      actions={<Btn label="Export" icon="download-outline" disabled={!d.data} onPress={doExport} testID="analytics-export" />} testID="sa12-analytics">
       <Row gap={8} wrapped>
         <Tabs items={WINDOWS} value={days} onChange={setDays} />
         <Tabs items={REGIONS} value={region} onChange={setRegion} />

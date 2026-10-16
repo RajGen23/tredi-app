@@ -43,7 +43,7 @@ Attachment: `tredi-app-screens-rev5.html` — 81 screens / 14 flows, colours #00
 **P0**
 - Connect old user DB (import script: users/customers/items/invoices from SQL dump → Mongo, keep bcrypt hashes)
 - Barcode scanning (expo-camera) in Add item / Quick sale / New item
-- Item photos via Emergent Object Storage (05.2, 05.10 grid)
+- Item photos via Brand Junction Object Storage (05.2, 05.10 grid)
 **P1**
 - 02.x Summary, Cash flow, Product performance; 07.x Reports & P&L
 - 06.x Suppliers & Record purchase; 05.7/05.8 Stock transfers
@@ -83,7 +83,7 @@ Users: team list with the one restriction that matters per row, permission edito
 (abilities + own/shop/all visibility), build-a-role, "see what they see" preview, handover
 when a rep leaves, app lock with PIN.
 
-Documents & tools: Bills & receipts with photo capture via Emergent object storage and an
+Documents & tools: Bills & receipts with photo capture via Brand Junction object storage and an
 unlinked queue, waybill, calculators (margin, discount, VAT, instalments), business card.
 
 Home extras: editable shortcuts, global search, notifications inbox, activity trail and
@@ -126,7 +126,7 @@ User choices this pass: all 18 admin screens at once · design-accurate with **s
 
 ## Pass 7 — Invoice templates (04.10b, from the WhatsApp walkthrough video)
 The reference app's "Manage business → Invoice Templates" screen was missing. Built it:
-- `/settings/invoice-template` — logo upload (Emergent object storage, contextual photo permission with an Open Settings fallback), brand colour swatches + hex field, logo size Small 60 / Medium 90 / Large 120 + custom px, "Show product image on invoice" switch, and six template thumbnails drawn as live mini-layouts tinted with the chosen brand colour.
+- `/settings/invoice-template` — logo upload (Brand Junction object storage, contextual photo permission with an Open Settings fallback), brand colour swatches + hex field, logo size Small 60 / Medium 90 / Large 120 + custom px, "Show product image on invoice" switch, and six template thumbnails drawn as live mini-layouts tinted with the chosen brand colour.
 - Linked from More → Business → "Invoice templates" and from the Invoice settings screen.
 - Backend: `InvoiceSettingsIn` gained `template` (t1–t6), `brand_color`, `logo_url`, `logo_size`; persisted under `businesses.settings.invoice`.
 - `src/invoice-templates.ts` holds the six document layouts (Classic, Banner, Minimal, Accent, Bold, Compact) and the print HTML; `invoices/pdf/[id].tsx` now renders the chosen template, the logo and the brand colour, and the on-screen paper preview is tinted to match.
@@ -588,3 +588,8 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - GET /api/suppliers now returns most-recent-purchase first (and `last_po` = that PO number) instead of
   A–Z. Suppliers screen adds a search box and sort chips: Recent PO (default) / Most owed / Name A–Z,
   and each row reads "Last PO-449 · 06 Oct" or "No purchase recorded yet".
+
+## Update — Brand Junction cleanup & admin panel audit
+- Replaced "Emergent" in comments/tests; app ID now com.brandjunction.tredi (iOS + Android). Platform env vars/URLs/library names left untouched (required to run).
+- Admin panel dead buttons wired: Export CSV (Businesses, Users, Audit, Analytics, logged as Data exports), New plan (draft), Compare roles, New role template, Open/Resolve incident, Migration Download report, Support View log; support message reply thread shown; Overview shows Help messages + Plan requests tiles.
+- Tested: iteration_31 — all pass.

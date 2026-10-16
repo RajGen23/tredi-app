@@ -13,7 +13,7 @@ def _tiny_jpeg_bytes() -> bytes:
     return b"\xff\xd8\xff\xe0" + b"tredi-test-photo" * 32 + b"\xff\xd9"
 
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://ui-flow-accurate.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
 
 
 # ---- Backend: /api/upload-base64 -------------------------------------------------
