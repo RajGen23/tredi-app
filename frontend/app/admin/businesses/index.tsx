@@ -1,5 +1,6 @@
-// SA.3 Businesses (tenants) — volume, storage and last-active on the row,
-// because those three predict churn and cost. A lapsed tenant goes read-only.
+// Businesses — the businesses that actually signed up in the app. From here the
+// tredi team activates a plan for a client who paid directly, tailors a plan,
+// and sees when each account was last used.
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -8,109 +9,89 @@ import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/src/admin/api";
 import { exportCsv } from "@/src/admin/export";
 import { useToast } from "@/src/components/sheet";
-import {
-  AdminShell, Avatar, Btn, Col, Fig, Lbl, Loading, PLAN_TONE, Panel, Pill, Row, STATUS_LABEL, STATUS_TONE, Sub, Table, Tabs,
-} from "@/src/admin/ui";
-import { ago, compactMoney, expiryLabel } from "@/src/admin/format";
+import { AdminShell, Avatar, Btn, Col, Fig, Loading, Panel, Pill, Row, SUB_LABEL, SUB_TONE, Sub, Table, Tabs } from "@/src/admin/ui";
+import { dayMonth, seenLabel } from "@/src/admin/format";
 import { fonts, useTheme } from "@/src/theme";
 
-const PLANS = ["", "pro", "basic", "trial", "lapsed"];
-const REGIONS = ["", "NG", "GH", "KE"];
-const SORTS = [{ key: "last_active", label: "Sort: last active" }, { key: "volume", label: "Sort: volume" },
-  { key: "expiry", label: "Sort: expiry" }, { key: "name", label: "Sort: name" }];
+const SORTS = [{ key: "last_active", label: "Last active" }, { key: "expiry", label: "Ends soonest" },
+  { key: "newest", label: "Newest" }, { key: "name", label: "Name" }];
+
+const initials = (n: string) => n.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
 
 export default function Businesses() {
   const { colors } = useTheme();
   const router = useRouter();
+  const toast = useToast();
   const [tab, setTab] = useState("all");
   const [q, setQ] = useState("");
-  const [plan, setPlan] = useState("");
-  const [region, setRegion] = useState("");
   const [sort, setSort] = useState("last_active");
-  const [page, setPage] = useState(1);
   const d = useQuery({
-    queryKey: ["admin-businesses", tab, q, plan, region, sort, page],
-    queryFn: () => adminApi(`/businesses?tab=${tab}&q=${encodeURIComponent(q)}&plan=${plan}&region=${region}&sort=${sort}&page=${page}`),
+    queryKey: ["admin-businesses", tab, q, sort],
+    queryFn: () => adminApi(`/customers?status=${tab}&q=${encodeURIComponent(q)}&sort=${sort}`),
   });
-  const toast = useToast();
-  const [exporting, setExporting] = useState(false);
+  const counts = d.data?.counts ?? {};
+
   const doExport = async () => {
-    setExporting(true);
     try {
-      const all = await adminApi(`/businesses?tab=${tab}&q=${encodeURIComponent(q)}&plan=${plan}&region=${region}&sort=${sort}&page=1&size=5000`);
-      const res = await exportCsv("Businesses", "tredi-businesses", all.rows.map((r: any) => ({
-        name: r.name, tin: r.tin, city: r.city, region: r.region, sector: r.sector, plan: r.plan, plan_expires: r.plan_expires,
-        shops: r.shops, users: r.users, volume_30d: r.volume_30d, storage_used_gb: r.storage_used_gb,
-        last_active: r.last_active, status: r.status, suspended: r.suspended,
+      const res = await exportCsv("Businesses", "tredi-businesses", (d.data?.rows ?? []).map((r: any) => ({
+        business: r.name, owner: r.owner, email: r.email, phone: r.phone, plan: r.plan_name, status: r.status,
+        ends: r.ends_at, users: r.users, shops: r.shops, last_active: r.last_active, signed_up: r.created_at,
       })));
       toast.show(res.message, "Exported ·");
-    } catch (e: any) { toast.show(e.message); } finally { setExporting(false); }
+    } catch (e: any) { toast.show(e.message); }
   };
-  const counts = d.data?.counts ?? {};
-  const pages = d.data ? Math.max(1, Math.ceil(d.data.total / d.data.size)) : 1;
 
   const cols: Col<any>[] = [
-    { key: "biz", label: "Business", flex: 2.6, render: (r) => (
+    { key: "biz", label: "Business", flex: 2.4, render: (r) => (
       <Row gap={9}>
-        <Avatar text={r.initials} />
+        <Avatar text={initials(r.name)} />
         <View style={{ flexShrink: 1 }}>
-          <Text style={{ fontFamily: fonts.bold, fontSize: 12.5, color: colors.onSurface }} numberOfLines={1}>{r.name}</Text>
-          <Sub numberOfLines={1}>{r.tin ? `TIN ${r.tin}` : "No TIN on file"} · {r.city}</Sub>
+          <Text style={{ fontFamily: fonts.bold, fontSize: 12.5, color: colors.onSurface }} numberOfLines={1}>{r.name || "Unnamed business"}</Text>
+          <Sub numberOfLines={1}>{r.owner || "—"} · {r.email || r.phone || "no contact"}</Sub>
         </View>
       </Row>
     ) },
-    { key: "plan", label: "Plan", flex: 1.1, render: (r) => (
+    { key: "plan", label: "Plan", flex: 1.3, render: (r) => (
+      <View style={{ gap: 3, alignItems: "flex-start" }}>
+        <Text style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface }} numberOfLines={1}>{r.plan_name}</Text>
+        {r.custom ? <Pill label="Custom" tone="info" /> : null}
+        {r.suspended ? <Pill label="Paused" tone="bad" /> : null}
+      </View>
+    ) },
+    { key: "status", label: "Status", flex: 1, render: (r) => <Pill label={SUB_LABEL[r.status] ?? r.status} tone={SUB_TONE[r.status]} /> },
+    { key: "ends", label: "Ends", flex: 1, render: (r) => (
       <View>
-        <Pill label={r.plan === "pro" ? "Pro" : r.plan === "basic" ? "Basic" : r.plan === "trial" ? "Trial" : "Lapsed"} tone={PLAN_TONE[r.plan] ?? "mut"} />
-        <Sub style={{ marginTop: 3 }} numberOfLines={1}>{r.plan === "trial" ? `${Math.max(0, r.days_to_expiry)} days left` : r.days_to_expiry < 0 ? expiryLabel(r.days_to_expiry) : `renews in ${r.days_to_expiry}d`}</Sub>
+        <Sub>{r.ends_at ? dayMonth(r.ends_at) : "—"}</Sub>
+        {r.days_left !== null && r.days_left >= 0 ? <Sub style={{ fontSize: 10.5 }}>{r.days_left}d left</Sub> : null}
       </View>
     ) },
-    { key: "size", label: "Shops / users", flex: 1, align: "right", render: (r) => <Fig>{r.shops} / {r.users}</Fig> },
-    { key: "vol", label: "30-day volume", flex: 1.1, align: "right", render: (r) => <Fig>{compactMoney(r.volume_30d)}</Fig> },
-    { key: "storage", label: "Storage", flex: 1, align: "right", render: (r) => (
-      <View style={{ alignItems: "flex-end" }}>
-        <Fig tone={r.storage_used_gb / r.storage_limit_gb > 0.85 ? "neg" : undefined}>{r.storage_used_gb} / {r.storage_limit_gb} GB</Fig>
-        <View style={{ width: 58, height: 4, borderRadius: 2, backgroundColor: colors.surfaceTertiary, marginTop: 4 }}>
-          <View style={{ width: `${Math.min(100, (r.storage_used_gb / r.storage_limit_gb) * 100)}%`, height: 4, borderRadius: 2, backgroundColor: colors.brandPrimary }} />
-        </View>
-      </View>
-    ) },
-    { key: "seen", label: "Last active", flex: 1, align: "right", render: (r) => <Sub>{ago(r.last_active)} ago</Sub> },
-    { key: "status", label: "Status", flex: 1.1, align: "right", render: (r) => (
-      <Row gap={6}>
-        <Pill label={STATUS_LABEL[r.status] ?? r.status} tone={STATUS_TONE[r.status] ?? "mut"} />
-        {r.suspended ? <Pill label="Suspended" tone="bad" /> : null}
-      </Row>
+    { key: "team", label: "Team", flex: 0.7, align: "right", render: (r) => <Fig>{r.users}</Fig> },
+    { key: "last", label: "Last active", flex: 1.1, align: "right", render: (r) => (
+      <Text style={{ fontFamily: fonts.semibold, fontSize: 12, color: r.last_active ? colors.onSurface : colors.ink40 }} testID={`last-${r.id}`}>
+        {seenLabel(r.last_active)}
+      </Text>
     ) },
   ];
 
   return (
-    <AdminShell title="Businesses" sub="admin.tredi.app/businesses" search={q} onSearch={(v) => { setQ(v); setPage(1); }}
-      actions={<Row gap={8}><Btn label="Export CSV" icon="download-outline" busy={exporting} onPress={doExport} testID="businesses-export" /><Btn label="Add business" icon="add" tone="primary" onPress={() => router.push("/admin/migration")} /></Row>}
-      testID="sa3-businesses">
-      <Tabs
-        value={tab}
-        onChange={(k) => { setTab(k); setPage(1); }}
-        items={[{ key: "all", label: "All", count: counts.all }, { key: "active", label: "Active", count: counts.active },
-          { key: "trial", label: "Trial", count: counts.trial }, { key: "expiring", label: "Expiring", count: counts.expiring },
-          { key: "suspended", label: "Suspended", count: counts.suspended }]}
-      />
-      <Row gap={8} wrapped>
-        <Tabs items={PLANS.map((p) => ({ key: p, label: p ? p[0].toUpperCase() + p.slice(1) : "Any plan" }))} value={plan} onChange={setPlan} />
-        <Tabs items={REGIONS.map((r) => ({ key: r, label: r || "Any region" }))} value={region} onChange={setRegion} />
-        <Tabs items={SORTS} value={sort} onChange={setSort} />
+    <AdminShell title="Businesses" sub="Every shop using Tredi · activate, tailor and watch activity"
+      search={q} onSearch={setQ}
+      actions={<Btn label="Export CSV" icon="download-outline" disabled={!d.data} onPress={doExport} testID="businesses-export" />}
+      testID="sa-customers">
+      <Tabs items={[{ key: "all", label: "All", count: counts.all }, { key: "active", label: "Active", count: counts.active },
+        { key: "trialing", label: "On trial", count: counts.trialing }, { key: "expired", label: "Lapsed", count: counts.expired }]}
+        value={tab} onChange={setTab} />
+      <Row gap={6} wrapped style={{ marginVertical: 12 }}>
+        {SORTS.map((s) => (
+          <Btn key={s.key} label={s.label} tone={sort === s.key ? "deep" : "ghost"} onPress={() => setSort(s.key)} testID={`sort-${s.key}`} />
+        ))}
       </Row>
-      <Panel pad={0} testID="businesses-table">
-        {!d.data ? <Loading /> : <Table cols={cols} rows={d.data.rows} minWidth={1080} onRowPress={(r) => router.push(`/admin/businesses/${r.id}` as any)} />}
-      </Panel>
-      <Row style={{ justifyContent: "space-between" }}>
-        <Sub>Showing {d.data?.rows.length ?? 0} of {(d.data?.total ?? 0).toLocaleString()}</Sub>
-        <Row gap={7}>
-          <Btn label="‹" onPress={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} />
-          <Lbl>{page} / {pages}</Lbl>
-          <Btn label="›" onPress={() => setPage(Math.min(pages, page + 1))} disabled={page >= pages} testID="businesses-next" />
-        </Row>
-      </Row>
+      {!d.data ? <Loading /> : (
+        <Panel pad={0} title={`${d.data.rows.length} businesses`} sub="Tap a row to activate or customise their plan">
+          <Table cols={cols} rows={d.data.rows} minWidth={860} empty="No businesses match" testID="businesses-table"
+            onRowPress={(r: any) => router.push(`/admin/businesses/${r.id}` as any)} />
+        </Panel>
+      )}
     </AdminShell>
   );
 }

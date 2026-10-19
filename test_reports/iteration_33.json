@@ -1,0 +1,36 @@
+{
+  "summary": "Businesses/Customers merge validated end-to-end. Backend: 18/18 pytest pass in /app/backend/tests/test_iter33_admin_merge.py — old sample GET /api/admin/businesses & POST /api/admin/businesses/{id}/action both return 404 (removed); GET /api/admin/overview returns the five requested metric labels (Businesses, Paying, Active this week, People on Tredi, Plan value), attention map (expiring/lapsed/plan_requests/messages/inactive), series and recent rows (no sample 'Mwangi Depot 217' / 'Sani & Sons 207' names); GET /api/admin/subscriptions supports tab=7|30|lapsed|trial|paying with correct status filters and 4 metrics + catalogue of PAID_KEYS; GET /api/admin/users returns real counts, searchable by owner@tredi.app (owner 'Adaeze Owner' bound to 'Tredi Ventures'); GET /api/admin/plans lists Free trial/Starter/Premium/Pro/Enterprise plus 'Custom (per client)'; POST /api/admin/customers/{id}/suspend rejects reasons <4 chars (400) and when applied to Tredi Ventures makes owner /api/subscription expose suspended=true and owner POST /api/customers return 403 'This account is paused…'. Restore (reason='') toggles it off and owner writes resume. Frontend (desktop 1440x900, superadmin signed in via Continue): sidebar shows 'Businesses' (M1) and does NOT contain 'Customers' anywhere; /admin/businesses renders businesses-table with real names (Tredi Ventures, Cbeauty) and no sample demo names, all four sort chips (sort-last_active/expiry/newest/name) and businesses-export present; row click navigates to /admin/businesses/{id}. Business detail testIDs all present: current-plan, last-active, activate-panel, plan-pro, months-3, activate-amount (auto-filled list price), activate-reference, activate-note, activate-btn, custom-panel (custom-name, custom-price, custom-limit-users…), end-plan, suspend-toggle, team-table, history-table, business-back. activate-modal + activate-confirm, pause-modal + pause-reason + pause-confirm, end-modal + end-confirm all open on button press. /admin/overview shows the 5 real-metric cards (Businesses=185, Paying=179, People on Tredi=334, Plan value ₦ 9,149,000) and all 5 attention tiles (attention-expiring/lapsed/plan_requests/messages/inactive) are visible and clickable. /admin/subscriptions renders renewal-table with the five tabs 'Next 7 days / 30 days / Lapsed / On trial / All paying'. /admin/users shows owner@tredi.app · Adaeze Owner · Tredi Ventures and no sample names. /admin/subscriptions/plans (Plans & pricing route in sidebar) shows Free trial / Starter / Premium / Pro / Enterprise / Custom (per client) with live counts (e.g. Pro '171 on this plan'). No pageerror, no console error in the whole run. No deprecated expo-av/expo-barcode-scanner/expo-background-fetch found in the reviewed files.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_33.json",
+    "/app/backend/tests/test_iter33_admin_merge.py",
+    "/app/test_reports/pytest/iter33_merge.xml",
+    "/app/test_reports/screenshots/iter33_business_detail.png",
+    "/app/test_reports/screenshots/iter33_overview.png",
+    "/app/test_reports/screenshots/iter33_plans.png"
+  ],
+  "action_items": [
+    "No functional action items — every merge requirement passes. Minor polish only: the sidebar label is 'Plans & pricing' and routes to /admin/subscriptions/plans (not /admin/plans). This is intentional (plans live under the subscriptions folder) but if deep links like /admin/plans show up in docs or marketing, consider a Redirect route so the shorter URL doesn't hit 'Unmatched Route'.",
+    "cadence_for() in admin_customers.py still maps only 3→quarterly and 12→yearly, so a 6-month activation is stored as 'monthly'. Non-blocking (same note as iter32)."
+  ],
+  "critical_code_review_comments": [
+    "guard_writes correctly returns 403 before 402, so a paused expired business shows the pause message (verified).",
+    "subscription_state exposes 'suspended' on the subscription payload the owner app reads, so the frontend can render a 'Paused by Tredi' banner without an extra call.",
+    "admin_customers.summary builds its own dict with str(_id); plan_history/team projections also use str — no ObjectId leak.",
+    "customers() query filter {'deleted_at': None} correctly hides soft-deleted businesses; same filter is used in overview/subscriptions metrics so counts match."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter33_admin_merge.py (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "seed_data_creation": "Pause probe: paused Tredi Ventures (reason 'QA automated pause probe') → verified owner /api/customers POST → 403, /api/subscription suspended=true, then restored via POST /suspend with empty reason. One QA customer 'QA_pause_probe_cleanup' was created during the restore step and cleaned up afterwards via motor (db.customers.delete_many({name:/^QA_pause_probe/}) → deleted 1). Tredi Ventures left not-suspended, plan=pro, renews_at=2027-10-14.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend env uses EXPO_PUBLIC_BACKEND_URL in /app/frontend/.env. Admin login POST /api/admin/auth/login takes JSON {email,password} and returns {access_token, admin}. Owner login POST /api/auth/login takes form (username/password), returns {access_token,...}. There is NO /admin/customers route anymore; 'Customers' word does not appear in the sidebar. The 'Plans & pricing' sidebar item routes to /admin/subscriptions/plans — hitting /admin/plans directly shows an Expo Router 'Unmatched Route'. Tredi Ventures id 6aa7ae17267e782a241b7e6e; a seeded 'TEST Biz' row (id 6aa7b222a5cda710da2d5090) is still available for destructive flows."
+}

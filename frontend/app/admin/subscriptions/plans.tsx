@@ -9,7 +9,7 @@ import { useToast } from "@/src/components/sheet";
 import { AdminModal, AdminShell, Btn, Col, Fig, H2, Input, Lbl, Loading, Note, Panel, Pill, Row, Sub, Table, useWide } from "@/src/admin/ui";
 import { fonts, useTheme } from "@/src/theme";
 
-const BLANK = { name: "", price: "", shops: "3", users: "9", storage: "5 GB", businesses: "1" };
+const BLANK = { name: "", price: "", shops: "3", users: "9", storage: "10,000", businesses: "1" };
 
 export default function Plans() {
   const { colors } = useTheme();
@@ -50,7 +50,7 @@ export default function Plans() {
                 </Row>
                 <Fig size={24} style={{ marginTop: 8 }}>{p.price_label}</Fig>
                 <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 11 }} />
-                {[["Locations", p.shops], ["Staff", p.users], ["Storage", p.storage], ["Businesses", p.businesses]].map(([k, v]) => (
+                {[["Locations", p.shops], ["Staff", p.users], ["Invoices", p.storage], ["Businesses", p.businesses]].map(([k, v]) => (
                   <Row key={k as string} style={{ justifyContent: "space-between", paddingVertical: 4 }}>
                     <Lbl>{k}</Lbl><Fig>{v}</Fig>
                   </Row>
@@ -81,7 +81,7 @@ export default function Plans() {
                 <View style={{ flex: 1, gap: 6 }}><Lbl>Staff</Lbl><Input value={form.users} onChangeText={(v) => set("users", v)} testID="plan-users" /></View>
               </Row>
               <Row gap={8}>
-                <View style={{ flex: 1, gap: 6 }}><Lbl>Storage</Lbl><Input value={form.storage} onChangeText={(v) => set("storage", v)} testID="plan-storage" /></View>
+                <View style={{ flex: 1, gap: 6 }}><Lbl>Invoices</Lbl><Input value={form.storage} onChangeText={(v) => set("storage", v)} testID="plan-storage" /></View>
                 <View style={{ flex: 1, gap: 6 }}><Lbl>Businesses</Lbl><Input value={form.businesses} onChangeText={(v) => set("businesses", v)} testID="plan-businesses" /></View>
               </Row>
             </View>

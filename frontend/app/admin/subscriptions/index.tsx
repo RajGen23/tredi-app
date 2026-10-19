@@ -1,5 +1,5 @@
-// SA.6 Subscriptions & renewals — reminder history sits on the row so nobody
-// chases a business that has already had three messages this week.
+// SA.6 Subscriptions & renewals — real businesses. Renew straight from the row
+// when a client pays directly; plan requests from the app sit on top.
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -7,12 +7,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { adminApi } from "@/src/admin/api";
 import { useToast } from "@/src/components/sheet";
-import {
-  AdminModal, AdminShell, Avatar, Btn, Col, Fig, Input, Loading, Note, PLAN_TONE, Panel, Pill, Row, Sub, Table, Tabs,
-} from "@/src/admin/ui";
-import { expiryLabel } from "@/src/admin/format";
+import { AdminModal, AdminShell, Btn, Col, Fig, Input, Lbl, Loading, Note, Panel, Pill, Row, SUB_LABEL, SUB_TONE, Sub, Table, Tabs } from "@/src/admin/ui";
+import { dayMonth } from "@/src/admin/format";
 import { money } from "@/src/format";
 import { fonts, useTheme } from "@/src/theme";
+
+const MONTHS = [1, 3, 6, 12];
+const priceFor = (p: any, m: number) => (m === 3 ? p.prices.quarterly : m === 12 ? p.prices.yearly : p.prices.monthly * m);
 
 export default function Subscriptions() {
   const { colors } = useTheme();
@@ -20,35 +21,46 @@ export default function Subscriptions() {
   const qc = useQueryClient();
   const toast = useToast();
   const [tab, setTab] = useState("7");
-  const [extend, setExtend] = useState<any>(null);
-  const [days, setDays] = useState("30");
+  const [renew, setRenew] = useState<any>(null);
+  const [plan, setPlan] = useState("premium");
+  const [months, setMonths] = useState(1);
+  const [amount, setAmount] = useState("");
+  const [reference, setReference] = useState("");
   const [decline, setDecline] = useState<any>(null);
   const [why, setWhy] = useState("");
   const d = useQuery({ queryKey: ["admin-subscriptions", tab], queryFn: () => adminApi(`/subscriptions?tab=${tab}`) });
   const reqs = useQuery({ queryKey: ["admin-plan-requests"], queryFn: () => adminApi("/plan-requests") });
+  const catalogue: any[] = d.data?.catalogue ?? [];
 
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["admin-subscriptions"] });
-    qc.invalidateQueries({ queryKey: ["admin-overview"] });
+    ["admin-subscriptions", "admin-overview", "admin-businesses", "admin-plan-requests"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  };
+  const pick = (k: string, m: number) => {
+    setPlan(k);
+    setMonths(m);
+    const p = catalogue.find((x) => x.key === k);
+    if (p) setAmount(String(priceFor(p, m)));
+  };
+  const openRenew = (r: any) => {
+    setRenew(r);
+    setReference("");
+    pick(catalogue.some((p) => p.key === r.plan) ? r.plan : "premium", 1);
   };
   const run = useMutation({
-    mutationFn: () => adminApi(`/subscriptions/${extend.id}/extend`, { method: "POST", json: { days: Number(days) || 30 } }),
-    onSuccess: (res: any) => { toast.show(res.message, "Renewed ·"); setExtend(null); invalidate(); },
+    mutationFn: () => adminApi(`/customers/${renew.id}/activate`, { method: "POST",
+      json: { plan, months, amount: Number(amount) || 0, reference, extend: true } }),
+    onSuccess: (res: any) => { toast.show(res.message, "Renewed ·"); setRenew(null); invalidate(); },
     onError: (e: any) => toast.show(e.message),
   });
   const approve = useMutation({
     mutationFn: (r: any) => adminApi(`/plan-requests/${r.id}/approve`, { method: "POST", json: { months: 1 } }),
-    onSuccess: (res: any) => { toast.show(res.message, "Activated ·"); qc.invalidateQueries({ queryKey: ["admin-plan-requests"] }); },
+    onSuccess: (res: any) => { toast.show(res.message, "Activated ·"); invalidate(); },
     onError: (e: any) => toast.show(e.message),
   });
   const refuse = useMutation({
     mutationFn: () => adminApi(`/plan-requests/${decline.id}/decline`, { method: "POST", json: { note: why } }),
-    onSuccess: (res: any) => { toast.show(res.message, "Closed ·"); setDecline(null); setWhy(""); qc.invalidateQueries({ queryKey: ["admin-plan-requests"] }); },
+    onSuccess: (res: any) => { toast.show(res.message, "Closed ·"); setDecline(null); setWhy(""); invalidate(); },
     onError: (e: any) => toast.show(e.message),
-  });
-  const batch = useMutation({
-    mutationFn: () => adminApi("/subscriptions/reminders", { method: "POST", json: {} }),
-    onSuccess: (res: any) => { toast.show(res.message, "Sent ·"); invalidate(); },
   });
 
   const reqCols: Col<any>[] = [
@@ -71,64 +83,73 @@ export default function Subscriptions() {
 
   const cols: Col<any>[] = [
     { key: "biz", label: "Business", flex: 2.2, render: (r) => (
-      <Row gap={9}>
-        <Avatar text={r.initials} />
-        <View style={{ flexShrink: 1 }}>
-          <Text style={{ fontFamily: fonts.bold, fontSize: 12.5, color: colors.onSurface }} numberOfLines={1}>{r.name}</Text>
-          <Sub numberOfLines={1}>{r.shops} shop{r.shops === 1 ? "" : "s"} · {r.users} users</Sub>
-        </View>
-      </Row>
+      <View style={{ flexShrink: 1 }}>
+        <Text style={{ fontFamily: fonts.bold, fontSize: 12.5, color: colors.onSurface }} numberOfLines={1}>{r.name || "Unnamed business"}</Text>
+        <Sub numberOfLines={1}>{r.owner} · {r.phone || r.email || "no contact"}</Sub>
+      </View>
     ) },
-    { key: "plan", label: "Plan", flex: 0.9, render: (r) => <Pill label={r.plan === "pro" ? "Pro" : r.plan === "basic" ? "Basic" : r.plan === "trial" ? "Trial" : "Lapsed"} tone={PLAN_TONE[r.plan] ?? "mut"} /> },
-    { key: "amount", label: "Amount", flex: 1, align: "right", render: (r) => <Fig>{r.plan_amount ? money(r.plan_amount) : "—"}</Fig> },
-    { key: "expires", label: "Expires", flex: 1, align: "right", render: (r) => <Fig tone={r.days_to_expiry <= 3 ? "neg" : undefined}>{expiryLabel(r.days_to_expiry)}</Fig> },
-    { key: "reminders", label: "Reminders sent", flex: 1.2, render: (r) => (
+    { key: "plan", label: "Plan", flex: 1, render: (r) => <Sub>{r.plan_name}</Sub> },
+    { key: "status", label: "Status", flex: 0.8, render: (r) => <Pill label={SUB_LABEL[r.status] ?? r.status} tone={SUB_TONE[r.status]} /> },
+    { key: "amount", label: "Price", flex: 0.9, align: "right", render: (r) => <Fig>{r.price ? money(r.price) : "—"}</Fig> },
+    { key: "ends", label: "Ends", flex: 1.1, align: "right", render: (r) => (
+      <View style={{ alignItems: "flex-end" }}>
+        <Fig tone={r.status === "expired" || (r.days_left ?? 99) <= 3 ? "neg" : undefined}>{dayMonth(r.ends_at)}</Fig>
+        <Sub style={{ fontSize: 10.5 }}>{r.status === "expired" ? "lapsed" : `${r.days_left}d left`}</Sub>
+      </View>
+    ) },
+    { key: "act", label: "", flex: 1.2, align: "right", render: (r) => (
       <Row gap={6}>
-        {r.reminders.length === 0 ? <Sub>None</Sub> : r.reminders.map((x: string) => <Pill key={x} label={`${x} ✓`} tone="ok" />)}
+        <Btn label="Open" onPress={() => router.push(`/admin/businesses/${r.id}` as any)} testID={`open-${r.id}`} />
+        <Btn label={r.status === "trialing" ? "Activate" : "Renew"} tone="primary" onPress={() => openRenew(r)} testID={`renew-${r.id}`} />
       </Row>
-    ) },
-    { key: "auto", label: "Auto-renew", flex: 0.9, align: "right", render: (r) => <Pill label={r.auto_renew ? "On" : "Off"} tone={r.auto_renew ? "ok" : "mut"} /> },
-    { key: "act", label: "", flex: 0.9, align: "right", render: (r) => (
-      <Btn label={r.plan === "trial" ? "Convert" : "Extend"} onPress={() => { setExtend(r); setDays("30"); }} testID={`extend-${r.id}`} />
     ) },
   ];
 
   return (
-    <AdminShell title="Subscriptions" sub="admin.tredi.app/subscriptions"
-      actions={<Row gap={8}>
-        <Btn label="Send renewal batch" icon="send-outline" busy={batch.isPending} onPress={() => batch.mutate()} testID="reminder-batch" />
-        <Btn label="Plans & pricing" tone="primary" onPress={() => router.push("/admin/subscriptions/plans")} />
-      </Row>}
+    <AdminShell title="Subscriptions" sub="Renewals for real businesses · record direct payments here"
+      actions={<Btn label="Plans & pricing" tone="primary" onPress={() => router.push("/admin/subscriptions/plans")} />}
       testID="sa6-subscriptions">
       {!d.data ? <Loading /> : (
         <>
-          <Row gap={10} wrapped>
-            <View style={{ flex: 1, minWidth: 280 }}><MetricsRow items={d.data.metrics} /></View>
-          </Row>
+          <MetricsRow items={d.data.metrics} />
           {(reqs.data?.count ?? 0) > 0 ? (
             <Panel pad={0} title="Plan requests from the app" sub="A shop owner tapped a plan — activating it changes their live limits"
               testID="plan-requests">
               <Table cols={reqCols} rows={reqs.data.rows} minWidth={900} empty="Nothing waiting" />
             </Panel>
           ) : null}
-          <Panel pad={0} title="Renewal queue" sub="Grace period: 14 days after expiry"
-            right={<Tabs items={[{ key: "7", label: "Next 7 days" }, { key: "30", label: "30 days" }, { key: "lapsed", label: "Lapsed" }]} value={tab} onChange={setTab} />}>
-            <Table cols={cols} rows={d.data.rows} minWidth={1000} empty="Nothing due in this window" />
+          <Panel pad={0} title="Renewal queue" sub="Lapsed businesses can read their books but not save until renewed"
+            right={<Tabs items={[{ key: "7", label: "Next 7 days" }, { key: "30", label: "30 days" }, { key: "lapsed", label: "Lapsed" },
+              { key: "trial", label: "On trial" }, { key: "paying", label: "All paying" }]} value={tab} onChange={setTab} />}>
+            <Table cols={cols} rows={d.data.rows} minWidth={1000} empty="Nothing in this window" testID="renewal-table" />
           </Panel>
-          <Note tone="info" title={`Grace period: ${d.data.grace_days} days after expiry`}>
-            During grace the tenant keeps full access and sees an in-app banner. After that, writes stop and the app goes read-only — data is never removed.
+          <Note tone="info" title="Paid you directly?">
+            Tap Renew, pick the plan and months, and enter the amount and payment reference. It is logged in the business&apos;s plan history and the owner sees it in their Activity.
           </Note>
 
-          <AdminModal visible={!!extend} onClose={() => setExtend(null)} title={`Extend ${extend?.name ?? ""}`}
-            sub="Recording a payment here moves the expiry date and clears the risk flag."
-            testID="extend-modal"
+          <AdminModal visible={!!renew} onClose={() => setRenew(null)} title={`Renew ${renew?.name ?? ""}`}
+            sub="Starts today, or after the time left on the same plan." testID="renew-modal"
             footer={<Row gap={8}>
-              <Btn label="Cancel" onPress={() => setExtend(null)} />
-              <Btn label="Extend" tone="primary" busy={run.isPending} onPress={() => run.mutate()} testID="extend-confirm" />
+              <Btn label="Cancel" onPress={() => setRenew(null)} />
+              <Btn label="Activate" tone="primary" busy={run.isPending} onPress={() => run.mutate()} testID="renew-confirm" />
             </Row>}>
+            <Lbl>Plan</Lbl>
+            <Row gap={6} wrapped style={{ marginTop: 6, marginBottom: 10 }}>
+              {catalogue.map((p) => <Btn key={p.key} label={p.name} tone={plan === p.key ? "deep" : "ghost"} onPress={() => pick(p.key, months)} testID={`renew-plan-${p.key}`} />)}
+            </Row>
+            <Lbl>How long</Lbl>
+            <Row gap={6} wrapped style={{ marginTop: 6, marginBottom: 10 }}>
+              {MONTHS.map((m) => <Btn key={m} label={`${m} mo`} tone={months === m ? "deep" : "ghost"} onPress={() => pick(plan, m)} testID={`renew-months-${m}`} />)}
+            </Row>
             <Row gap={8}>
-              <Input value={days} onChangeText={setDays} placeholder="Days" keyboardType="numeric" width={110} testID="extend-days" />
-              <Sub>days from today or from the current expiry, whichever is later.</Sub>
+              <View style={{ flex: 1, gap: 6 }}>
+                <Lbl>Amount received (₦)</Lbl>
+                <Input value={amount} onChangeText={(v) => setAmount(v.replace(/\D/g, ""))} keyboardType="numeric" testID="renew-amount" />
+              </View>
+              <View style={{ flex: 1, gap: 6 }}>
+                <Lbl>Payment reference</Lbl>
+                <Input value={reference} onChangeText={setReference} placeholder="Transfer ref" testID="renew-reference" />
+              </View>
             </Row>
           </AdminModal>
 

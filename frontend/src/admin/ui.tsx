@@ -22,7 +22,6 @@ export const NAV: { group: string; items: { label: string; route: string; icon: 
     { label: "Analytics", route: "/admin/analytics", icon: "trending-up-outline", tag: "M2" },
   ] },
   { group: "Tenants", items: [
-    { label: "Customers", route: "/admin/customers", icon: "storefront-outline", tag: "Live" },
     { label: "Businesses", route: "/admin/businesses", icon: "business-outline", tag: "M1" },
     { label: "Subscriptions", route: "/admin/subscriptions", icon: "card-outline", tag: "M1" },
     { label: "Plans & pricing", route: "/admin/subscriptions/plans", icon: "pricetags-outline", tag: "M2" },
@@ -447,28 +446,5 @@ export function AdminShell({ title, sub, actions, children, search, onSearch, te
   );
 }
 
-export function TenantTabs({ id, active }: { id: string; active: "overview" | "structure" | "subscription" | "activity" | "data" }) {
-  const router = useRouter();
-  const items = [
-    { key: "overview", label: "Overview" },
-    { key: "structure", label: "Shops & users" },
-    { key: "subscription", label: "Subscription" },
-    { key: "activity", label: "Activity" },
-    { key: "data", label: "Data" },
-  ];
-  return (
-    <Tabs items={items} value={active} onChange={(k) => {
-      if (k === "structure") router.push(`/admin/businesses/${id}/structure` as any);
-      else if (k === "subscription") router.push("/admin/subscriptions");
-      else if (k === "activity") router.push("/admin/security/audit");
-      else if (k === "data") router.push("/admin/backup");
-      else router.push(`/admin/businesses/${id}` as any);
-    }} />
-  );
-}
-
-export const PLAN_TONE: Record<string, Tone> = { pro: "info", basic: "mut", trial: "warn", lapsed: "bad" };
-export const STATUS_TONE: Record<string, Tone> = { healthy: "ok", expiring: "warn", no_activity: "mut", read_only: "bad", suspended: "bad" };
-export const STATUS_LABEL: Record<string, string> = { healthy: "Healthy", expiring: "Expiring", no_activity: "No activity", read_only: "Read-only", suspended: "Suspended" };
 export const SUB_TONE: Record<string, Tone> = { active: "ok", trialing: "warn", expired: "bad" };
 export const SUB_LABEL: Record<string, string> = { active: "Active", trialing: "On trial", expired: "Lapsed" };

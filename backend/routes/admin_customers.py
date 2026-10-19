@@ -40,7 +40,8 @@ async def summary(biz: dict) -> dict:
             "days_left": sub["days_left"], "ends_at": sub["ends_at"], "price": sub["price"],
             "users": await db.users.count_documents({"business_id": bid}),
             "shops": len(biz.get("shops") or []) or 1,
-            "last_active": iso(last or biz.get("last_active_at")), "created_at": iso(biz.get("created_at"))}
+            "last_active": iso(last or biz.get("last_active_at")), "created_at": iso(biz.get("created_at")),
+            "suspended": bool(biz.get("suspended"))}
 
 
 @router.get("")
@@ -198,3 +199,129 @@ async def end_plan(bid: str, admin: Admin):
     await audit(admin, biz.get("name", ""), "Plan ended by Tredi team", "", "billing")
     return {"ok": True, "message": "Plan ended — the customer is read-only until they renew"}
 
+
+
+class SuspendIn(BaseModel):
+    reason: str = ""
+
+
+@router.post("/{bid}/suspend")
+async def toggle_suspend(bid: str, body: SuspendIn, admin: Admin):
+    """Pause saving for a business (books stay readable), or restore it."""
+    biz = await db.businesses.find_one({"_id": oid(bid)})
+    if not biz:
+        raise HTTPException(404, "Customer not found")
+    on = not biz.get("suspended", False)
+    if on and len(body.reason.strip()) < 4:
+        raise HTTPException(400, "Say why — it is written to the audit log")
+    await db.businesses.update_one({"_id": biz["_id"]}, {"$set": {"suspended": on, "suspended_reason": body.reason.strip() if on else ""}})
+    await audit(admin, biz.get("name", ""), "Writes suspended" if on else "Writes restored", body.reason.strip())
+    return {"ok": True, "suspended": on, "message": f"{biz.get('name', 'Business')} {'paused — read-only' if on else 'can save again'}"}
+
+
+# ---------------------------------------------------------------- live Overview / Subscriptions / Users
+live = APIRouter(prefix="/api/admin")
+
+
+async def all_summaries() -> list:
+    return [await summary(b) async for b in db.businesses.find({"deleted_at": None})]
+
+
+def monthly_value(r: dict) -> int:
+    return r["price"] if r["status"] == "active" and r["plan"] != "trial" else 0
+
+
+@live.get("/overview")
+async def overview(admin: Admin, window: str = "30"):
+    rows = await all_summaries()
+    days = 90 if window == "90" else 30
+    since = now() - timedelta(days=days)
+    week = (now() - timedelta(days=7)).isoformat()
+    paying = [r for r in rows if r["status"] == "active" and r["plan"] != "trial"]
+    attention = {
+        "expiring": len([r for r in rows if r["status"] != "expired" and r["days_left"] is not None and 0 <= r["days_left"] <= 7]),
+        "lapsed": len([r for r in rows if r["status"] == "expired"]),
+        "inactive": len([r for r in rows if not r["last_active"] or r["last_active"] < (now() - timedelta(days=14)).isoformat()]),
+        "plan_requests": await db.plan_requests.count_documents({"status": "pending"}),
+        "messages": await db.support_messages.count_documents({"status": "open"}),
+    }
+    step = max(1, days // 6)
+    series = []
+    for i in range(days, 0, -step):
+        a, b = now() - timedelta(days=i), now() - timedelta(days=max(0, i - step))
+        series.append({"label": a.strftime("%d %b"),
+                       "signups": await db.businesses.count_documents({"deleted_at": None, "created_at": {"$gte": a, "$lt": b}}),
+                       "invoices": await db.invoices.count_documents({"deleted_at": None, "created_at": {"$gte": a, "$lt": b}})})
+    joined = len([r for r in rows if r["created_at"] and r["created_at"] >= since.isoformat()])
+    recent = sorted(rows, key=lambda r: r["created_at"] or "", reverse=True)[:6]
+    return {
+        "metrics": [
+            {"label": "Businesses", "value": f"{len(rows):,}", "delta": f"▲ {joined} in {days} days", "tone": "pos"},
+            {"label": "Paying", "value": f"{len(paying):,}", "delta": f"{len([r for r in rows if r['status'] == 'trialing'])} on trial"},
+            {"label": "Active this week", "value": f"{len([r for r in rows if (r['last_active'] or '') >= week]):,}",
+             "delta": f"of {len(rows):,} businesses"},
+            {"label": "People on Tredi", "value": f"{await db.users.count_documents({}):,}", "delta": "owners and staff"},
+            {"label": "Plan value", "value": plan_rules.money(sum(monthly_value(r) for r in rows)), "delta": "current paid plans"},
+        ],
+        "attention": attention, "series": series, "recent": recent,
+    }
+
+
+@live.get("/subscriptions")
+async def subscriptions(admin: Admin, tab: str = "7"):
+    rows = await all_summaries()
+    soon = lambda r, n: r["status"] != "expired" and r["days_left"] is not None and 0 <= r["days_left"] <= n
+    if tab == "lapsed":
+        queue = [r for r in rows if r["status"] == "expired"]
+    elif tab == "trial":
+        queue = [r for r in rows if r["status"] == "trialing"]
+    elif tab == "paying":
+        queue = [r for r in rows if r["status"] == "active" and r["plan"] != "trial"]
+    else:
+        queue = [r for r in rows if soon(r, 7 if tab == "7" else 30)]
+    queue.sort(key=lambda r: r["ends_at"] or "9999")
+    exp7 = [r for r in rows if soon(r, 7)]
+    return {
+        "metrics": [
+            {"label": "Paying businesses", "value": str(len([r for r in rows if monthly_value(r)])), "delta": plan_rules.money(sum(monthly_value(r) for r in rows)) + " in plans"},
+            {"label": "Ending in 7 days", "value": str(len(exp7)), "delta": plan_rules.money(sum(r["price"] for r in exp7)) + " to renew"},
+            {"label": "Lapsed · read-only", "value": str(len([r for r in rows if r["status"] == "expired"])), "delta": "renew to unlock"},
+            {"label": "On trial", "value": str(len([r for r in rows if r["status"] == "trialing"])), "delta": f"{plan_rules.TRIAL_DAYS}-day trial"},
+        ],
+        "rows": queue, "catalogue": [{"key": p["key"], "name": p["name"], "prices": p["prices"]} for p in PLANS if p["key"] in PAID_KEYS],
+    }
+
+
+@live.get("/users")
+async def users(admin: Admin, tab: str = "all", q: str = "", role: str = "", page: int = 1, size: int = 20):
+    f: dict = {}
+    if tab == "owners":
+        f["role"] = "owner"
+    elif tab == "staff":
+        f["role"] = {"$ne": "owner"}
+    elif tab == "never":
+        f["last_seen_at"] = None
+    elif tab == "inactive":
+        f["last_seen_at"] = {"$lt": now() - timedelta(days=14)}
+    if role:
+        f["role"] = role
+    if q.strip():
+        rx = {"$regex": q.strip(), "$options": "i"}
+        bids = [str(b["_id"]) async for b in db.businesses.find({"name": rx}, {"_id": 1})]
+        f["$or"] = [{"name": rx}, {"email": rx}, {"phone": rx}, {"business_id": {"$in": bids}}]
+    total = await db.users.count_documents(f)
+    names: dict = {}
+    rows = []
+    async for u in db.users.find(f).sort([("last_seen_at", -1), ("created_at", -1)]).skip((page - 1) * size).limit(size):
+        bid = str(u.get("business_id") or "")
+        if bid and bid not in names:
+            b = await db.businesses.find_one({"_id": ObjectId(bid)}, {"name": 1}) if ObjectId.is_valid(bid) else None
+            names[bid] = (b or {}).get("name", "")
+        rows.append({"id": str(u["_id"]), "name": u.get("name", ""), "email": u.get("email", ""), "phone": u.get("phone", ""),
+                     "business": names.get(bid, ""), "business_id": bid, "role": u.get("role", "owner"),
+                     "shop": u.get("shop", ""), "last_seen": iso(u.get("last_seen_at")), "joined": iso(u.get("created_at"))})
+    counts = {"all": await db.users.count_documents({}), "owners": await db.users.count_documents({"role": "owner"}),
+              "staff": await db.users.count_documents({"role": {"$ne": "owner"}}),
+              "never": await db.users.count_documents({"last_seen_at": None}),
+              "inactive": await db.users.count_documents({"last_seen_at": {"$lt": now() - timedelta(days=14)}})}
+    return {"rows": rows, "total": total, "page": page, "size": size, "counts": counts}

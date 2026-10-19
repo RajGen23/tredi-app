@@ -13,7 +13,7 @@ import jwt
 
 from deps import (DUMMY_HASH, JWT_ALG, JWT_SECRET, clean, db, now, oid, verify_password)
 from admin_seed import FEATURE_GATES, PERMISSION_MATRIX, ROLE_TEMPLATES, seed_admin
-from plans import plan_by_key
+from plans import PLANS, plan_by_key
 
 router = APIRouter(prefix="/api/admin")
 SESSION_MINUTES = 30
@@ -92,217 +92,20 @@ def naira(v: float) -> str:
     return f"₦ {v:,.0f}"
 
 
-def tenant_row(t: dict) -> dict:
-    return {
-        "id": str(t["_id"]), "name": t["name"], "initials": "".join(w[0] for w in t["name"].split()[:2]).upper(),
-        "tin": t.get("tin", ""), "city": t.get("city", ""), "region": t.get("region", "NG"), "sector": t.get("sector", ""),
-        "plan": t["plan"], "plan_amount": t.get("plan_amount", 0), "plan_expires": aw(t["plan_expires"]).isoformat(),
-        "days_to_expiry": (aw(t["plan_expires"]) - now()).days, "auto_renew": t.get("auto_renew", False),
-        "reminders": t.get("reminders", []), "status": t["status"], "suspended": t.get("suspended", False),
-        "deletion_at": t["deletion_at"].isoformat() if t.get("deletion_at") else None,
-        "shops": len(t.get("shops", [])), "users": sum(s.get("staff", 0) for s in t.get("shops", [])),
-        "volume_30d": t.get("volume_30d", 0), "storage_used_gb": t.get("storage_used_gb", 0),
-        "storage_limit_gb": t.get("storage_limit_gb", 2), "last_active": aw(t["last_active"]).isoformat(),
-        "records": t.get("records", 0), "owner": t.get("owner", {}),
-    }
-
-
-STATUS_TABS = {"all": {}, "active": {"status": "healthy"}, "trial": {"plan": "trial"},
-               "expiring": {"status": "expiring"}, "suspended": {"suspended": True}}
-
-
-# ---------------------------------------------------------------- SA.2 overview
-@router.get("/overview")
-async def overview(admin: Admin, window: str = "30"):
-    await seed_admin()
-    tenants = [t async for t in db.admin_tenants.find({})]
-    shops = sum(len(t.get("shops", [])) for t in tenants)
-    users = await db.admin_users.count_documents({})
-    seen_week = await db.admin_users.count_documents({"last_seen": {"$gte": now() - timedelta(days=7)}})
-    volume = sum(t.get("volume_30d", 0) for t in tenants)
-    mrr = sum(t.get("plan_amount", 0) for t in tenants if t["plan"] in ("pro", "basic")) / 1550  # ₦ → $
-    joined_30 = len([t for t in tenants if aw(t["created_at"]) >= now() - timedelta(days=30)])
-    days = 30 if window == "30" else 90
-    step = max(1, days // 5)
-    series = []
-    for i in range(days, -1, -step):
-        d = now() - timedelta(days=i)
-        base = 3800 + (days - i) * 18
-        series.append({"label": d.strftime("%d %b"), "invoices": base, "sales": int(base * 1.4)})
-    attention = {
-        "sync": await db.admin_sync.count_documents({"state": "stuck"}),
-        "expiring": len([t for t in tenants if 0 <= (aw(t["plan_expires"]) - now()).days <= 7]),
-        "overdue": len([t for t in tenants if t["plan"] == "lapsed"]),
-        "migrations": await db.admin_migrations.count_documents({"committed": False}),
-        "support": await db.admin_support.count_documents({"kind": "session", "status": "active"}),
-        "messages": await db.support_messages.count_documents({"status": "open"}),
-        "plan_requests": await db.plan_requests.count_documents({"status": "pending"}),
-    }
-    recent = sorted(tenants, key=lambda t: aw(t["created_at"]), reverse=True)[:4]
-    return {
-        "metrics": [
-            {"label": "Businesses", "value": f"{len(tenants):,}", "delta": f"▲ {joined_30} this month", "tone": "pos"},
-            {"label": "Active shops", "value": f"{shops:,}", "delta": f"{shops / max(1, len(tenants)):.1f} avg per business"},
-            {"label": "Staff accounts", "value": f"{users:,}", "delta": f"{round(seen_week / max(1, users) * 100)}% signed in this week"},
-            {"label": f"Gross sales · {days}d", "value": naira(volume), "delta": "▲ 12%", "tone": "pos"},
-            {"label": "MRR", "value": f"$ {mrr:,.0f}", "delta": "▲ 6.4%", "tone": "pos"},
-        ],
-        "attention": attention,
-        "series": series,
-        "recent": [{**tenant_row(t), "first_invoice": "2 days after signup" if t.get("invoices") else "Not yet"} for t in recent],
-    }
-
-
-# ---------------------------------------------------------------- SA.3 businesses
-@router.get("/businesses")
-async def businesses(admin: Admin, tab: str = "all", q: str = "", plan: str = "", region: str = "",
-                     sort: str = "last_active", page: int = 1, size: int = 12):
-    await seed_admin()
-    f: dict = dict(STATUS_TABS.get(tab, {}))
-    if tab == "active":
-        f = {"status": {"$in": ["healthy", "expiring"]}, "suspended": False}
-    if q:
-        f["$or"] = [{"name": {"$regex": q, "$options": "i"}}, {"tin": {"$regex": q, "$options": "i"}},
-                    {"owner.phone": {"$regex": q, "$options": "i"}}]
-    if plan:
-        f["plan"] = plan
-    if region:
-        f["region"] = region
-    total = await db.admin_tenants.count_documents(f)
-    order = {"last_active": ("last_active", -1), "volume": ("volume_30d", -1), "name": ("name", 1),
-             "expiry": ("plan_expires", 1)}.get(sort, ("last_active", -1))
-    cur = db.admin_tenants.find(f).sort(order[0], order[1]).skip((page - 1) * size).limit(size)
-    counts = {
-        "all": await db.admin_tenants.count_documents({}),
-        "active": await db.admin_tenants.count_documents({"status": {"$in": ["healthy", "expiring"]}, "suspended": False}),
-        "trial": await db.admin_tenants.count_documents({"plan": "trial"}),
-        "expiring": await db.admin_tenants.count_documents({"status": "expiring"}),
-        "suspended": await db.admin_tenants.count_documents({"suspended": True}),
-    }
-    return {"rows": [tenant_row(t) async for t in cur], "total": total, "page": page, "size": size, "counts": counts}
-
-
-@router.get("/businesses/{tid}")
-async def business_detail(tid: str, admin: Admin):
-    t = await db.admin_tenants.find_one({"_id": oid(tid)})
-    if not t:
-        raise HTTPException(404, "Business not found")
-    events = [{"event": a["event"], "entity": a.get("entity", ""), "actor": a["actor"], "shop": a.get("shop", ""),
-               "when": a["created_at"].isoformat()}
-              async for a in db.admin_audit.find({"business": t["name"]}).sort("created_at", -1).limit(8)]
-    return {**tenant_row(t), "sales_30d": t.get("volume_30d", 0), "sales_change_pct": t.get("sales_change_pct", 0),
-            "invoices": t.get("invoices", 0), "invoices_overdue": t.get("invoices_overdue", 0),
-            "receivables": t.get("receivables", 0), "since": t["since"].isoformat(), "usage": t.get("usage", []),
-            "events": events, "currency": t.get("currency", "NGN")}
-
-
-@router.get("/businesses/{tid}/structure")
-async def business_structure(tid: str, admin: Admin):
-    t = await db.admin_tenants.find_one({"_id": oid(tid)})
-    if not t:
-        raise HTTPException(404, "Business not found")
-    staff = [{"id": str(u["_id"]), "name": u["name"], "contact": u.get("contact", ""), "role": u["role"],
-              "title": u.get("title", ""), "custom": u.get("custom", False), "custom_note": u.get("custom_note", ""),
-              "shops": u.get("shops", ""), "last_seen": u["last_seen"].isoformat(), "device": u.get("device_os", ""),
-              "status": u.get("status", "active")}
-             async for u in db.admin_users.find({"business_ids": tid}).sort("last_seen", -1)]
-    return {"id": str(t["_id"]), "name": t["name"], "business_key": str(t["_id"])[-6:], "shops": t.get("shops", []), "staff": staff}
-
-
-class ActionIn(BaseModel):
-    action: Literal["suspend", "unsuspend", "force_sync", "schedule_deletion", "cancel_deletion"]
-    reason: str = ""
-
-
-@router.post("/businesses/{tid}/action")
-async def business_action(tid: str, body: ActionIn, admin: Admin):
-    t = await db.admin_tenants.find_one({"_id": oid(tid)})
-    if not t:
-        raise HTTPException(404, "Business not found")
-    if body.action in ("suspend", "schedule_deletion") and len(body.reason.strip()) < 4:
-        raise HTTPException(400, "A reason is required — it is written to the tenant's own history")
-    patch: dict = {}
-    if body.action == "suspend":
-        patch = {"suspended": True, "status": "read_only"}
-        event, entity = "Writes suspended", body.reason
-    elif body.action == "unsuspend":
-        patch = {"suspended": False, "status": "healthy"}
-        event, entity = "Writes restored", ""
-    elif body.action == "force_sync":
-        await db.admin_sync.update_many({"business": t["name"]}, {"$set": {"attempts": 0, "state": "conflict"}})
-        event, entity = "Force sync triggered", f"{await db.admin_sync.count_documents({'business': t['name']})} queues"
-    elif body.action == "schedule_deletion":
-        patch = {"deletion_at": now() + timedelta(days=30)}
-        event, entity = "Deletion scheduled", "30-day grace · needs a second admin to confirm"
-    else:
-        patch = {"deletion_at": None}
-        event, entity = "Deletion cancelled", ""
-    if patch:
-        await db.admin_tenants.update_one({"_id": t["_id"]}, {"$set": patch})
-    await audit(admin, t["name"], event, entity, "deletion" if "delet" in body.action else "admin")
-    return {"ok": True, "message": event, **(await business_detail(tid, admin))}
-
-
-# ---------------------------------------------------------------- SA.6 / SA.7 subscriptions
-@router.get("/subscriptions")
-async def subscriptions(admin: Admin, tab: str = "7"):
-    await seed_admin()
-    tenants = [t async for t in db.admin_tenants.find({})]
-    paying = [t for t in tenants if t["plan"] in ("pro", "basic")]
-    mrr = sum(t["plan_amount"] for t in paying) / 1550
-    expiring7 = [t for t in tenants if 0 <= (aw(t["plan_expires"]) - now()).days <= 7]
-    lapsed = [t for t in tenants if t["plan"] == "lapsed"]
-    if tab == "lapsed":
-        queue = lapsed
-    else:
-        days = 7 if tab == "7" else 30
-        queue = sorted([t for t in tenants if 0 <= (aw(t["plan_expires"]) - now()).days <= days], key=lambda t: aw(t["plan_expires"]))
-    trials = len([t for t in tenants if t["plan"] == "trial"])
-    return {
-        "metrics": [
-            {"label": "MRR", "value": f"$ {mrr:,.0f}", "delta": "▲ 6.4% MoM", "tone": "pos"},
-            {"label": "Expiring in 7 days", "value": str(len(expiring7)), "delta": f"{naira(sum(t['plan_amount'] for t in expiring7))} at risk"},
-            {"label": "Lapsed · read-only", "value": str(len(lapsed)), "delta": "recoverable"},
-            {"label": "Trial → paid", "value": "34%", "delta": f"{trials} trials open"},
-        ],
-        "rows": [tenant_row(t) for t in queue[:14]],
-        "grace_days": 14,
-    }
-
-
-class ExtendIn(BaseModel):
-    days: int = 30
-    note: str = ""
-
-
-@router.post("/subscriptions/{tid}/extend")
-async def extend(tid: str, body: ExtendIn, admin: Admin):
-    t = await db.admin_tenants.find_one({"_id": oid(tid)})
-    if not t:
-        raise HTTPException(404, "Business not found")
-    base = max(aw(t["plan_expires"]), now())
-    await db.admin_tenants.update_one({"_id": t["_id"]}, {"$set": {"plan_expires": base + timedelta(days=body.days),
-                                                                   "status": "healthy", "plan": "basic" if t["plan"] in ("trial", "lapsed") else t["plan"]}})
-    await audit(admin, t["name"], "Subscription extended", f"+{body.days} days {body.note}".strip())
-    return {"ok": True, "message": f"{t['name']} extended by {body.days} days"}
-
-
-@router.post("/subscriptions/reminders")
-async def reminders(admin: Admin):
-    tenants = [t async for t in db.admin_tenants.find({})]
-    due = [t for t in tenants if 0 <= (aw(t["plan_expires"]) - now()).days <= 7 and "3d" not in t.get("reminders", [])]
-    for t in due:
-        await db.admin_tenants.update_one({"_id": t["_id"]}, {"$addToSet": {"reminders": "3d"}})
-    await audit(admin, "All tenants", "Renewal reminder batch sent", f"{len(due)} tenants")
-    return {"ok": True, "message": f"Reminder sent to {len(due)} businesses"}
-
-
 @router.get("/plans")
 async def plans(admin: Admin):
     await seed_admin()
-    rows = [clean(p) async for p in db.admin_plans.find({})]
-    for p in rows:
-        p["count"] = await db.admin_tenants.count_documents({"plan": p["key"]})
+    cap = lambda v: "Unlimited" if v is None else f"{v:,}"
+    rows = [{"key": p["key"], "name": p["name"], "price": p["prices"]["monthly"],
+             "price_label": "Free" if not p["prices"]["monthly"] else f"₦ {p['prices']['monthly']:,}",
+             "cadence": p["cadence"], "shops": cap(p["limits"]["shops"]), "users": cap(p["limits"]["users"]),
+             "businesses": cap(p["limits"]["businesses"]), "storage": cap(p["limits"]["invoices"]),
+             "note": "", "count": await db.businesses.count_documents({"plan": p["key"], "deleted_at": None})}
+            for p in PLANS]
+    rows += [{**clean(p), "count": 0} async for p in db.admin_plans.find({"note": "Draft"})]
+    rows.append({"key": "custom", "name": "Custom (per client)", "price_label": "Varies", "cadence": "set on the business",
+                 "shops": "—", "users": "—", "businesses": "—", "storage": "—", "note": "",
+                 "count": await db.businesses.count_documents({"custom_plan": {"$ne": None}, "deleted_at": None})})
     return {"plans": rows, "gates": FEATURE_GATES}
 
 
@@ -336,7 +139,11 @@ async def approve_plan_request(rid: str, body: ApproveIn, admin: Admin):
     months = max(1, body.months)
     await db.businesses.update_one({"_id": ObjectId(r["business_id"])},
                                   {"$set": {"plan": plan["key"], "renews_at": now() + timedelta(days=30 * months),
-                                            "plan_activated_at": now()}, "$unset": {"trial_ends_at": ""}})
+                                            "plan_cadence": {3: "quarterly", 12: "yearly"}.get(months, "monthly"),
+                                            "plan_months": months, "plan_activated_at": now()}, "$unset": {"trial_ends_at": ""}})
+    await db.plan_history.insert_one({"business_id": r["business_id"], "plan": plan["key"], "months": months,
+                                      "amount": plan["prices"]["monthly"] * months, "note": body.note, "source": "admin",
+                                      "by": admin.get("name", "admin"), "created_at": now()})
     await db.plan_requests.update_one({"_id": r["_id"]}, {"$set": {"status": "approved", "approved_at": now(),
                                                                    "approved_by": admin.get("name", "admin"), "months": months}})
     await audit(admin, r.get("business_name", ""), f"{plan['name']} activated", f"{months} month{'s' if months > 1 else ''} {body.note}".strip(), "billing")
@@ -353,39 +160,6 @@ async def decline_plan_request(rid: str, body: ApproveIn, admin: Admin):
     await db.plan_requests.update_one({"_id": r["_id"]}, {"$set": {"status": "declined", "note": body.note, "closed_at": now()}})
     await audit(admin, r.get("business_name", ""), "Plan request declined", body.note, "billing")
     return {"ok": True, "message": "Request closed"}
-
-
-# ---------------------------------------------------------------- SA.8 users
-@router.get("/users")
-async def users(admin: Admin, tab: str = "all", q: str = "", role: str = "", page: int = 1, size: int = 14):
-    await seed_admin()
-    f: dict = {}
-    if tab == "owners":
-        f["role"] = "Owner"
-    elif tab == "staff":
-        f["role"] = {"$ne": "Owner"}
-    elif tab == "locked":
-        f["status"] = "locked"
-    elif tab == "never":
-        f["status"] = "never"
-    if role:
-        f["role"] = role
-    if q:
-        f["$or"] = [{"name": {"$regex": q, "$options": "i"}}, {"contact": {"$regex": q, "$options": "i"}},
-                    {"business_names": {"$regex": q, "$options": "i"}}]
-    total = await db.admin_users.count_documents(f)
-    cur = db.admin_users.find(f).sort("last_seen", -1).skip((page - 1) * size).limit(size)
-    rows = [{"id": str(u["_id"]), "name": u["name"], "contact": u.get("contact", ""),
-             "business": u["business_names"][0] if len(u.get("business_names", [])) == 1 else f"{len(u.get('business_names', []))} businesses",
-             "businesses": u.get("business_names", []), "role": u["role"], "custom": u.get("custom", False),
-             "shops": u.get("shops", ""), "devices": u.get("devices", 1), "last_seen": u["last_seen"].isoformat(),
-             "status": u.get("status", "active"), "failed_pins": u.get("failed_pins", 0)} async for u in cur]
-    counts = {"all": await db.admin_users.count_documents({}),
-              "owners": await db.admin_users.count_documents({"role": "Owner"}),
-              "staff": await db.admin_users.count_documents({"role": {"$ne": "Owner"}}),
-              "locked": await db.admin_users.count_documents({"status": "locked"}),
-              "never": await db.admin_users.count_documents({"status": "never"})}
-    return {"rows": rows, "total": total, "page": page, "size": size, "counts": counts}
 
 
 @router.post("/users/{uid}/unlock")

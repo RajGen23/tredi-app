@@ -154,6 +154,7 @@ def subscription_state(biz: dict) -> dict:
             "cadence": words if not trialing else plan["cadence"],
             "cadence_key": cadence, "tagline": plan["tagline"], "perks": plan["perks"],
             "limits": limits, "features": features, "trialing": trialing, "custom": bool(custom),
+            "suspended": bool(biz.get("suspended")),
             "status": "expired" if expired else ("trialing" if trialing else "active"),
             "days_left": days_left, "ends_at": ends.isoformat() if ends else None}
 
@@ -169,6 +170,8 @@ async def guard_writes(request: Request, user: dict):
     if request.url.path.startswith(WRITE_ALWAYS_OK):
         return
     sub = await subscription_of(str(user["business_id"]))
+    if sub["suspended"]:
+        raise HTTPException(403, "This account is paused by the Tredi team. Your books are safe and readable — contact support to restore saving.")
     if sub["status"] == "expired":
         raise HTTPException(402, plan_rules.expired_message(plan_rules.plan_by_key(sub["plan"]), sub["trialing"]))
 

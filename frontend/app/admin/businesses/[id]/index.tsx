@@ -1,29 +1,19 @@
-// SA.4 Business detail — one tenant, one page. The right rail carries the
-// commercial facts and the destructive actions, away from the reading area.
-import { useState } from "react";
-import { Text, View } from "react-native";
+// One real customer: activate a plan they paid for directly, tailor a plan for
+// them, and see when each person on the account was last active.
+import { useEffect, useState } from "react";
+import { Switch, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { adminApi } from "@/src/admin/api";
 import { useToast } from "@/src/components/sheet";
-import {
-  AdminModal, AdminShell, Avatar, Btn, Col, Fig, H2, Input, Lbl, Loading, MiniTrend, PLAN_TONE, Panel, Pill, Row,
-  STATUS_LABEL, STATUS_TONE, Sub, Table, TenantTabs, useWide,
-} from "@/src/admin/ui";
-import { ago, compactMoney, dayMonth } from "@/src/admin/format";
+import { AdminModal, AdminShell, Btn, Col, Fig, Input, Lbl, Loading, Note, Panel, Pill, Row, SUB_LABEL, SUB_TONE, Sub, Table, useWide } from "@/src/admin/ui";
+import { dayMonth, seenLabel } from "@/src/admin/format";
 import { money } from "@/src/format";
 import { fonts, useTheme } from "@/src/theme";
 
-type Action = "suspend" | "unsuspend" | "force_sync" | "schedule_deletion" | "cancel_deletion";
-const NEEDS_REASON: Action[] = ["suspend", "schedule_deletion"];
-const TITLES: Record<Action, string> = {
-  suspend: "Suspend writes",
-  unsuspend: "Restore writes",
-  force_sync: "Force sync",
-  schedule_deletion: "Schedule deletion",
-  cancel_deletion: "Cancel deletion",
-};
+const MONTHS = [1, 3, 6, 12];
+const LIMITS = ["businesses", "shops", "users", "invoices"];
 
 export default function BusinessDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -32,167 +22,251 @@ export default function BusinessDetail() {
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
-  const [act, setAct] = useState<Action | null>(null);
+  const d = useQuery({ queryKey: ["admin-business", id], queryFn: () => adminApi(`/customers/${id}`) });
+  const c = d.data;
+
+  // Activate
+  const [plan, setPlan] = useState("premium");
+  const [months, setMonths] = useState(1);
+  const [amount, setAmount] = useState("");
+  const [reference, setReference] = useState("");
+  const [note, setNote] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  // Custom
+  const [cName, setCName] = useState("");
+  const [cPrice, setCPrice] = useState("");
+  const [cLimits, setCLimits] = useState<Record<string, string>>({});
+  const [cFeatures, setCFeatures] = useState<Record<string, boolean>>({});
+  const [ending, setEnding] = useState(false);
+  const [pausing, setPausing] = useState(false);
   const [reason, setReason] = useState("");
-  const [supportOpen, setSupportOpen] = useState(false);
-  const [supportReason, setSupportReason] = useState("");
 
-  const d = useQuery({ queryKey: ["admin-business", id], queryFn: () => adminApi(`/businesses/${id}`) });
-  const run = useMutation({
-    mutationFn: (body: { action: Action; reason: string }) => adminApi(`/businesses/${id}/action`, { method: "POST", json: body }),
-    onSuccess: (res: any) => {
-      toast.show(res.message, "Logged ·");
-      setAct(null);
-      setReason("");
-      qc.invalidateQueries({ queryKey: ["admin-business", id] });
-      qc.invalidateQueries({ queryKey: ["admin-businesses"] });
+  const base = c?.catalogue.find((p: any) => p.key === plan);
+  const priceFor = (p: any, m: number) => (m === 3 ? p.prices.quarterly : m === 12 ? p.prices.yearly : p.prices.monthly * m);
+
+  useEffect(() => {
+    if (!c) return;
+    const k = c.catalogue.some((p: any) => p.key === c.plan) ? c.plan : "premium";
+    setPlan(k);
+    const cp = c.custom_plan;
+    const sub = c.subscription;
+    setCName(cp?.name ?? "");
+    setCPrice(cp?.price != null ? String(cp.price) : "");
+    setCLimits(Object.fromEntries(LIMITS.map((l) => [l, sub.limits[l] == null ? "" : String(sub.limits[l])])));
+    setCFeatures({ ...sub.features });
+  }, [c]);
+  useEffect(() => { if (base) setAmount(String(priceFor(base, months))); }, [plan, months, base]);
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["admin-business", id] });
+    qc.invalidateQueries({ queryKey: ["admin-businesses"] });
+  };
+  const activate = useMutation({
+    mutationFn: () => adminApi(`/customers/${id}/activate`, { method: "POST",
+      json: { plan, months, amount: Number(amount) || 0, reference, note, extend: true } }),
+    onSuccess: (res: any) => { toast.show(res.message, "Activated ·"); setConfirm(false); setReference(""); setNote(""); refresh(); },
+    onError: (e: any) => toast.show(e.message),
+  });
+  const saveCustom = useMutation({
+    mutationFn: () => {
+      // Only what differs from their own plan is an override; the rest follows the plan.
+      const own = c.catalogue.find((p: any) => p.key === c.plan);
+      const limits = Object.fromEntries(LIMITS.map((l) => [l, cLimits[l] === "" ? null : Number(cLimits[l])])
+        .filter(([l, v]) => !own || own.limits[l as string] !== v));
+      const features = Object.fromEntries(Object.entries(cFeatures).filter(([f, v]) => !own || !!own.features[f] !== v));
+      return adminApi(`/customers/${id}/custom-plan`, { method: "PUT", json: {
+        name: cName, price: cPrice === "" ? null : Number(cPrice), limits, features } });
     },
+    onSuccess: (res: any) => { toast.show(res.message, "Saved ·"); refresh(); },
     onError: (e: any) => toast.show(e.message),
   });
-  const requestAccess = useMutation({
-    mutationFn: () => adminApi("/support/request", { method: "POST", json: { tenant_id: id, reason: supportReason, scope: "Invoices only" } }),
-    onSuccess: (res: any) => { toast.show(res.message, "Consent ·"); setSupportOpen(false); setSupportReason(""); },
+  const clearCustom = useMutation({
+    mutationFn: () => adminApi(`/customers/${id}/custom-plan`, { method: "DELETE" }),
+    onSuccess: (res: any) => { toast.show(res.message, "Removed ·"); refresh(); },
+    onError: (e: any) => toast.show(e.message),
+  });
+  const endPlan = useMutation({
+    mutationFn: () => adminApi(`/customers/${id}/end-plan`, { method: "POST", json: {} }),
+    onSuccess: (res: any) => { toast.show(res.message, "Ended ·"); setEnding(false); refresh(); },
     onError: (e: any) => toast.show(e.message),
   });
 
-  const t = d.data;
-  const cols: Col<any>[] = [
-    { key: "event", label: "Recent platform events", flex: 2.6, render: (r) => (
+  const suspend = useMutation({
+    mutationFn: () => adminApi(`/customers/${id}/suspend`, { method: "POST", json: { reason } }),
+    onSuccess: (res: any) => { toast.show(res.message, "Logged ·"); setPausing(false); setReason(""); refresh(); },
+    onError: (e: any) => toast.show(e.message),
+  });
+
+  if (!c) return <AdminShell title="Business" testID="sa-business"><Loading /></AdminShell>;
+  const sub = c.subscription;
+
+  const teamCols: Col<any>[] = [
+    { key: "name", label: "Person", flex: 2, render: (r) => (
       <View>
-        <Text style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface }} numberOfLines={1}>{r.event}</Text>
-        {r.entity ? <Sub numberOfLines={1}>{r.entity}</Sub> : null}
+        <Text style={{ fontFamily: fonts.semibold, fontSize: 12.5, color: colors.onSurface }} numberOfLines={1}>{r.name}</Text>
+        <Sub numberOfLines={1}>{r.email}</Sub>
       </View>
     ) },
-    { key: "actor", label: "Actor", flex: 1.1, render: (r) => <Sub numberOfLines={1}>{r.actor}</Sub> },
-    { key: "shop", label: "Shop", flex: 1, render: (r) => <Sub numberOfLines={1}>{r.shop || "—"}</Sub> },
-    { key: "when", label: "When", flex: 0.8, align: "right", render: (r) => <Sub>{ago(r.when)} ago</Sub> },
+    { key: "role", label: "Role", flex: 1, render: (r) => <Sub>{r.role}{r.shop ? ` · ${r.shop}` : ""}</Sub> },
+    { key: "seen", label: "Last active", flex: 1.2, align: "right", render: (r) => (
+      <Text style={{ fontFamily: fonts.semibold, fontSize: 12, color: r.last_seen ? colors.onSurface : colors.ink40 }}>{seenLabel(r.last_seen)}</Text>
+    ) },
+  ];
+  const histCols: Col<any>[] = [
+    { key: "at", label: "When", flex: 1, render: (r) => <Sub>{dayMonth(r.at)}</Sub> },
+    { key: "plan", label: "Plan", flex: 1.2, render: (r) => (
+      <Text style={{ fontFamily: fonts.semibold, fontSize: 12, color: colors.onSurface }}>
+        {r.plan}{r.months ? ` · ${r.months} mo` : r.cadence ? ` · ${r.cadence}` : ""}
+      </Text>
+    ) },
+    { key: "amount", label: "Amount", flex: 1, align: "right", render: (r) => <Fig>{money(r.amount || 0)}</Fig> },
+    { key: "by", label: "By", flex: 1.6, render: (r) => (
+      <Sub numberOfLines={2}>{r.source === "admin" ? `Tredi team · ${r.by}` : `In app · ${r.by}`}{r.reference ? ` · ref ${r.reference}` : ""}</Sub>
+    ) },
   ];
 
-  return (
-    <AdminShell title={t?.name ?? "Business"} sub={`admin.tredi.app/businesses/${t?.slug ?? ""}`}
-      actions={
-        <Row gap={8}>
-          <Btn label="Back" icon="arrow-back" onPress={() => router.push("/admin/businesses")} />
-          <Btn label="Request support access" icon="help-buoy-outline" onPress={() => setSupportOpen(true)} testID="request-access" />
-          <Btn label="Manage subscription" tone="primary" onPress={() => router.push("/admin/subscriptions")} />
-        </Row>
-      }
-      testID="sa4-business">
-      {!t ? <Loading /> : (
-        <>
-          <Row gap={8} wrapped>
-            <Pill label={STATUS_LABEL[t.status] ?? t.status} tone={STATUS_TONE[t.status] ?? "mut"} />
-            <Pill label={t.plan.toUpperCase()} tone={PLAN_TONE[t.plan] ?? "mut"} />
-            {t.suspended ? <Pill label="Writes suspended" tone="bad" /> : null}
-            {t.deletion_at ? <Pill label={`Deletion ${dayMonth(t.deletion_at)}`} tone="bad" /> : null}
-          </Row>
-          <TenantTabs id={String(id)} active="overview" />
-          <View style={{ flexDirection: wide ? "row" : "column", gap: 12 }}>
-            <View style={{ flex: 2.4, gap: 12 }}>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                {[
-                  { label: "30-day sales", value: compactMoney(t.sales_30d), delta: `▲ ${t.sales_change_pct}%`, tone: "pos" },
-                  { label: "Invoices", value: String(t.invoices), delta: `${t.invoices_overdue} overdue`, tone: t.invoices_overdue ? "neg" : "" },
-                  { label: "Receivables", value: compactMoney(t.receivables), delta: "held by tenant" },
-                  { label: "Records", value: t.records.toLocaleString(), delta: "rows across 24 tables" },
-                ].map((m) => (
-                  <View key={m.label} style={{ flexGrow: 1, flexBasis: 160, borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 13, backgroundColor: colors.surfaceSecondary }}>
-                    <Lbl numberOfLines={1}>{m.label}</Lbl>
-                    <Fig size={19} style={{ marginTop: 5 }} numberOfLines={1}>{m.value}</Fig>
-                    <Sub style={{ marginTop: 2, color: m.tone === "pos" ? colors.green700 : m.tone === "neg" ? colors.coral : colors.ink60 }}>{m.delta}</Sub>
-                  </View>
-                ))}
-              </View>
-              <Panel title="Usage over time" sub="Invoices raised per week">
-                <MiniTrendRow values={t.usage} />
-              </Panel>
-              <Panel pad={0} testID="tenant-events">
-                <Table cols={cols} rows={t.events} minWidth={760} empty="No platform events for this tenant yet" />
-              </Panel>
-            </View>
-
-            <View style={{ flex: 1, gap: 12 }}>
-              <Panel title="Owner">
-                <Row gap={10}>
-                  <Avatar text={(t.owner?.name ?? "").split(" ").map((w: string) => w[0]).slice(0, 2).join("")} tone="deep" />
-                  <View style={{ flexShrink: 1 }}>
-                    <H2 numberOfLines={1}>{t.owner?.name}</H2>
-                    <Sub numberOfLines={1}>{t.owner?.phone}</Sub>
-                  </View>
-                </Row>
-                <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 12 }} />
-                {[["Plan", t.plan === "pro" ? "Pro" : t.plan === "basic" ? "Basic" : t.plan === "trial" ? "Trial" : "Lapsed"],
-                  ["Renews", dayMonth(t.plan_expires)],
-                  ["Since", dayMonth(t.since)],
-                  ["Region", `${t.region} · ${t.currency === "NGN" ? "₦" : t.currency}`],
-                  ["Storage", `${t.storage_used_gb} / ${t.storage_limit_gb} GB`],
-                  ["Receivables", money(t.receivables)]].map(([k, v]) => (
-                  <Row key={k as string} style={{ justifyContent: "space-between", paddingVertical: 5 }}>
-                    <Lbl>{k}</Lbl>
-                    <Fig>{v}</Fig>
-                  </Row>
-                ))}
-              </Panel>
-              <Panel title="Danger zone" sub="Deletion needs a second admin and holds for 30 days." style={{ borderColor: colors.coral }}>
-                <View style={{ gap: 8 }}>
-                  {!t.suspended
-                    ? <Btn label="Suspend writes" tone="danger" icon="hand-left-outline" onPress={() => setAct("suspend")} testID="act-suspend" />
-                    : <Btn label="Restore writes" tone="primary" icon="refresh-outline" onPress={() => setAct("unsuspend")} testID="act-unsuspend" />}
-                  <Btn label="Force sync" icon="sync-outline" onPress={() => setAct("force_sync")} testID="act-force-sync" />
-                  {!t.deletion_at
-                    ? <Btn label="Schedule deletion" tone="danger" icon="trash-outline" onPress={() => setAct("schedule_deletion")} testID="act-delete" />
-                    : <Btn label="Cancel deletion" icon="close-outline" onPress={() => setAct("cancel_deletion")} testID="act-cancel-delete" />}
-                </View>
-                <Sub style={{ marginTop: 10 }}>Suspension is reversible and read-only for the tenant — their data stays, they just cannot write.</Sub>
-              </Panel>
-            </View>
-          </View>
-
-          <AdminModal visible={!!act} onClose={() => setAct(null)} title={act ? TITLES[act] : ""}
-            sub={act && NEEDS_REASON.includes(act) ? "The reason is written to the tenant's own history, in these words." : "This action is logged against your name."}
-            testID="action-modal"
-            footer={<Row gap={8}>
-              <Btn label="Cancel" onPress={() => setAct(null)} />
-              <Btn label={act ? TITLES[act] : ""} tone={act && NEEDS_REASON.includes(act) ? "danger" : "primary"} busy={run.isPending}
-                onPress={() => act && run.mutate({ action: act, reason })} testID="action-confirm" />
-            </Row>}>
-            {act && NEEDS_REASON.includes(act)
-              ? <Input value={reason} onChangeText={setReason} placeholder="Why is this needed?" testID="action-reason" multiline />
-              : <Sub>{act === "force_sync" ? "Queued records on every device in this business will be retried now." : "Writes resume immediately."}</Sub>}
-          </AdminModal>
-
-          <AdminModal visible={supportOpen} onClose={() => setSupportOpen(false)} title="Request support access"
-            sub="Read-only, time-boxed, and the owner must approve. They see this reason."
-            testID="support-modal"
-            footer={<Row gap={8}>
-              <Btn label="Cancel" onPress={() => setSupportOpen(false)} />
-              <Btn label="Send request" tone="primary" busy={requestAccess.isPending} onPress={() => requestAccess.mutate()} testID="support-send" />
-            </Row>}>
-            <Input value={supportReason} onChangeText={setSupportReason} placeholder="e.g. Invoice PDF will not open" multiline testID="support-reason" />
-          </AdminModal>
-        </>
-      )}
-    </AdminShell>
+  const chip = (on: boolean, label: string, onPress: () => void, testID: string) => (
+    <Btn key={testID} label={label} tone={on ? "deep" : "ghost"} onPress={onPress} testID={testID} />
   );
-}
 
-function MiniTrendRow({ values }: { values: number[] }) {
-  const { colors } = useTheme();
-  const max = Math.max(1, ...values);
   return (
-    <View>
-      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, height: 110 }}>
-        {values.map((v, i) => (
-          <View key={i} style={{ flex: 1, height: `${Math.max(6, (v / max) * 100)}%`, backgroundColor: i === values.length - 1 ? colors.brandPrimary : colors.mint2, borderTopLeftRadius: 5, borderTopRightRadius: 5 }} />
-        ))}
+    <AdminShell title={c.name || "Business"} sub={`${c.owner} · ${c.email || c.phone || "no contact"}`}
+      actions={<Row gap={8}>
+        <Btn label="Back" icon="arrow-back" onPress={() => router.push("/admin/businesses")} testID="business-back" />
+        <Btn label={c.suspended ? "Restore saving" : "Pause account"} tone={c.suspended ? "primary" : "danger"}
+          onPress={() => (c.suspended ? suspend.mutate() : setPausing(true))} busy={suspend.isPending} testID="suspend-toggle" />
+      </Row>}
+      testID="sa-business">
+      <Row gap={12} wrapped style={{ marginBottom: 14 }}>
+        <Panel style={{ flex: 1, minWidth: 180 }} testID="current-plan">
+          <Lbl>Current plan</Lbl>
+          <Row gap={8} style={{ marginTop: 6 }}>
+            <Text style={{ fontFamily: fonts.bold, fontSize: 18, color: colors.onSurface }}>{sub.name}</Text>
+            <Pill label={SUB_LABEL[sub.status] ?? sub.status} tone={SUB_TONE[sub.status]} />
+            {sub.custom ? <Pill label="Custom" tone="info" /> : null}
+            {c.suspended ? <Pill label="Paused" tone="bad" /> : null}
+          </Row>
+          <Sub style={{ marginTop: 4 }}>{sub.price_label} {sub.trialing ? "" : sub.cadence}</Sub>
+        </Panel>
+        <Panel style={{ flex: 1, minWidth: 180 }}>
+          <Lbl>{sub.status === "expired" ? "Ended" : "Ends"}</Lbl>
+          <Text style={{ fontFamily: fonts.bold, fontSize: 18, color: colors.onSurface, marginTop: 6 }}>{dayMonth(sub.ends_at)}</Text>
+          <Sub style={{ marginTop: 4 }}>{sub.days_left != null && sub.days_left >= 0 ? `${sub.days_left} days left` : "Read-only until renewed"}</Sub>
+        </Panel>
+        <Panel style={{ flex: 1, minWidth: 180 }} testID="last-active">
+          <Lbl>Last active</Lbl>
+          <Text style={{ fontFamily: fonts.bold, fontSize: 18, color: colors.onSurface, marginTop: 6 }}>{seenLabel(c.last_active)}</Text>
+          <Sub style={{ marginTop: 4 }}>Signed up {dayMonth(c.created_at)} · {c.users} people · {c.shops} location{c.shops === 1 ? "" : "s"}</Sub>
+        </Panel>
+      </Row>
+
+      {c.pending_request ? (
+        <View style={{ marginBottom: 14 }}>
+          <Note tone="warn" title="This customer asked for a plan in the app">Activating here also closes their request.</Note>
+        </View>
+      ) : null}
+
+      <View style={{ flexDirection: wide ? "row" : "column", gap: 14, alignItems: "flex-start" }}>
+        <Panel title="Activate a plan" sub="For a client who paid you directly. Starts today, or after the time left on the same plan."
+          style={{ flex: 1, width: wide ? undefined : "100%" }} testID="activate-panel">
+          <Lbl>Plan</Lbl>
+          <Row gap={6} wrapped style={{ marginTop: 6, marginBottom: 12 }}>
+            {c.catalogue.map((p: any) => chip(plan === p.key, p.name, () => setPlan(p.key), `plan-${p.key}`))}
+          </Row>
+          <Lbl>How long</Lbl>
+          <Row gap={6} wrapped style={{ marginTop: 6, marginBottom: 12 }}>
+            {MONTHS.map((m) => chip(months === m, `${m} month${m > 1 ? "s" : ""}`, () => setMonths(m), `months-${m}`))}
+          </Row>
+          <Lbl>Amount received (₦)</Lbl>
+          <View style={{ marginTop: 6, marginBottom: 12 }}>
+            <Input value={amount} onChangeText={(v) => setAmount(v.replace(/\D/g, ""))} keyboardType="numeric" testID="activate-amount" />
+            {base ? <Sub style={{ marginTop: 4 }}>List price {money(priceFor(base, months))}</Sub> : null}
+          </View>
+          <Lbl>Payment reference</Lbl>
+          <View style={{ marginTop: 6, marginBottom: 12 }}>
+            <Input value={reference} onChangeText={setReference} placeholder="Bank transfer ref, receipt no." testID="activate-reference" />
+          </View>
+          <Lbl>Note (optional)</Lbl>
+          <View style={{ marginTop: 6, marginBottom: 14 }}>
+            <Input value={note} onChangeText={setNote} placeholder="Paid via GTBank transfer" testID="activate-note" />
+          </View>
+          <Row gap={8} wrapped>
+            <Btn label={`Activate ${base?.name ?? ""}`} tone="primary" icon="checkmark-circle-outline" onPress={() => setConfirm(true)} testID="activate-btn" />
+            {sub.status !== "expired" ? <Btn label="End plan now" tone="danger" onPress={() => setEnding(true)} testID="end-plan" /> : null}
+          </Row>
+        </Panel>
+
+        <Panel title="Custom plan for this client" sub="Override price, limits or features. Empty limit = unlimited. Applies on top of their plan."
+          style={{ flex: 1, width: wide ? undefined : "100%" }} testID="custom-panel">
+          <Row gap={8}>
+            <View style={{ flex: 1, gap: 6 }}>
+              <Lbl>Plan name shown to client</Lbl>
+              <Input value={cName} onChangeText={setCName} placeholder={sub.name} testID="custom-name" />
+            </View>
+            <View style={{ flex: 1, gap: 6 }}>
+              <Lbl>Price (₦)</Lbl>
+              <Input value={cPrice} onChangeText={(v) => setCPrice(v.replace(/\D/g, ""))} placeholder="Standard price" keyboardType="numeric" testID="custom-price" />
+            </View>
+          </Row>
+          <Row gap={8} wrapped style={{ marginTop: 12 }}>
+            {LIMITS.map((l) => (
+              <View key={l} style={{ flex: 1, minWidth: 110, gap: 6 }}>
+                <Lbl>{c.limit_names[l]}</Lbl>
+                <Input value={cLimits[l] ?? ""} onChangeText={(v) => setCLimits({ ...cLimits, [l]: v.replace(/\D/g, "") })}
+                  placeholder="Unlimited" keyboardType="numeric" testID={`custom-limit-${l}`} />
+              </View>
+            ))}
+          </Row>
+          <View style={{ marginTop: 12, gap: 2 }}>
+            {Object.keys(c.feature_names).map((f) => (
+              <Row key={f} style={{ justifyContent: "space-between", paddingVertical: 4 }}>
+                <Text style={{ fontFamily: fonts.medium, fontSize: 12.5, color: colors.onSurface, flexShrink: 1 }}>{c.feature_names[f]}</Text>
+                <Switch value={!!cFeatures[f]} onValueChange={(v) => setCFeatures({ ...cFeatures, [f]: v })}
+                  trackColor={{ true: colors.brandPrimary, false: colors.switchOff }} testID={`custom-feature-${f}`} />
+              </Row>
+            ))}
+          </View>
+          <Row gap={8} wrapped style={{ marginTop: 14 }}>
+            <Btn label="Save custom plan" tone="primary" busy={saveCustom.isPending} onPress={() => saveCustom.mutate()} testID="custom-save" />
+            {c.custom_plan ? <Btn label="Back to standard" busy={clearCustom.isPending} onPress={() => clearCustom.mutate()} testID="custom-clear" /> : null}
+          </Row>
+        </Panel>
       </View>
-      <Row style={{ justifyContent: "space-between", marginTop: 6 }}>
-        {["8 weeks ago", "6", "4", "2", "This week"].map((l) => <Sub key={l} style={{ fontSize: 9.5 }}>{l}</Sub>)}
-      </Row>
-      <Row style={{ marginTop: 10 }} gap={8}>
-        <MiniTrend values={values} />
-        <Sub>Peak {Math.max(...values)} invoices in a week</Sub>
-      </Row>
-    </View>
+
+      <View style={{ flexDirection: wide ? "row" : "column", gap: 14, marginTop: 14, alignItems: "flex-start" }}>
+        <Panel pad={0} title="Team activity" sub="When each person was last in the books" style={{ flex: 1, width: wide ? undefined : "100%" }}>
+          <Table cols={teamCols} rows={c.team} minWidth={420} empty="No one on this account yet" testID="team-table" />
+        </Panel>
+        <Panel pad={0} title="Plan history" sub="Every activation, in the app or by the Tredi team" style={{ flex: 1, width: wide ? undefined : "100%" }}>
+          <Table cols={histCols} rows={c.history} minWidth={460} empty="No plan changes yet" testID="history-table" />
+        </Panel>
+      </View>
+
+      <AdminModal visible={confirm} onClose={() => setConfirm(false)} title={`Activate ${base?.name ?? ""} for ${c.name}?`}
+        sub={`${months} month${months > 1 ? "s" : ""} · ${money(Number(amount) || 0)} received${reference ? ` · ref ${reference}` : ""}. The owner sees it in their Activity.`}
+        testID="activate-modal"
+        footer={<Row gap={8}>
+          <Btn label="Cancel" onPress={() => setConfirm(false)} />
+          <Btn label="Activate" tone="primary" busy={activate.isPending} onPress={() => activate.mutate()} testID="activate-confirm" />
+        </Row>}>
+        <Sub>Their books unlock straight away if they were read-only.</Sub>
+      </AdminModal>
+      <AdminModal visible={pausing} onClose={() => setPausing(false)} title={`Pause ${c.name}?`}
+        sub="They can still read their books but cannot save anything until you restore it. Use for abuse or a dispute." testID="pause-modal"
+        footer={<Row gap={8}>
+          <Btn label="Cancel" onPress={() => setPausing(false)} />
+          <Btn label="Pause account" tone="danger" busy={suspend.isPending} onPress={() => suspend.mutate()} testID="pause-confirm" />
+        </Row>}>
+        <Input value={reason} onChangeText={setReason} placeholder="Reason (written to the audit log)" testID="pause-reason" />
+      </AdminModal>
+      <AdminModal visible={ending} onClose={() => setEnding(false)} title="End this plan today?"
+        sub="Use this if a direct payment bounced. Nothing is deleted; the customer becomes read-only until they renew." testID="end-modal"
+        footer={<Row gap={8}>
+          <Btn label="Cancel" onPress={() => setEnding(false)} />
+          <Btn label="End plan" tone="danger" busy={endPlan.isPending} onPress={() => endPlan.mutate()} testID="end-confirm" />
+        </Row>}>
+        <Sub>{c.name} · {sub.name}</Sub>
+      </AdminModal>
+    </AdminShell>
   );
 }

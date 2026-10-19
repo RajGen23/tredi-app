@@ -1368,6 +1368,7 @@ app.include_router(billing.router)
 app.include_router(support.router)
 app.include_router(admin.router)
 app.include_router(admin_customers.router)
+app.include_router(admin_customers.live)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 

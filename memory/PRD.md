@@ -600,3 +600,9 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - Custom plan per client: `businesses.custom_plan` {name, price, limits, features} merged in deps.subscription_state, enforced by ensure_limit/ensure_feature.
 - Last active: deps.touch_last_seen sets users.last_seen_at + businesses.last_active_at (throttled 2 min); shown per customer and per team member.
 - API: GET /api/admin/customers, GET /api/admin/customers/{id}, POST …/activate, PUT/DELETE …/custom-plan, POST …/end-plan (routes/admin_customers.py).
+
+## Update — Admin uses only real businesses
+- Merged Customers into Businesses (/admin/businesses, /admin/businesses/[id]); sample tenants removed from Overview, Businesses, Subscriptions, Users. Plans & pricing shows real plans with live counts.
+- New: pause/restore account (businesses.suspended → writes 403), Renew modal on Subscriptions (uses /api/admin/customers/{id}/activate).
+- Live endpoints in routes/admin_customers.py (`live` router): /api/admin/overview, /subscriptions, /users.
+- Still sample: Analytics, Sync, System, Backup, Migration, Support access requests, Security signals.
