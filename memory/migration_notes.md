@@ -59,3 +59,12 @@ Credentials live in `backend/.env` as `LEGACY_DB_HOST/PORT/USER/PASSWORD`.
 4. Not migrated yet (say the word and I will map them): consignments, stock movements
    and lots, product images beyond the main photo, subscriptions and billing,
    notifications, and the admin-side tables.
+
+## Refresh — Oct 2026 (live copy re-synced)
+- Backup of the app DB before refresh: /app/backups/mongo-before-live-refresh-20261019-1255 (restore: `mongorestore --drop --db test_database <dir>/test_database`).
+- Source MySQL opened with `SET SESSION TRANSACTION READ ONLY`; nothing is written to the live DB.
+- New: 15 businesses, 23 users, 338 customers, 41 suppliers, 371 items, 758 invoices, 850 payments; existing rows refreshed.
+- Plan is insert-only now (live active subscription → that plan; otherwise grandfathered Pro 1 year) — refreshes never overwrite plans set in the app/Super Admin.
+- users.last_seen_at / businesses.last_active_at take the newer of live `last_active_at` and app activity.
+- Invoice lines carry live `cost_price` as `cost_at_sale`. After every refresh also run:
+  `python3 migrations/freeze_line_costs.py --apply` and `python3 scripts/backfill_shops.py --apply`.

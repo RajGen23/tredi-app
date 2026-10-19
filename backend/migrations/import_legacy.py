@@ -14,7 +14,7 @@ import asyncio
 import re
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pymysql
@@ -69,8 +69,10 @@ class Migration:
     def tally(self, key: str, n: int = 1):
         self.counts[key] = self.counts.get(key, 0) + n
 
-    async def upsert(self, coll, legacy_uuid: str, doc: dict, kind: str) -> str:
-        """Insert or update on legacy_uuid; created_at is never overwritten."""
+    async def upsert(self, coll, legacy_uuid: str, doc: dict, kind: str, insert_only: dict | None = None) -> str:
+        """Insert or update on legacy_uuid. `insert_only` fields (plan, etc.) are
+        written once and then owned by the new app, so a refresh never undoes them."""
+        insert_only = insert_only or {}
         existing = await coll.find_one({"legacy_uuid": legacy_uuid}, {"_id": 1})
         if existing:
             if self.commit:
@@ -80,12 +82,27 @@ class Migration:
         if not self.commit:
             self.tally(f"{kind}:new")
             return f"dry-{legacy_uuid}"
-        res = await coll.insert_one({**doc, "legacy_uuid": legacy_uuid})
+        res = await coll.insert_one({**doc, **insert_only, "legacy_uuid": legacy_uuid})
         self.tally(f"{kind}:new")
         return str(res.inserted_id)
 
     # ------------------------------------------------------------------ steps
+    def live_plans(self) -> dict:
+        """Active paid subscription per trader on the live system."""
+        names = {"Starter": "starter", "Trader Premium": "premium", "Pro Plan": "pro", "Enterprise": "enterprise"}
+        cycle = {"monthly": "monthly", "quarterly": "quarterly", "yearly": "yearly"}
+        out = {}
+        for r in rows(self.cur, f"select trader_uuid, type, status, billing_cycle, expires_at from {self.source}.subscriptions "
+                                f"where status = 'active' order by expires_at"):
+            if r["type"] in names and r.get("expires_at"):
+                out[r["trader_uuid"]] = {"plan": names[r["type"]], "renews_at": utc(r["expires_at"]),
+                                         "plan_cadence": cycle.get(r.get("billing_cycle") or "", "monthly"), "plan_source": "live_subscription"}
+        return out
+
     async def businesses(self):
+        paid = self.live_plans()
+        grandfather = {"plan": "pro", "renews_at": datetime.now(timezone.utc).replace(microsecond=0) + timedelta(days=365),
+                       "plan_source": "grandfathered"}
         shops = rows(self.cur, f"select * from {self.source}.shops order by id")
         by_business: dict[str, list] = {}
         for sh in shops:
@@ -103,7 +120,6 @@ class Migration:
                 "email": b.get("email") or "",
                 "logo_url": b.get("logo_url"),
                 "track_stock": True,
-                "plan": "Free",
                 "shops": [{"name": sh["name"] or "Main branch", "address": sh.get("address") or "",
                            "phone": sh.get("phone") or "", "sells": True, "is_main": i == 0}
                           for i, sh in enumerate(mine)] or [{"name": "Main branch", "address": b.get("hq_location") or "", "phone": "", "sells": True, "is_main": True}],
@@ -113,7 +129,9 @@ class Migration:
                 "archived": bool(b.get("deleted_at")),
                 "created_at": utc(b.get("created_at")),
             }
-            bid = await self.upsert(self.db.businesses, b["uuid"], doc, "businesses")
+            # The plan is set once; after that the app / Super Admin own it.
+            bid = await self.upsert(self.db.businesses, b["uuid"], doc, "businesses",
+                                    insert_only=paid.get(b.get("trader_uuid")) or grandfather)
             self.business[b["uuid"]] = bid
             for sh in mine:
                 self.shop_business[sh["uuid"]] = bid
@@ -161,6 +179,12 @@ class Migration:
             if not doc["password_hash"]:
                 self.tally("users:no_password")
             uid = await self.upsert(self.db.users, u["uuid"], doc, "users")
+            seen = u.get("last_active_at") or u.get("last_login_at")
+            if seen and self.commit and ObjectId.is_valid(uid):
+                # keep whichever is newer: activity on the live system or in this app
+                await self.db.users.update_one({"_id": ObjectId(uid)}, {"$max": {"last_seen_at": utc(seen)}})
+                if bid:
+                    await self.db.businesses.update_one({"_id": ObjectId(bid)}, {"$max": {"last_active_at": utc(seen)}})
             if bid:
                 self.tally("users:with_business")
             # every business this trader owns points back at them
@@ -247,7 +271,9 @@ class Migration:
                               "quantity": qty, "unit_price": price, "discount_type": "percent",
                               "discount_value": num(li.get("discount_percent")), "note": li.get("description") or "",
                               "quick_add": False, "unit": UNIT, "gross": gross, "discount": disc,
-                              "total": round(gross - disc, 2)})
+                              "total": round(gross - disc, 2),
+                              # cost frozen at the time of sale, straight from the live line
+                              **({"cost_at_sale": num(li["cost_price"])} if li.get("cost_price") is not None else {})})
             gross = round(sum(x["gross"] for x in lines), 2)
             line_disc = round(sum(x["discount"] for x in lines), 2)
             after = gross - line_disc
@@ -329,6 +355,7 @@ async def main():
         sys.exit("Set LEGACY_DB_HOST / LEGACY_DB_USER / LEGACY_DB_PASSWORD in backend/.env first")
 
     mysql = pymysql.connect(**MYSQL)
+    mysql.cursor().execute("SET SESSION TRANSACTION READ ONLY")   # the live database is only ever read
     mongo = AsyncIOMotorClient(os.environ["MONGO_URL"])
     db = mongo[os.environ["DB_NAME"]]
     for coll in (db.businesses, db.users, db.customers, db.suppliers, db.items, db.invoices, db.payments, db.expenses, db.accounts):
