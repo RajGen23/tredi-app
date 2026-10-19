@@ -42,3 +42,9 @@ export function compactMoney(n: number): string {
   if (v >= 1_000) return `₦ ${Math.round(v / 1_000)}K`;
   return `₦ ${v.toFixed(0)}`;
 }
+
+/** "12 min ago", or a date once it is older than a month. */
+export function seenLabel(iso?: string | null): string {
+  if (!iso) return "Not yet";
+  return dayjs().diff(dayjs(iso), "day") < 30 ? `${ago(iso)} ago` : `on ${dayjs(iso).format("DD MMM YYYY")}`;
+}

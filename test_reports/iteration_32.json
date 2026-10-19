@@ -1,0 +1,38 @@
+{
+  "summary": "Super Admin Customers panel exercised end-to-end on desktop 1440x900. Backend: 20/20 pytest cases pass in /app/backend/tests/test_iter32_admin_customers.py. Covered: admin login (access_token), GET /api/admin/customers with status/sort/q (name counts match rows; email search returns owner@tredi.app; status filter yields only matching rows; all 4 sorts return 200), GET /api/admin/customers/{id} (subscription, team with last_seen, catalogue, limit_names, feature_names), 404 for unknown id, POST /activate validation (bogus plan -> 400; months=99 -> 400), POST /activate pro 3-month on TEST Biz -> subscription.plan=pro status=active and history[0].source=admin, POST /end-plan -> status=expired, re-activate -> active again, PUT /custom-plan with name/price/limits.users=tight on Tredi Ventures -> owner GET /api/subscription reflects custom:true name 'QA Custom' price 12345 limit, POST /api/team on owner with tight user limit -> 402 enforcement, DELETE /custom-plan -> custom:false, end-plan on Tredi -> owner /api/subscription status=expired AND POST /api/customers -> 402 (guard_writes), re-activate pro 12 restores plan='pro' status='active', last_active signal verified (team row last_seen populated after owner hit /api/subscription, business.last_active updated). Frontend: superadmin logged in via 'Continue', sidebar 'Customers' loaded the customers-table (All=185, Active=179, Lapsed=6), all 4 sort chips (sort-last_active/expiry/newest/name) present, customers-export present, search 'TEST Biz' then clicked row navigated to /admin/customers/<id>. Detail testIDs all present: current-plan, last-active (card), activate-panel (plan-pro, months-3, activate-amount auto-filled list price 50,000 then 120,000 for 3 months, activate-reference, activate-note, activate-btn), activate-modal + activate-confirm fired 'Activated · ... on Pro until 17 Jan 2027' toast and card updated to '17 Jan 2027 · 89 days left' with new history row 'Pro · 3 mo · ₦ 120,000 · Tredi team · Gaurav · ref QA-UI-ref'. custom-panel (custom-name, custom-price, custom-limit-users, custom-save) accepted save, custom-clear appeared and reverted. end-plan -> end-modal -> end-confirm set status to expired, then re-activate restored to Pro (23 Dec 2027). No pageerror, no console error. Customers list shows 'Tredi Ventures ... 1 min ago' confirming the last-active column renders live data. No deprecated expo-av / expo-barcode-scanner / expo-background-fetch found in the two reviewed files.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_32.json",
+    "/app/backend/tests/test_iter32_admin_customers.py",
+    "/app/test_reports/pytest/iter32_customers.xml",
+    "/app/test_reports/screenshots/iter32_02_customers_list.png",
+    "/app/test_reports/screenshots/iter32_03_customer_detail.png",
+    "/app/test_reports/screenshots/iter32_04_after_activate.png",
+    "/app/test_reports/screenshots/iter32_06_final.png"
+  ],
+  "action_items": [
+    "No functional action items - every requested capability (activate, custom-plan, end-plan, last-active) works. Minor polish only: when subscription is expired the detail header card label flips 'Ends' -> 'Ended' which is nice; consider showing the admin's name on the toast line (currently only business name is shown).",
+    "routes/admin_customers.py is 199 lines so file-size guideline is fine. Consider adding a 'cadence' optional override in ActivateIn if 6-month plans should be labelled 'half-yearly' rather than falling back to 'monthly' (currently cadence_for(6) -> 'monthly')."
+  ],
+  "critical_code_review_comments": [
+    "ActivateIn.months accepts 6 but cadence_for() only maps 3->quarterly and 12->yearly; 6 months is stored as 'monthly'. Harmless but the activity label reads 'per month' for a 6-month plan. Non-blocking.",
+    "subscription_state merges custom.limits over plan.limits - correct. ensure_limit reads from the merged dict so 402 enforcement for lowered custom users limit works as verified.",
+    "touch_last_seen correctly throttles to 2 minutes and updates businesses.last_active_at only when business_id is set.",
+    "No MongoDB _id leaks: summary() builds a dict with str(biz['_id']) and plan_history/team projections use str(_id).",
+    "customer() returns catalogue only for PAID_KEYS which is what the UI expects for the plan-<key> chips."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter32_admin_customers.py (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "seed_data_creation": "Picked an existing 'TEST Biz' row (id 6aa7b222a5cda710da2d5090) for destructive flows (activate/end/activate). Tredi Ventures was mutated with a tight custom-plan (users-1) to verify 402 enforcement, then custom-plan was cleared and the business re-activated to Pro 12 months (restored). Four plan_history rows with reference starting 'QA' were created across the run and deleted via motor on db.plan_history.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend env uses EXPO_PUBLIC_BACKEND_URL in /app/frontend/.env (not EXPO_BACKEND_URL). Admin login returns {access_token, admin{...}} not {token,...}. Owner login uses OAuth2 form (POST /api/auth/login with username/password form) and returns {access_token, ...}. Enforcement endpoint is POST /api/team (not /api/team/invites) and requires {email,name,role,password,phone,shops}. To clean up QA plan_history: db.plan_history.delete_many({'reference': {'$regex': '^QA'}}). The 'TEST Biz' id used was 6aa7b222a5cda710da2d5090; Tredi Ventures id is 6aa7ae17267e782a241b7e6e. The last_active 'Not yet' seen on TEST Biz rows is correct - those seeded tenants have never been logged in with."
+}

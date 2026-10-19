@@ -75,7 +75,7 @@ async def choose_plan(data: PlanChoiceIn, user: CurrentUser):
     price = plan_rules.price_of(plan, data.cadence)
     await db.businesses.update_one({"_id": ObjectId(f["business_id"])}, {"$set": {
         "plan": plan["key"], "plan_cadence": data.cadence, "renews_at": renews,
-        "plan_changed_at": now(), "plan_changed_by": user.get("name", "")}})
+        "plan_changed_at": now(), "plan_changed_by": user.get("name", ""), "plan_months": months}})
     await db.plan_requests.delete_many({"business_id": f["business_id"], "status": "pending"})
     await db.plan_history.insert_one({"business_id": f["business_id"], "plan": plan["key"],
                                       "cadence": data.cadence, "amount": price, "note": data.note,

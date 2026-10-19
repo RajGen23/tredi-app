@@ -593,3 +593,10 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - Replaced "Emergent" in comments/tests; app ID now com.brandjunction.tredi (iOS + Android). Platform env vars/URLs/library names left untouched (required to run).
 - Admin panel dead buttons wired: Export CSV (Businesses, Users, Audit, Analytics, logged as Data exports), New plan (draft), Compare roles, New role template, Open/Resolve incident, Migration Download report, Support View log; support message reply thread shown; Overview shows Help messages + Plan requests tiles.
 - Tested: iteration_31 — all pass.
+
+## Update — Admin Customers (live businesses)
+- New admin screen /admin/customers (+ /admin/customers/[id]) reading real `businesses`.
+- Activate a plan for direct-paying clients (plan, 1/3/6/12 months, amount, payment ref, note; extends remaining time on same plan; closes pending plan requests; writes plan_history source=admin, audit, tenant Activity). End plan now.
+- Custom plan per client: `businesses.custom_plan` {name, price, limits, features} merged in deps.subscription_state, enforced by ensure_limit/ensure_feature.
+- Last active: deps.touch_last_seen sets users.last_seen_at + businesses.last_active_at (throttled 2 min); shown per customer and per team member.
+- API: GET /api/admin/customers, GET /api/admin/customers/{id}, POST …/activate, PUT/DELETE …/custom-plan, POST …/end-plan (routes/admin_customers.py).

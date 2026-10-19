@@ -93,8 +93,20 @@ async def current_user(request: Request, token: Annotated[str, Depends(oauth2_sc
     user = await db.users.find_one({"_id": ObjectId(uid)})
     if not user:
         raise unauthorized
+    await touch_last_seen(user)
     await guard_writes(request, user)
     return user
+
+
+async def touch_last_seen(user: dict):
+    """When was this person last in their books — written at most every 2 minutes
+    so the Super Admin can see who is active without a write on every request."""
+    seen = aware(user.get("last_seen_at"))
+    if seen and now() - seen < timedelta(minutes=2):
+        return
+    await db.users.update_one({"_id": user["_id"]}, {"$set": {"last_seen_at": now()}})
+    if user.get("business_id") and ObjectId.is_valid(str(user["business_id"])):
+        await db.businesses.update_one({"_id": ObjectId(str(user["business_id"]))}, {"$set": {"last_active_at": now()}})
 
 
 CurrentUser = Annotated[dict, Depends(current_user)]
@@ -126,11 +138,22 @@ def subscription_state(biz: dict) -> dict:
     expired = ends is not None and ends <= now()
     cadence = biz.get("plan_cadence") or "monthly"
     price = plan_rules.price_of(plan, cadence)
-    return {"plan": plan["key"], "name": plan["name"], "price": price,
+    # A plan the tredi team tailored for this one client sits on top of the base plan.
+    custom = biz.get("custom_plan") or {}
+    limits = {**plan["limits"], **(custom.get("limits") or {})}
+    features = {**plan["features"], **(custom.get("features") or {})}
+    if custom.get("price") is not None:
+        price = int(custom["price"])
+    name = custom.get("name") or plan["name"]
+    months = biz.get("plan_months")
+    words = f"every {months} months" if months and months not in (1, 3, 12) else plan_rules.CADENCE_WORDS[cadence]
+    if months and months not in (1, 3, 12) and custom.get("price") is None:
+        price = plan["prices"]["monthly"] * months
+    return {"plan": plan["key"], "name": name, "price": price,
             "price_label": plan_rules.money(price),
-            "cadence": plan_rules.CADENCE_WORDS[cadence] if not trialing else plan["cadence"],
+            "cadence": words if not trialing else plan["cadence"],
             "cadence_key": cadence, "tagline": plan["tagline"], "perks": plan["perks"],
-            "limits": plan["limits"], "features": plan["features"], "trialing": trialing,
+            "limits": limits, "features": features, "trialing": trialing, "custom": bool(custom),
             "status": "expired" if expired else ("trialing" if trialing else "active"),
             "days_left": days_left, "ends_at": ends.isoformat() if ends else None}
 
