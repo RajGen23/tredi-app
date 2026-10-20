@@ -87,6 +87,7 @@ export default function Stock() {
         <IconBtn name="search-outline" testID="stock-search" onPress={() => router.push("/search")} />
         <IconBtn name="pricetag-outline" testID="stock-price-check" onPress={() => router.push("/stock/price-check")} />
         <IconBtn name="options-outline" dot={extraFilters > 0} testID="stock-filter" onPress={() => setSheet(true)} />
+        <IconBtn name="layers-outline" testID="stock-bulk-add" onPress={() => router.push("/stock/bulk")} />
         <IconBtn name="images-outline" testID="stock-photos" onPress={() => router.push("/stock/photos")} />
         <IconBtn dark name={grid ? "list-outline" : "grid-outline"} testID="stock-grid-view" onPress={() => setGrid(!grid)} />
       </>} />

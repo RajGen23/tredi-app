@@ -70,7 +70,7 @@ export default function ItemDetail() {
   const setPhoto = async () => {
     setUploading(true);
     try {
-      const url = await pickAndUploadPhoto();
+      const url = await pickAndUploadPhoto({ crop: true });
       if (!url) return;
       await api(`/items/${id}/photo`, { method: "PATCH", json: { photo_url: url } });
       fresh();

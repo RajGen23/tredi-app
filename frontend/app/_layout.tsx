@@ -14,6 +14,7 @@ import { queryClient } from "@/src/query-client";
 import { AuthProvider } from "@/src/auth";
 import { ToastProvider } from "@/src/components/sheet";
 import { PeriodProvider } from "@/src/period";
+import { CropHost } from "@/src/components/cropper";
 
 // Disable logbox errors etc so that users can see the app
 // and agent works as expected.
@@ -58,6 +59,7 @@ export default function RootLayout() {
                     <Stack.Screen name="invoices/new" options={{ presentation: "fullScreenModal" }} />
                     <Stack.Screen name="customers/new" options={{ presentation: "modal" }} />
                     <Stack.Screen name="stock/new" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="stock/bulk" options={{ presentation: "modal" }} />
                     <Stack.Screen name="stock/photos" options={{ presentation: "modal" }} />
                     <Stack.Screen name="expenses/new" options={{ presentation: "modal" }} />
                     <Stack.Screen name="payments/new" options={{ presentation: "modal" }} />
@@ -72,6 +74,7 @@ export default function RootLayout() {
                     <Stack.Screen name="shortcuts" options={{ presentation: "modal" }} />
                     <Stack.Screen name="lock" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
                   </Stack>
+                  <CropHost />
                 </ToastProvider>
                 </PeriodProvider>
               </AuthProvider>

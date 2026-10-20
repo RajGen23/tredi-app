@@ -23,6 +23,7 @@ const ACTIONS: { label: string; sub: string; icon: IonName; route: string; green
   { label: "Payment in", sub: "Record money received from a customer", icon: "arrow-down-outline", route: "/payments/new", testID: "fab-payment-in" },
   { label: "Expense", sub: "Rent, fuel, wages…", icon: "remove-outline", route: "/expenses/new", testID: "fab-expense" },
   { label: "Add stock", sub: "New item with pricing", icon: "cube-outline", route: "/stock/new", testID: "fab-add-stock" },
+  { label: "Add several items", sub: "Many new items in one go", icon: "layers-outline", route: "/stock/bulk", testID: "fab-add-bulk" },
   { label: "New customer", sub: "Name and phone only", icon: "person-add-outline", route: "/customers/new", testID: "fab-new-customer" },
 ];
 

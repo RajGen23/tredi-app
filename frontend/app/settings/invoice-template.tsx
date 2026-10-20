@@ -10,6 +10,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { photoSource, uploadPhoto } from "@/src/uploads";
+import { cropImage } from "@/src/components/cropper";
 import { AppBar, Av, Btn, Card, Field, H4, Lbl, Loading, Row, Sub, Switch } from "@/src/components/ui";
 import { InvoicePaper } from "@/src/components/invoice-paper";
 import { useToast } from "@/src/components/sheet";
@@ -215,9 +216,12 @@ export default function InvoiceTemplates() {
     }
     const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.9, mediaTypes: ["images"] });
     if (res.canceled || !res.assets?.length) return;
+    const a = res.assets[0];
+    const cropped = await cropImage(a.uri, a.width, a.height, true);
+    if (!cropped) return;
     setBusy(true);
     try {
-      const up = await uploadPhoto(res.assets[0].uri, res.assets[0].fileName ?? "logo.png", res.assets[0].mimeType ?? "image/png");
+      const up = await uploadPhoto(cropped, a.fileName ?? "logo.png", cropped === a.uri ? a.mimeType ?? "image/png" : "image/png");
       setF({ ...f, logo_url: up.url });
       toast.show("Logo uploaded — tap Save to apply it");
     } catch (e: any) {

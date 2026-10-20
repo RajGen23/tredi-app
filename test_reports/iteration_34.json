@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 34 — Bulk item creation, opening PO sync, PO new-item line, upfront expense, and photo cropper. BACKEND (5/5 pytest in /app/backend/tests/test_iter34_bulk_items_crop.py): (1) POST /api/items/bulk with 4 rows (one empty, one qty=0) creates exactly 3 items and ONE 'opening' PO with the supplier 'ZZ_iter34_supplier' containing only the two qty>0 lines; total=paid=1100, due=0, method='opening', visible in GET /api/purchases. (2) Empty-names bulk payload returns 400. (3) POST /api/items quantity>0 creates an 'opening' PO with supplier_name='Opening stock' and account_name='Opening stock'. (4) quantity=0 single-item POST creates NO PO. (5) POST /api/purchases with item_id=null + name + selling_price creates a brand new stock item (qty 4, selling_price 199); same request paid=500/method=transfer/account_id=<accid> lowers that account's balance by exactly 500 (verified from GET /api/accounts before/after), GET /api/purchases/{id} returns a payments entry with note 'Paid on this order'; PUT with paid=200 re-states the expense so the net account impact becomes 200 (-300 rebound confirmed). FRONTEND (mobile 390x844, logged in as owner@tredi.app): /stock/bulk renders bulk-items-screen, 3 initial rows (bulk-row-0/1/2), bulk-add-row adds bulk-row-3, filled rows 0+1 then bulk-save completed successfully (router.back fired expected 'GO_BACK' dev warning because it was opened by deep link). Record purchase screen renders new-purchase-screen with purchase-pick-supplier, purchase-add-item, purchase-method-credit/cash/transfer, purchase-paid, purchase-date, purchase-update-cost, purchase-total, purchase-save all testIDs present in /app/frontend/app/purchases/new.tsx. Cropper component (CropHost) is wired via pickAndUploadPhoto({crop:true}) with testIDs cropper, cropper-free/square/reset, cropper-cancel, cropper-done. No deprecated expo-av / expo-barcode-scanner / expo-background-fetch found in the reviewed files. No pageerror or console error (just one dev-only navigation warning on deep-link router.back).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "/purchases/new — Add items sheet UI probe", "issue": "Automated harness could not consistently open the add-items Sheet when the supplier picker auto-opens on mount (pickSupplier default = !params.supplier). The code paths are correct (purchase-add-item → setPickItem(true) → Sheet with purchase-item-search / purchase-item-<id> / purchase-items-add / purchase-item-new all defined in new.tsx:249-272); the manual Save purchase button and all testIDs are in the DOM. Non-blocking: either an initial toast overlay or the stale supplier sheet intercepted the click. Recommend verifying this flow with a real tap or wrapping the auto-open behind a next-tick to avoid overlapping with first-paint toasts.", "affected_testIDs": ["purchase-add-item","purchase-item-search","purchase-items-add","purchase-item-new"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter34_bulk_items_crop.py",
+    "/app/test_reports/pytest/iter34_results.xml",
+    "/app/test_reports/screenshots/iter34_bulk.png",
+    "/app/test_reports/screenshots/iter34_after_bulk_save.png",
+    "/app/test_reports/screenshots/iter34_po_sheet.png"
+  ],
+  "action_items": [
+    "Optional: on /purchases/new, delay the auto-open of the supplier Sheet until after the first paint (e.g. useEffect + setTimeout 0) so the initial render is deterministic for E2E and the user can see the empty-state card for a moment.",
+    "Automated cropper flow (page.expect_file_chooser) was not run from the web preview — file-input on Expo web for expo-image-picker is not easily driven headlessly. The source wires cropImage() correctly through pickAndUploadPhoto({crop:true}) in src/uploads.ts and the CropHost modal has every requested testID (cropper, cropper-free, cropper-square, cropper-reset, cropper-cancel, cropper-done). Recommend a manual mobile smoke to confirm the cropper renders when importing a photo on item-photo-add and templates-logo-upload — the backend-side upload-binary / upload-base64 / upload endpoints are already covered by prior iterations."
+  ],
+  "critical_code_review_comments": [
+    "server.py:400-425 create_items_bulk correctly collapses to a single purchases.record_stock_po call outside the row loop so only ONE 'opening' PO is written; empty-name rows are stripped before the shop-stock loop and before the PO is written — good.",
+    "server.py:383-387 single-item create_item fires record_stock_po only if track_stock and quantity>0 — zero-qty item does not pollute the Purchases list.",
+    "routes/purchases.py:83-96 _ensure_items creates the new stock item with selling_price=l.get('selling_price') or 0 so a null line with sell=199 persists at 199 (verified).",
+    "routes/purchases.py:230-255 create_purchase then calls _sync_upfront_expense which writes exactly one linked expense keyed by purchase_id (upsert), guaranteeing account balance stays correct across edits (verified by PUT re-state test).",
+    "frontend/app/stock/bulk.tsx:47-59 save mutation invalidates ['purchases'] and ['suppliers'] alongside ['items'], so the new PO shows up in Purchases without a manual refresh — good.",
+    "frontend/app/purchases/new.tsx:67-77 reorder-from-item effect correctly guards on `lines.length` so a user who adds extra lines doesn't lose them on supplier auto-pick.",
+    "frontend/src/components/cropper.tsx:85-96 confirm() uses expo-image-manipulator's new ImageManipulator.manipulate(uri).crop(rect).renderAsync() API (SDK 54+) correctly and falls back to the original URI on failure so no photo is lost. PNG path is used when req.png is true (logo flow)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter34_bulk_items_crop.py (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "~90%" },
+  "seed_data_creation": "During pytest run: ZZ_iter34_apple/mango/noqty, ZZ_iter34_single_q, ZZ_iter34_single_zero, ZZ_iter34_po_new_item, supplier ZZ_iter34_supplier and the opening/transfer POs they generated. UI probe added 'ZZ UI Bulk A' + 'ZZ UI Bulk B'. All cleaned up afterwards via motor: db.items(ZZ_iter34|ZZ UI Bulk)=8 deleted, suppliers(ZZ_iter34)=1 deleted, purchases(supplier_name ZZ_iter34 | line names ZZ_iter34|ZZ UI Bulk)=4 deleted, expenses(ZZ_iter34)=1 deleted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend tests must load /app/frontend/.env for EXPO_PUBLIC_BACKEND_URL before pytest collects — see the preamble in test_iter34_bulk_items_crop.py. The server exposes POST /api/items/bulk (BulkItemsIn) and the single POST /api/items path now records an opening PO via purchases.record_stock_po. For the purchases new-item line, make sure to send item_id:null and selling_price (number) — the backend's PurchaseLine.selling_price is Optional[float] and _ensure_items reads it to stamp the new stock item. For /purchases/new UI testing, prefer going via Stock tab FAB (fab-add-bulk) or Purchases FAB (fab-add) rather than deep links, so router.back() has a stack and the supplier sheet does not race with the first-render toast overlay. Account used in the transfer test was the first non-dormant from GET /api/accounts (typically 'Cash till')."
+}

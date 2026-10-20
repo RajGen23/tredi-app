@@ -1,6 +1,7 @@
 // 06.3 Record purchase — raises stock and what you owe in one entry.
 import { useEffect, useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import Ionicons from "@react-native-vector-icons/ionicons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,11 +17,15 @@ import { initials, money, parseNum } from "@/src/format";
 import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
-type Line = { item_id: string | null; name: string; quantity: number; unit_cost: number; unit: string };
+// Kept as typed text so every row can be edited in place; numbers on save.
+type Line = { key: string; item_id: string | null; name: string; qty: string; cost: string; sell: string; unit: string };
+let seq = 0;
+const newKey = () => `l${Date.now()}-${seq++}`;
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   total: { fontFamily: fonts.monoSemibold, fontSize: 19, letterSpacing: -0.6, color: c.onSurface },
+  line: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border },
   bar: { backgroundColor: c.surfaceSecondary, borderTopWidth: 1, borderTopColor: c.border, paddingHorizontal: 14, paddingTop: 10 },
 }));
 
@@ -41,7 +46,8 @@ export default function NewPurchase() {
   const [supPhone, setSupPhone] = useState("");
   const [pickItem, setPickItem] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
-  const [draft, setDraft] = useState<{ item_id: string | null; name: string; unit: string; qty: string; cost: string } | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
   const [paid, setPaid] = useState("");
   const [method, setMethod] = useState<"credit" | "cash" | "transfer">("credit");
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -52,22 +58,23 @@ export default function NewPurchase() {
   const items = useQuery({ queryKey: ["items"], queryFn: () => api<any[]>("/items") });
   const { accounts, options: accountOptions } = useAccounts();
   const supplier = suppliers.data?.suppliers?.find((x: any) => x.id === supplierId);
-  const total = useMemo(() => lines.reduce((a, l) => a + l.quantity * l.unit_cost, 0), [lines]);
+  const total = useMemo(() => lines.reduce((a, l) => a + parseNum(l.qty) * parseNum(l.cost), 0), [lines]);
+  const fromItem = (it: any): Line => ({ key: newKey(), item_id: it.id, name: it.name, unit: it.unit, qty: "1", cost: it.cost_price ? String(it.cost_price) : "", sell: "" });
+  const setLine = (key: string, patch: Partial<Line>) => setLines((x) => x.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const account = accounts.find((a: any) => a.id === accountId) ?? accounts[0];
 
   // Reordering straight from an item: it is already on the bill when the screen opens.
   useEffect(() => {
-    if (!params.item || !items.data || lines.length || draft) return;
+    if (!params.item || !items.data || lines.length) return;
     const it = items.data.find((x: any) => x.id === params.item);
     if (it) {
-      setDraft({ item_id: it.id, name: it.name, unit: it.unit, qty: "", cost: String(it.cost_price || "") });
-      setPickItem(true);
+      setLines([fromItem(it)]);
       if (it.supplier && !supplierId) {
         const s2 = suppliers.data?.suppliers?.find((x: any) => x.name === it.supplier);
         if (s2) { setSupplierId(s2.id); setPickSupplier(false); }
       }
     }
-  }, [params.item, items.data, lines.length, draft, supplierId, suppliers.data]);
+  }, [params.item, items.data, lines.length, supplierId, suppliers.data]);
 
   // `?edit=<id>` reopens an order already on the books.
   const editQ = useQuery({ queryKey: ["purchase", params.edit], queryFn: () => api<any>(`/purchases/${params.edit}`), enabled: !!params.edit });
@@ -78,7 +85,7 @@ export default function NewPurchase() {
     setLoaded(true);
     setSupplierId(d.supplier_id ?? null);
     setPickSupplier(false);
-    setLines((d.lines ?? []).map((l: any) => ({ item_id: l.item_id ?? null, name: l.name, unit: l.unit ?? "", quantity: l.quantity, unit_cost: l.unit_cost })));
+    setLines((d.lines ?? []).map((l: any) => ({ key: newKey(), item_id: l.item_id ?? null, name: l.name, unit: l.unit ?? "", qty: String(l.quantity), cost: String(l.unit_cost ?? ""), sell: "" })));
     setPaid(d.paid ? String(d.paid) : "");
     setMethod(d.method ?? "credit");
     setAccountId(d.account_id ?? null);
@@ -87,7 +94,9 @@ export default function NewPurchase() {
 
   const save = useMutation({
     mutationFn: () => {
-      const json = { supplier_id: supplierId, lines, paid: parseNum(paid), method, update_cost: updateCost, date,
+      const out = lines.filter((l) => l.name.trim()).map((l) => ({ item_id: l.item_id, name: l.name.trim(), unit: l.unit, quantity: parseNum(l.qty), unit_cost: parseNum(l.cost),
+                                                                  selling_price: l.sell ? parseNum(l.sell) : null }));
+      const json = { supplier_id: supplierId, lines: out, paid: parseNum(paid), method, update_cost: updateCost, date,
                      account_id: method === "credit" ? null : account?.id ?? null };
       return params.edit ? api(`/purchases/${params.edit}`, { method: "PUT", json }) : api("/purchases", { method: "POST", json });
     },
@@ -114,14 +123,18 @@ export default function NewPurchase() {
     onError: (e: any) => toast.show(e.message),
   });
 
-  const addLine = () => {
-    if (!draft) return;
-    const qty = parseNum(draft.qty);
-    const cost = parseNum(draft.cost);
-    if (qty <= 0) return toast.show("Enter how many arrived");
-    setLines((l) => [...l, { item_id: draft.item_id, name: draft.name, quantity: qty, unit_cost: cost, unit: draft.unit }]);
-    setDraft(null);
+  const addPicked = () => {
+    const chosen = (items.data ?? []).filter((it: any) => picked.includes(it.id));
+    setLines((l) => [...l, ...chosen.map(fromItem)]);
+    setPicked([]);
+    setSearch("");
+    setPickItem(false);
   };
+  const addNew = () => {
+    setLines((l) => [...l, { key: newKey(), item_id: null, name: "", unit: "Piece", qty: "1", cost: "", sell: "" }]);
+    setPickItem(false);
+  };
+  const badQty = lines.some((l) => parseNum(l.qty) <= 0 || !l.name.trim());
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-purchase-screen">
@@ -142,14 +155,30 @@ export default function NewPurchase() {
         <Lbl style={{ marginTop: 14, marginBottom: 6 }}>What arrived</Lbl>
         <Card style={{ paddingVertical: 4 }}>
           {lines.map((l, i) => (
-            <Li key={`${l.name}-${i}`} testID={`purchase-line-${i}`} onPress={() => setLines((x) => x.filter((_, j) => j !== i))}>
-              <View style={{ flex: 1 }}><H4>{l.name}</H4><Sub>{l.quantity} {l.unit} × {money(l.unit_cost)}</Sub></View>
-              <Money>{money(l.quantity * l.unit_cost)}</Money>
-            </Li>
+            <View key={l.key} style={s.line} testID={`purchase-line-${i}`}>
+              <Row between style={{ gap: 8 }}>
+                {l.item_id ? <H4 style={{ flex: 1 }}>{l.name}</H4> : (
+                  <Field placeholder="New item name, e.g. Sugar 50kg" value={l.name} onChangeText={(v) => setLine(l.key, { name: v })}
+                    style={{ flex: 1, minHeight: 40 }} testID={`purchase-line-name-${i}`} />
+                )}
+                <Pressable hitSlop={10} onPress={() => setLines((x) => x.filter((y) => y.key !== l.key))} testID={`purchase-line-remove-${i}`}>
+                  <Ionicons name="close-circle" size={22} color={colors.ink40} />
+                </Pressable>
+              </Row>
+              <Row style={{ gap: 8, marginTop: 6 }}>
+                <Field label="Qty" placeholder="0" keyboardType="decimal-pad" mono value={l.qty} onChangeText={(v) => setLine(l.key, { qty: v })} style={{ flex: 1 }} testID={`purchase-line-qty-${i}`} />
+                <Field label="Cost each" placeholder="0" keyboardType="decimal-pad" mono value={l.cost} onChangeText={(v) => setLine(l.key, { cost: v })} style={{ flex: 1.3 }} testID={`purchase-line-cost-${i}`} />
+                {!l.item_id ? <Field label="Sell at" placeholder="0" keyboardType="decimal-pad" mono value={l.sell} onChangeText={(v) => setLine(l.key, { sell: v })} style={{ flex: 1.3 }} testID={`purchase-line-sell-${i}`} /> : null}
+              </Row>
+              <Row between style={{ marginTop: 4 }}>
+                <Sub>{l.item_id ? `${l.unit || "unit"}` : "Goes into stock as a new item"}</Sub>
+                <Money>{money(parseNum(l.qty) * parseNum(l.cost))}</Money>
+              </Row>
+            </View>
           ))}
           <Li last onPress={() => setPickItem(true)} testID="purchase-add-item">
             <Av icon="add" tone="green" />
-            <View style={{ flex: 1 }}><H4>Add item</H4><Sub>From stock, or type a new name</Sub></View>
+            <View style={{ flex: 1 }}><H4>Add items</H4><Sub>Tick several from stock, or add new ones</Sub></View>
           </Li>
         </Card>
 
@@ -178,7 +207,7 @@ export default function NewPurchase() {
         <Row between>
           <View><Lbl>Total · {parseNum(paid) >= total && total > 0 ? "paid" : "unpaid"}</Lbl><Text style={s.total} testID="purchase-total">{money(total)}</Text></View>
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Btn label={params.edit ? "Save the correction" : "Save purchase"} disabled={!supplierId || lines.length === 0} loading={save.isPending} testID="purchase-save" onPress={() => save.mutate()} />
+            <Btn label={params.edit ? "Save the correction" : "Save purchase"} disabled={!supplierId || lines.length === 0 || badQty} loading={save.isPending} testID="purchase-save" onPress={() => save.mutate()} />
           </View>
         </Row>
       </View>
@@ -217,35 +246,29 @@ export default function NewPurchase() {
         )}
       </Sheet>
 
-      <Sheet visible={pickItem} onClose={() => { setPickItem(false); setDraft(null); }} testID="purchase-item-sheet">
-        {!draft ? (
-          <>
-            <H4>Add item</H4>
-            {(items.data ?? []).map((it: any, i: number, arr: any[]) => (
-              <Li key={it.id} last={i === arr.length - 1} testID={`purchase-item-${it.id}`}
-                onPress={() => setDraft({ item_id: it.id, name: it.name, unit: it.unit, qty: "", cost: String(it.cost_price || "") })}>
-                <Av icon="cube-outline" tone="sq" />
-                <View style={{ flex: 1 }}><H4>{it.name}</H4><Sub>{it.quantity} {it.unit} on hand · cost {money(it.cost_price)}</Sub></View>
-              </Li>
-            ))}
-            <Btn label="Item not in stock yet" variant="ghost" small style={{ marginTop: 10 }} testID="purchase-item-new"
-              onPress={() => setDraft({ item_id: null, name: "", unit: "Piece", qty: "", cost: "" })} />
-          </>
-        ) : (
-          <>
-            <H4>{draft.name || "New item"}</H4>
-            {!draft.item_id ? <Field label="Item name" placeholder="Sugar 50kg" value={draft.name} onChangeText={(v) => setDraft({ ...draft, name: v })} testID="purchase-draft-name" style={{ marginTop: 10 }} /> : null}
-            <Row style={{ marginTop: 10, gap: 8 }}>
-              <View style={{ flex: 1 }}><Field label="Quantity" placeholder="0" keyboardType="decimal-pad" mono value={draft.qty} onChangeText={(v) => setDraft({ ...draft, qty: v })} testID="purchase-draft-qty" /></View>
-              <View style={{ flex: 1 }}><Field label="Cost each" placeholder="0" keyboardType="decimal-pad" mono value={draft.cost} onChangeText={(v) => setDraft({ ...draft, cost: v })} testID="purchase-draft-cost" /></View>
-            </Row>
-            <Row between style={{ marginTop: 10 }}>
-              <Sub>Line total</Sub>
-              <Money>{money(parseNum(draft.qty) * parseNum(draft.cost))}</Money>
-            </Row>
-            <Btn label="Add to purchase" style={{ marginTop: 14 }} disabled={!draft.name.trim()} testID="purchase-draft-add" onPress={addLine} />
-          </>
-        )}
+      <Sheet visible={pickItem} onClose={() => { setPickItem(false); setPicked([]); setSearch(""); }} testID="purchase-item-sheet">
+        <H4>Add items</H4>
+        <Sub style={{ marginTop: 3 }}>Tick everything that arrived, then set quantities and costs on the order.</Sub>
+        <Field placeholder="Search stock" value={search} onChangeText={setSearch} style={{ marginTop: 10 }} testID="purchase-item-search" />
+        <View style={{ maxHeight: 340, marginTop: 6 }}>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            {(items.data ?? []).filter((it: any) => !search || it.name.toLowerCase().includes(search.toLowerCase())).slice(0, 200).map((it: any, i: number, arr: any[]) => {
+              const on = picked.includes(it.id);
+              return (
+                <Li key={it.id} last={i === arr.length - 1} testID={`purchase-item-${it.id}`}
+                  onPress={() => setPicked((p) => (on ? p.filter((x) => x !== it.id) : [...p, it.id]))}>
+                  <Ionicons name={on ? "checkbox" : "square-outline"} size={22} color={on ? colors.green700 : colors.ink40} />
+                  <View style={{ flex: 1 }}><H4>{it.name}</H4><Sub>{it.quantity} {it.unit} on hand · cost {money(it.cost_price)}</Sub></View>
+                </Li>
+              );
+            })}
+          </ScrollView>
+        </View>
+        <Row style={{ gap: 8, marginTop: 12 }}>
+          <Btn label="New item" variant="ghost" small style={{ flex: 1 }} testID="purchase-item-new" onPress={addNew} />
+          <Btn label={picked.length ? `Add ${picked.length} item${picked.length > 1 ? "s" : ""}` : "Tick items to add"} small style={{ flex: 2 }}
+            disabled={!picked.length} testID="purchase-items-add" onPress={addPicked} />
+        </Row>
       </Sheet>
     </View>
   );

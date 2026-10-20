@@ -383,7 +383,46 @@ async def create_item(data: ItemIn, user: Annotated[dict, Depends(current_user)]
     if doc["track_stock"] and doc["quantity"]:
         await db.movements.insert_one({"business_id": f["business_id"], "item_id": str(res.inserted_id), "kind": "opening", "delta": doc["quantity"], "balance": doc["quantity"],
                                        "ref": "Opening stock", "note": "", "shop": shop, "by": user.get("name", ""), "created_at": now(), "deleted_at": None})
+        await purchases.record_stock_po(f, user, doc.get("supplier", ""), [_stock_line(doc, res.inserted_id)], shop)
     return clean(await db.items.find_one({"_id": res.inserted_id}))
+
+
+def _stock_line(doc: dict, iid) -> dict:
+    return {"item_id": str(iid), "name": doc["name"], "quantity": doc["quantity"], "unit_cost": doc.get("cost_price") or 0, "unit": doc.get("unit", "")}
+
+
+class BulkItemsIn(BaseModel):
+    supplier: str = ""
+    category: str = "General"
+    unit: str = "Piece"
+    items: List[ItemIn]
+
+
+@api.post("/items/bulk", status_code=201)
+async def create_items_bulk(data: BulkItemsIn, user: Annotated[dict, Depends(current_user)]):
+    """Several new items in one go; whatever stock they bring is one purchase order."""
+    f = biz_filter(user)
+    rows = [r for r in data.items if r.name.strip()]
+    if not rows:
+        raise HTTPException(400, "Add at least one item name")
+    shop = await writing_shop(user)
+    created, lines = [], []
+    for r in rows:
+        doc = {**r.model_dump(), **f, "name": r.name.strip(), "supplier": r.supplier or data.supplier,
+               "category": r.category if r.category != "General" else data.category, "unit": r.unit if r.unit != "Piece" else data.unit,
+               "shop": shop, "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()}
+        if not doc.get("photo_url"):
+            doc["photo_url"] = pick_dummy_photo(doc["name"], doc["category"])
+        doc["stock"] = stock_rows({shop: doc["quantity"]}) if doc["track_stock"] else []
+        res = await db.items.insert_one(doc)
+        if doc["track_stock"] and doc["quantity"]:
+            await db.movements.insert_one({"business_id": f["business_id"], "item_id": str(res.inserted_id), "kind": "opening", "delta": doc["quantity"],
+                                           "balance": doc["quantity"], "ref": "Opening stock", "note": "", "shop": shop, "by": user.get("name", ""),
+                                           "created_at": now(), "deleted_at": None})
+            lines.append(_stock_line(doc, res.inserted_id))
+        created.append(clean(await db.items.find_one({"_id": res.inserted_id})))
+    await purchases.record_stock_po(f, user, data.supplier, lines, shop)
+    return {"items": created, "count": len(created)}
 
 
 @api.get("/items/{iid}")

@@ -47,7 +47,7 @@ export default function StockPhotos() {
     setPicking(null);
     setBusyId(item.id);
     try {
-      const url = await pickAndUploadPhoto({ camera });
+      const url = await pickAndUploadPhoto({ camera, crop: true });
       if (!url) return;
       await api(`/items/${item.id}/photo`, { method: "PATCH", json: { photo_url: url } });
       await qc.invalidateQueries({ queryKey: ["items"] });

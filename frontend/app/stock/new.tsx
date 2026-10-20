@@ -120,7 +120,7 @@ export default function NewItem() {
   const addPhoto = async () => {
     setUploading(true);
     try {
-      const url = await pickAndUploadPhoto();
+      const url = await pickAndUploadPhoto({ crop: true });
       if (url) {
         setPhoto(url);
         toast.show(editId ? "Photo replaced — save to keep it" : "Photo added — it can print on invoices");

@@ -38,6 +38,7 @@ class PurchaseLine(BaseModel):
     quantity: float = 1
     unit_cost: float = 0
     unit: str = ""
+    selling_price: Optional[float] = None   # only read when the line creates a new item
 
 
 class PurchaseIn(BaseModel):
@@ -45,7 +46,7 @@ class PurchaseIn(BaseModel):
     lines: List[PurchaseLine]
     paid: float = 0
     account_id: Optional[str] = None
-    method: Literal["cash", "transfer", "credit", "card"] = "credit"
+    method: Literal["cash", "transfer", "credit", "card", "opening"] = "credit"
     date: Optional[str] = None
     due_date: Optional[str] = None
     shop: str = ""
@@ -75,12 +76,52 @@ class ReturnIn(BaseModel):
     restock: bool = True
 
 
+# "opening" orders record stock the shop already had: settled, but no money moved now
+NO_CASH = ("credit", "opening")
+
+
+async def _ensure_items(f: dict, lines: list, supplier: str, user: dict, shop: str):
+    """A line typed as a new name becomes a real stock item, so what arrived lands on the shelf."""
+    for l in lines:
+        if l.get("item_id") or not l["name"].strip():
+            continue
+        found = await db.items.find_one({**f, "name": l["name"].strip(), "archived": {"$ne": True}})
+        if not found:
+            doc = {**f, "name": l["name"].strip(), "kind": "product", "category": "General", "brand": "", "unit": l.get("unit") or "Piece",
+                   "barcode": "", "supplier": supplier, "location": shop, "cost_price": l["unit_cost"],
+                   "selling_price": l.get("selling_price") or 0, "wholesale_price": None, "track_stock": True, "quantity": 0,
+                   "alert_below": 0, "expiry": None, "photo_url": "", "stock": [], "shop": shop,
+                   "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()}
+            found = {"_id": (await db.items.insert_one(doc)).inserted_id}
+        l["item_id"] = str(found["_id"])
+
+
+async def record_stock_po(f: dict, user: dict, supplier: str, lines: list, shop: str):
+    """Stock added from the Stock screens shows up in the purchase list too, as a
+    settled order. Stock is already counted, so this only writes the record."""
+    if not lines:
+        return
+    name = supplier.strip() or "Opening stock"
+    sup = await db.suppliers.find_one({**f, "name": name})
+    if not sup:
+        sup = {"_id": (await db.suppliers.insert_one({**f, "name": name, "phone": "", "email": "", "address": "", "category": "",
+                                                       "note": "", "created_at": now()})).inserted_id, "name": name}
+    lines = [{**l, "total": round(l["quantity"] * l["unit_cost"], 2)} for l in lines]
+    total = round(sum(l["total"] for l in lines), 2)
+    number = await next_number(f["business_id"], "purchase", "PO", 400)
+    res = await db.purchases.insert_one({**f, "supplier_id": str(sup["_id"]), "supplier_name": sup["name"], "number": number,
+                                         "lines": lines, "total": total, "paid": total, "paid_upfront": 0, "account_id": None,
+                                         "method": "opening", "due_date": None, "shop": shop, "note": "Stock added from the Stock screen",
+                                         "created_by": user.get("name", ""), "created_at": now()})
+    await log_activity(f["business_id"], user, "purchase", f"Purchase {number}", sup["name"], total, str(res.inserted_id), shop)
+
+
 def _upfront(p: dict) -> float:
     """What was paid on the order form itself (not later supplier payments).
     Orders written before this was tracked: anything paid off an account counts."""
     if "paid_upfront" in p:
         return p["paid_upfront"] or 0
-    return (p.get("paid") or 0) if p.get("method") != "credit" else 0
+    return (p.get("paid") or 0) if p.get("method") not in NO_CASH else 0
 
 
 async def _sync_upfront_expense(f: dict, po_id, number: str, supplier: str, amount: float,
@@ -100,7 +141,7 @@ async def _sync_upfront_expense(f: dict, po_id, number: str, supplier: str, amou
 
 async def backfill_upfront_expenses():
     """One-time, idempotent: orders paid on the form before this fix never left the account."""
-    async for p in db.purchases.find({"paid_upfront": {"$exists": False}, "paid": {"$gt": 0}, "method": {"$ne": "credit"},
+    async for p in db.purchases.find({"paid_upfront": {"$exists": False}, "paid": {"$gt": 0}, "method": {"$nin": list(NO_CASH)},
                                       "cancelled_at": {"$exists": False}}):
         f = {"business_id": p["business_id"]}
         if await db.expenses.find_one({**f, "purchase_id": str(p["_id"])}):
@@ -175,7 +216,7 @@ async def get_supplier(sid: str, user: CurrentUser):
     purchases = [clean(p) async for p in db.purchases.find({**f, "supplier_id": sid}).sort("created_at", -1)]
     for p in purchases:
         p["due"] = round((p.get("total") or 0) - (p.get("paid") or 0), 2)
-        p["account_name"] = accounts.get(p.get("account_id") or "", "Cash" if p.get("method") == "cash" else "On credit")
+        p["account_name"] = accounts.get(p.get("account_id") or "", "Opening stock" if p.get("method") == "opening" else "Cash" if p.get("method") == "cash" else "On credit")
     d["purchases"] = purchases
     payments = [clean(p) async for p in db.supplier_payments.find({**f, "supplier_id": sid}).sort("created_at", -1)]
     for p in payments:
@@ -198,12 +239,13 @@ async def create_purchase(data: PurchaseIn, user: CurrentUser):
     total = round(sum(l["total"] for l in lines), 2)
     number = await next_number(f["business_id"], "purchase", "PO", 400)
     shop = await writing_shop(user, data.shop)
+    await _ensure_items(f, lines, sup["name"], user, shop)
     created = _on_date(data.date)
     doc = {**f, "supplier_id": data.supplier_id, "supplier_name": sup["name"], "number": number, "lines": lines, "total": total,
            "paid": min(data.paid, total), "account_id": data.account_id, "method": data.method, "due_date": data.due_date,
            "shop": shop, "note": data.note, "created_by": user.get("name", ""), "created_at": created}
     res = await db.purchases.insert_one(doc)
-    await _sync_upfront_expense(f, res.inserted_id, number, sup["name"], doc["paid"] if data.method != "credit" else 0,
+    await _sync_upfront_expense(f, res.inserted_id, number, sup["name"], doc["paid"] if data.method not in NO_CASH else 0,
                                 data.account_id, created, user)
     for l in lines:
         await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "purchase", number, user, sup["name"], shop)
@@ -233,10 +275,11 @@ async def update_purchase(pid: str, data: PurchaseIn, user: CurrentUser):
         await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "edit", p["number"], user, "Order edited", shop)
     lines = [{**l.model_dump(), "total": round(l.quantity * l.unit_cost, 2)} for l in data.lines]
     total = round(sum(l["total"] for l in lines), 2)
+    await _ensure_items(f, lines, sup["name"], user, shop)
     # the form shows everything paid; the part that came from later supplier
     # payments already has its own expense, so only the rest is "paid on the form"
     allocated = max(0.0, (p.get("paid") or 0) - _upfront(p))
-    upfront = max(0.0, min(data.paid, total) - allocated) if data.method != "credit" else 0
+    upfront = max(0.0, min(data.paid, total) - allocated) if data.method not in NO_CASH else 0
     await _sync_upfront_expense(f, p["_id"], p["number"], sup["name"], upfront, data.account_id, p["created_at"], user)
     await db.purchases.update_one({"_id": p["_id"]}, {"$set": {
         "supplier_id": data.supplier_id, "supplier_name": sup["name"], "lines": lines, "total": total,
@@ -308,7 +351,7 @@ async def get_purchase(pid: str, user: CurrentUser):
     d = clean(p)
     d["due"] = round((p.get("total") or 0) - (p.get("paid") or 0), 2)
     acc = await db.accounts.find_one({"_id": ObjectId(p["account_id"])}) if p.get("account_id") and ObjectId.is_valid(p.get("account_id") or "") else None
-    d["account_name"] = acc["name"] if acc else ("Cash till" if p.get("method") == "cash" else "On credit")
+    d["account_name"] = acc["name"] if acc else ("Opening stock" if p.get("method") == "opening" else "Cash till" if p.get("method") == "cash" else "On credit")
     sup = await db.suppliers.find_one({"_id": ObjectId(p["supplier_id"])}) if ObjectId.is_valid(p.get("supplier_id") or "") else None
     d["supplier"] = {"id": str(sup["_id"]), "name": sup.get("name", ""), "phone": sup.get("phone", ""), "email": sup.get("email", "")} if sup else None
     d["payments"] = []

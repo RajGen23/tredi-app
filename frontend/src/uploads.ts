@@ -183,7 +183,7 @@ export async function photoDataUri(url: string): Promise<string> {
 
 /** Ask for photos once, contextually, then upload. Returns "" if the user says no.
  *  Callers get a plain url they can store; display goes through photoSource(). */
-export async function pickAndUploadPhoto(opts?: { camera?: boolean }): Promise<string> {
+export async function pickAndUploadPhoto(opts?: { camera?: boolean; crop?: boolean }): Promise<string> {
   const ImagePicker = await import("expo-image-picker");
   const { Alert, Linking } = await import("react-native");
   const camera = !!opts?.camera;
@@ -211,6 +211,13 @@ export async function pickAndUploadPhoto(opts?: { camera?: boolean }): Promise<s
     : await ImagePicker.launchImageLibraryAsync({ quality: 0.6, mediaTypes: ["images"] });
   if (res.canceled || !res.assets?.length) return "";
   const a = res.assets[0];
-  const up = await uploadPhoto(a.uri, a.fileName ?? "photo.jpg", a.mimeType ?? "image/jpeg");
+  let uri = a.uri;
+  if (opts?.crop) {
+    const { cropImage } = await import("@/src/components/cropper");
+    const cropped = await cropImage(a.uri, a.width, a.height);
+    if (!cropped) return "";
+    uri = cropped;
+  }
+  const up = await uploadPhoto(uri, a.fileName ?? "photo.jpg", uri === a.uri ? a.mimeType ?? "image/jpeg" : "image/jpeg");
   return up.url;
 }

@@ -618,3 +618,9 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - Terms and notes on invoice PDFs keep line breaks (white-space:pre-line).
 - Purchases: money paid on the order form now creates one linked "Purchases" expense (purchase_id) against the chosen account, so the account balance drops. Editing re-states it. `paid_upfront` is stored on the PO. A startup backfill fixes older orders.
 - Auto live-sync: on startup, the backend runs `admin.legacy_sync_loop()`. If LEGACY_DB_HOST is set, it syncs straight away (unless a sync ran in the last 6h) and then every 6 hours. This is needed because the published mobile app has no web Super Admin URL.
+
+## Bulk items, PO multi-add, photo cropping (Oct 2026)
+- /stock/bulk: add many new items at once (shared supplier/category/unit). POST /api/items/bulk. Any opening stock becomes ONE purchase order with method "opening" (settled, no money moved).
+- POST /api/items with opening qty also writes an "opening" PO, so all stock creation shows in Purchases.
+- /purchases/new: multi-select items sheet with search; lines are editable in place (qty/cost); "New item" lines (name + sell price) create real stock items on save (_ensure_items).
+- src/components/cropper.tsx: JS cropper (drag frame, resize corners, Free/Square) mounted as <CropHost/> in the root layout. Used for product photos (pickAndUploadPhoto({crop:true})) and the business logo (PNG kept).
