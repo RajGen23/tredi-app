@@ -617,3 +617,4 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - Invoice Bank Details: the account name and number are split out of the account's free-text `detail` (deps.bank_lines). The account's own name prints as the bank.
 - Terms and notes on invoice PDFs keep line breaks (white-space:pre-line).
 - Purchases: money paid on the order form now creates one linked "Purchases" expense (purchase_id) against the chosen account, so the account balance drops. Editing re-states it. `paid_upfront` is stored on the PO. A startup backfill fixes older orders.
+- Auto live-sync: on startup, the backend runs `admin.legacy_sync_loop()`. If LEGACY_DB_HOST is set, it syncs straight away (unless a sync ran in the last 6h) and then every 6 hours. This is needed because the published mobile app has no web Super Admin URL.

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Annotated, Literal
 from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
+import asyncio
 import logging
 
 from deps import (VAT_RATE, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
@@ -1375,6 +1376,7 @@ app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], 
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
+    asyncio.create_task(admin.legacy_sync_loop())
     try:
         await purchases.backfill_upfront_expenses()
     except Exception as exc:

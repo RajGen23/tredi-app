@@ -716,6 +716,26 @@ async def _run_legacy_sync(job_id: ObjectId):
         "status": "done" if ok else "failed", "finished_at": now(), "log": log}})
 
 
+AUTO_SYNC_HOURS = 6
+
+
+async def legacy_sync_loop():
+    """Keep this environment in step with the live system without anyone pressing
+    a button: sync on start-up (unless one ran recently) and every few hours."""
+    if not os.environ.get("LEGACY_DB_HOST"):
+        return
+    while True:
+        try:
+            recent = await db.admin_jobs.find_one({"kind": "legacy_sync", "started_at": {"$gt": now() - timedelta(hours=AUTO_SYNC_HOURS)}})
+            if not recent:
+                res = await db.admin_jobs.insert_one({"kind": "legacy_sync", "status": "running", "started_at": now(),
+                                                      "started_by": "auto", "log": ""})
+                await _run_legacy_sync(res.inserted_id)
+        except Exception as exc:   # never let the loop die; try again next round
+            print(f"legacy auto-sync failed: {exc}")
+        await asyncio.sleep(AUTO_SYNC_HOURS * 3600)
+
+
 @router.get("/legacy-sync")
 async def legacy_sync_status(admin: Admin):
     job = await db.admin_jobs.find_one({"kind": "legacy_sync"}, sort=[("started_at", -1)])
