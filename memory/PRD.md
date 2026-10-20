@@ -612,3 +612,8 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - Re-syncs keep passwords set in the new app ($2b$). Only legacy $2y$ hashes get refreshed.
 - PyMySQL added to requirements.txt (needed in production).
 - The published app has its own database. Run the sync there after publishing. Needs the LEGACY_DB_* env vars set in production.
+
+## Fixes (Oct 2026)
+- Invoice Bank Details: the account name and number are split out of the account's free-text `detail` (deps.bank_lines). The account's own name prints as the bank.
+- Terms and notes on invoice PDFs keep line breaks (white-space:pre-line).
+- Purchases: money paid on the order form now creates one linked "Purchases" expense (purchase_id) against the chosen account, so the account balance drops. Editing re-states it. `paid_upfront` is stored on the PO. A startup backfill fixes older orders.

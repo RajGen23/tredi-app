@@ -11,6 +11,7 @@ from bson import ObjectId
 from pathlib import Path
 import jwt
 import os
+import re
 
 import plans as plan_rules
 
@@ -442,6 +443,26 @@ def invoice_status(inv: dict, paid: float) -> dict:
     return {"paid": paid, "due": max(due, 0), "status": status, "days_overdue": days_overdue}
 
 
+def bank_lines(a: dict) -> dict:
+    """What prints under Bank Details. Accounts keep the holder and number in one
+    free-text `detail` ("Wichflow Ltd · 1311575034"), so split it out: the long
+    digit run is the number, the rest is the account name, and the account's own
+    name is the bank."""
+    number, holder, bank = a.get("number", ""), a.get("holder", ""), a.get("bank", "")
+    detail = a.get("detail", "") or ""
+    if detail and not (number and holder):
+        digits = re.search(r"\d[\d\s-]{5,}\d", detail)
+        if digits and not number:
+            number = re.sub(r"\D", "", digits.group())
+        rest = re.sub(r"\d[\d\s-]{5,}\d", "", detail).strip(" ·-—|,:")
+        if rest and not holder:
+            holder = rest
+    if holder and not bank:
+        bank = a.get("name", "")
+    return {"id": str(a["_id"]), "name": a.get("name", ""), "bank": "" if bank == holder else bank,
+            "number": number, "holder": holder}
+
+
 async def decorate_invoice(inv: dict) -> dict:
     out = clean(inv)
     paid = await invoice_paid(inv["business_id"], out["id"])
@@ -450,9 +471,7 @@ async def decorate_invoice(inv: dict) -> dict:
     out["totals"].setdefault("discount_total", round(out["totals"].get("line_discount", 0) + out["totals"].get("invoice_discount", 0), 2))
     # Which bank accounts print on this document, and the terms set behind it.
     ids = [i for i in (inv.get("bank_account_ids") or []) if ObjectId.is_valid(i)]
-    out["bank_accounts"] = [{"id": str(a["_id"]), "name": a.get("name", ""), "bank": a.get("bank", ""),
-                             "number": a.get("number", ""), "holder": a.get("holder", "")}
-                            async for a in db.accounts.find({"_id": {"$in": [ObjectId(i) for i in ids]}})] if ids else []
+    out["bank_accounts"] = [bank_lines(a) async for a in db.accounts.find({"_id": {"$in": [ObjectId(i) for i in ids]}})] if ids else []
     terms = await db.terms.find_one({"_id": ObjectId(inv["terms_id"])}) if ObjectId.is_valid(inv.get("terms_id") or "") else None
     out["terms"] = {"name": terms.get("name", ""), "payment_structure": terms.get("payment_structure", ""),
                     "delivery_condition": terms.get("delivery_condition", ""), "additional_notes": terms.get("additional_notes", ""),

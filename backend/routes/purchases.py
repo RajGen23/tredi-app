@@ -75,6 +75,40 @@ class ReturnIn(BaseModel):
     restock: bool = True
 
 
+def _upfront(p: dict) -> float:
+    """What was paid on the order form itself (not later supplier payments).
+    Orders written before this was tracked: anything paid off an account counts."""
+    if "paid_upfront" in p:
+        return p["paid_upfront"] or 0
+    return (p.get("paid") or 0) if p.get("method") != "credit" else 0
+
+
+async def _sync_upfront_expense(f: dict, po_id, number: str, supplier: str, amount: float,
+                                account_id: Optional[str], when: datetime, user: dict):
+    """Money paid on the order form leaves the chosen account: keep exactly one
+    linked expense for it, so the account balance and statement show it."""
+    pid = str(po_id)
+    await db.purchases.update_one({"_id": ObjectId(pid)}, {"$set": {"paid_upfront": round(amount, 2)}})
+    if amount <= 0:
+        await db.expenses.delete_many({**f, "purchase_id": pid})
+        return
+    await db.expenses.update_one({**f, "purchase_id": pid}, {
+        "$set": {"amount": round(amount, 2), "account_id": account_id, "note": f"Paid {supplier} · {number}"},
+        "$setOnInsert": {"category": "Purchases", "shop": "", "receipt_url": None,
+                         "created_by": user.get("name", ""), "created_at": when}}, upsert=True)
+
+
+async def backfill_upfront_expenses():
+    """One-time, idempotent: orders paid on the form before this fix never left the account."""
+    async for p in db.purchases.find({"paid_upfront": {"$exists": False}, "paid": {"$gt": 0}, "method": {"$ne": "credit"},
+                                      "cancelled_at": {"$exists": False}}):
+        f = {"business_id": p["business_id"]}
+        if await db.expenses.find_one({**f, "purchase_id": str(p["_id"])}):
+            continue
+        await _sync_upfront_expense(f, p["_id"], p.get("number", ""), p.get("supplier_name", ""), p["paid"],
+                                    p.get("account_id"), p["created_at"], {"name": p.get("created_by", "")})
+
+
 async def supplier_owed(f: dict, sid: str) -> float:
     owed = 0.0
     s = await db.suppliers.find_one({"_id": oid(sid)})
@@ -169,6 +203,8 @@ async def create_purchase(data: PurchaseIn, user: CurrentUser):
            "paid": min(data.paid, total), "account_id": data.account_id, "method": data.method, "due_date": data.due_date,
            "shop": shop, "note": data.note, "created_by": user.get("name", ""), "created_at": created}
     res = await db.purchases.insert_one(doc)
+    await _sync_upfront_expense(f, res.inserted_id, number, sup["name"], doc["paid"] if data.method != "credit" else 0,
+                                data.account_id, created, user)
     for l in lines:
         await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "purchase", number, user, sup["name"], shop)
         if data.update_cost and l.get("item_id") and ObjectId.is_valid(l["item_id"]) and l["unit_cost"]:
@@ -197,6 +233,11 @@ async def update_purchase(pid: str, data: PurchaseIn, user: CurrentUser):
         await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "edit", p["number"], user, "Order edited", shop)
     lines = [{**l.model_dump(), "total": round(l.quantity * l.unit_cost, 2)} for l in data.lines]
     total = round(sum(l["total"] for l in lines), 2)
+    # the form shows everything paid; the part that came from later supplier
+    # payments already has its own expense, so only the rest is "paid on the form"
+    allocated = max(0.0, (p.get("paid") or 0) - _upfront(p))
+    upfront = max(0.0, min(data.paid, total) - allocated) if data.method != "credit" else 0
+    await _sync_upfront_expense(f, p["_id"], p["number"], sup["name"], upfront, data.account_id, p["created_at"], user)
     await db.purchases.update_one({"_id": p["_id"]}, {"$set": {
         "supplier_id": data.supplier_id, "supplier_name": sup["name"], "lines": lines, "total": total,
         "paid": min(data.paid, total), "account_id": data.account_id, "method": data.method,
@@ -275,6 +316,9 @@ async def get_purchase(pid: str, user: CurrentUser):
         pacc = await db.accounts.find_one({"_id": ObjectId(sp["account_id"])}) if sp.get("account_id") and ObjectId.is_valid(sp.get("account_id") or "") else None
         d["payments"].append({"id": str(sp["_id"]), "amount": sp["amount"], "account_name": pacc["name"] if pacc else "Cash",
                               "note": sp.get("note", ""), "date": sp["created_at"].isoformat()})
+    if _upfront(p) > 0:
+        d["payments"].append({"id": f"upfront-{d['id']}", "amount": _upfront(p), "account_name": d["account_name"],
+                              "note": "Paid on this order", "date": p["created_at"].isoformat()})
     for l in d.get("lines", []):
         if l.get("item_id") and ObjectId.is_valid(l["item_id"]):
             it = await db.items.find_one({"_id": ObjectId(l["item_id"])})

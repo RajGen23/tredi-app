@@ -1376,6 +1376,10 @@ app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], 
 async def startup():
     await db.users.create_index("email", unique=True)
     try:
+        await purchases.backfill_upfront_expenses()
+    except Exception as exc:
+        logger.warning("Upfront purchase backfill failed: %s", exc)
+    try:
         storage.init_storage()
     except Exception as exc:
         logger.warning("Object storage not ready: %s", exc)

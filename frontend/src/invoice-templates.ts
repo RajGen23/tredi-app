@@ -93,7 +93,7 @@ function totalsRows(inv: any, c: string, onC: string): string {
 function termsBlock(inv: any): string {
   const t = inv.terms;
   if (!t) return "";
-  const part = (label: string, text: string) => (text ? `<div class="tgroup"><div class="lbl">${label}</div><div class="tbody">${esc(text)}</div></div>` : "");
+  const part = (label: string, text: string) => (text ? `<div class="tgroup"><div class="lbl">${label}</div><div class="tbody" style="white-space:pre-line">${esc(text)}</div></div>` : "");
   return `<div class="block"><div class="btitle">Terms of payment</div>
     ${part("Payment structure", t.payment_structure)}${part("Delivery condition", t.delivery_condition)}${part("Additional notes", t.additional_notes)}</div>`;
 }
@@ -162,7 +162,7 @@ function professionalHtml(inv: any, brand: Brand): string {
   .block{margin-bottom:12px}
   .btitle{font-weight:700;font-size:11.5px;color:${c};border-bottom:1px solid #EDEDED;padding-bottom:4px;margin-bottom:6px}
   .tgroup{margin-bottom:6px}
-  .tbody{font-size:10px;line-height:15px;margin-top:1px}
+  .tbody{font-size:10px;line-height:15px;margin-top:1px;white-space:pre-line}
   .kv{display:flex;justify-content:space-between;font-size:10px;padding:2px 0}
   .foot{position:fixed;left:22px;right:22px;bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #EDEDED;padding-top:7px;color:#8A8A8A;font-size:9.5px}
   </style></head><body>
@@ -320,7 +320,7 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   .due{display:flex;justify-content:space-between;background:${c};color:${onC};padding:8px 10px;border-radius:7px;margin-top:7px;font-weight:700;font-size:12px}
   .block{margin-top:12px}
   .btitle{font-weight:700;font-size:11.5px;color:${c};margin-bottom:4px}
-  .tgroup{margin-bottom:6px}.tbody{font-size:10px;line-height:15px;color:#3B4A47}
+  .tgroup{margin-bottom:6px}.tbody{font-size:10px;line-height:15px;color:#3B4A47;white-space:pre-line}
   .kv{display:flex;justify-content:space-between;font-size:10px;padding:2px 0}
   .foot{position:fixed;left:22px;right:22px;bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #E5EEEB;padding-top:7px;color:#93A9A4;font-size:9.5px}
   ${perTemplate[brand.template] ?? ""}
