@@ -348,6 +348,27 @@ class Migration:
         await self.items()
         await self.invoices()
         await self.expenses()
+        if self.commit:
+            for col, n in (await freeze_line_costs(self.db)).items():
+                self.tally(f"{col}:cost_stamped", n)
+
+
+async def freeze_line_costs(db) -> dict:
+    """Stamp today's cost on any sold line that has no frozen cost yet, so profit
+    on old sales stops moving when an item's cost changes."""
+    costs = {str(i["_id"]): float(i.get("cost_price") or 0) async for i in db.items.find({}, {"cost_price": 1})}
+    out = {}
+    for col in ("invoices", "sales"):
+        touched = 0
+        async for doc in db[col].find({"lines.cost_at_sale": {"$exists": False}}, {"lines": 1}):
+            lines = doc.get("lines") or []
+            for l in lines:
+                if l.get("cost_at_sale") is None:
+                    l["cost_at_sale"] = costs.get(str(l.get("item_id")), 0)
+            await db[col].update_one({"_id": doc["_id"]}, {"$set": {"lines": lines}})
+            touched += 1
+        out[col] = touched
+    return out
 
 
 async def main():

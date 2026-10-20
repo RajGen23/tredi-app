@@ -701,17 +701,11 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 async def _run_legacy_sync(job_id: ObjectId):
-    log = ""
-    ok = True
-    for args in (["-m", "migrations.import_legacy", "--source", "tredi", "--commit"],
-                 ["migrations/freeze_line_costs.py"]):
-        proc = await asyncio.create_subprocess_exec(sys.executable, *args, cwd=BACKEND_DIR,
-                                                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-        out, _ = await proc.communicate()
-        log += out.decode(errors="replace")[-6000:]
-        if proc.returncode != 0:
-            ok = False
-            break
+    proc = await asyncio.create_subprocess_exec(sys.executable, "-m", "migrations.import_legacy", "--source", "tredi", "--commit",
+                                                cwd=BACKEND_DIR, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    out, _ = await proc.communicate()
+    log = out.decode(errors="replace")[-6000:]
+    ok = proc.returncode == 0
     await db.admin_jobs.update_one({"_id": job_id}, {"$set": {
         "status": "done" if ok else "failed", "finished_at": now(), "log": log}})
 

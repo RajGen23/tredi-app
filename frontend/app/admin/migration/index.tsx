@@ -45,7 +45,7 @@ function LiveSync() {
             <Sub testID="legacy-sync-when">Started {dayjs(job.started_at).format("DD MMM YYYY, HH:mm")}{job.finished_at ? ` · finished ${dayjs(job.finished_at).format("HH:mm")}` : ""}</Sub>
           </View>
           {summary ? <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.onSurfaceSecondary }}>{summary}</Text> : null}
-          {job.status === "failed" ? <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.coral }} numberOfLines={6}>{job.log.slice(-600)}</Text> : null}
+          {job.status === "failed" ? <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.coral }} selectable>{job.log.trim().split("\n").slice(-8).join("\n")}</Text> : null}
         </View>
       )}
     </Panel>
