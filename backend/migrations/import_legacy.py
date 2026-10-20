@@ -178,6 +178,11 @@ class Migration:
             }
             if not doc["password_hash"]:
                 self.tally("users:no_password")
+            # a password set in this app ($2b$) beats the legacy one ($2y$) on a re-sync
+            mine = await self.db.users.find_one({"legacy_uuid": u["uuid"]}, {"password_hash": 1})
+            if mine and mine.get("password_hash") and not mine["password_hash"].startswith("$2y$"):
+                doc.pop("password_hash")
+                self.tally("users:kept_new_password")
             uid = await self.upsert(self.db.users, u["uuid"], doc, "users")
             seen = u.get("last_active_at") or u.get("last_login_at")
             if seen and self.commit and ObjectId.is_valid(uid):

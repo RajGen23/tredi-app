@@ -688,3 +688,49 @@ async def request_log(rid: str, admin: Admin):
 @router.post("/seed")
 async def reseed(admin: Admin, force: bool = False):
     return await seed_admin(force=force)
+
+
+# ---------------------------------------------------------------- live MySQL sync
+# Runs the read-only legacy import inside whichever environment this server is in
+# (preview or production), so the published app can pull the live data itself.
+import asyncio
+import os
+import sys
+
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+async def _run_legacy_sync(job_id: ObjectId):
+    log = ""
+    ok = True
+    for args in (["-m", "migrations.import_legacy", "--source", "tredi", "--commit"],
+                 ["migrations/freeze_line_costs.py"]):
+        proc = await asyncio.create_subprocess_exec(sys.executable, *args, cwd=BACKEND_DIR,
+                                                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await proc.communicate()
+        log += out.decode(errors="replace")[-6000:]
+        if proc.returncode != 0:
+            ok = False
+            break
+    await db.admin_jobs.update_one({"_id": job_id}, {"$set": {
+        "status": "done" if ok else "failed", "finished_at": now(), "log": log}})
+
+
+@router.get("/legacy-sync")
+async def legacy_sync_status(admin: Admin):
+    job = await db.admin_jobs.find_one({"kind": "legacy_sync"}, sort=[("started_at", -1)])
+    return {"configured": bool(os.environ.get("LEGACY_DB_HOST")), "job": clean(job) if job else None}
+
+
+@router.post("/legacy-sync")
+async def legacy_sync_start(admin: Admin):
+    if not os.environ.get("LEGACY_DB_HOST"):
+        raise HTTPException(400, "Live database connection is not configured on this server")
+    running = await db.admin_jobs.find_one({"kind": "legacy_sync", "status": "running",
+                                            "started_at": {"$gt": now() - timedelta(minutes=30)}})
+    if running:
+        raise HTTPException(409, "A sync is already running")
+    res = await db.admin_jobs.insert_one({"kind": "legacy_sync", "status": "running", "started_at": now(),
+                                          "started_by": admin.get("email"), "log": ""})
+    asyncio.create_task(_run_legacy_sync(res.inserted_id))
+    return {"message": "Sync started — this takes about two minutes"}

@@ -606,3 +606,9 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - New: pause/restore account (businesses.suspended → writes 403), Renew modal on Subscriptions (uses /api/admin/customers/{id}/activate).
 - Live endpoints in routes/admin_customers.py (`live` router): /api/admin/overview, /subscriptions, /users.
 - Still sample: Analytics, Sync, System, Backup, Migration, Support access requests, Security signals.
+
+## Live MySQL sync from Super Admin (Oct 2026)
+- Super Admin → Migration console → "Sync from live database" (`POST/GET /api/admin/legacy-sync`). Runs `migrations.import_legacy --commit` + `freeze_line_costs.py` as a background subprocess inside whichever environment the server runs in (preview or production). Status is stored in `admin_jobs`.
+- Re-syncs keep passwords set in the new app ($2b$). Only legacy $2y$ hashes get refreshed.
+- PyMySQL added to requirements.txt (needed in production).
+- The published app has its own database. Run the sync there after publishing. Needs the LEGACY_DB_* env vars set in production.

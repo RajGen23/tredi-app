@@ -2,13 +2,55 @@
 // snapshot immediately before it.
 import { Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import dayjs from "dayjs";
 
 import { adminApi } from "@/src/admin/api";
-import { AdminShell, Col, Fig, Loading, Note, Panel, Pill, Sub, Table } from "@/src/admin/ui";
+import { useToast } from "@/src/components/sheet";
+import { AdminShell, Btn, Col, Fig, Loading, Note, Panel, Pill, Sub, Table } from "@/src/admin/ui";
 import { fonts, useTheme } from "@/src/theme";
 
 const STEPS = ["Upload", "Map fields", "Dry run", "Snapshot", "Commit"];
+
+/** Pulls the live tredibooks MySQL into this environment's database (read-only on MySQL). */
+function LiveSync() {
+  const { colors } = useTheme();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const st = useQuery({
+    queryKey: ["admin-legacy-sync"], queryFn: () => adminApi<any>("/legacy-sync"),
+    refetchInterval: (q) => (q.state.data?.job?.status === "running" ? 4000 : false),
+  });
+  const start = useMutation({
+    mutationFn: () => adminApi<any>("/legacy-sync", { method: "POST", json: {} }),
+    onSuccess: (res) => { toast.show(res.message, "Sync ·"); qc.invalidateQueries({ queryKey: ["admin-legacy-sync"] }); },
+    onError: (e: any) => toast.show(e.message),
+  });
+  const job = st.data?.job;
+  const running = job?.status === "running";
+  const summary = job?.log ? job.log.split("\n").filter((l: string) => /:(new|updated)\s/.test(l)).map((l: string) => l.trim().replace(/\s+/g, " ")).join("  ·  ") : "";
+  return (
+    <Panel title="Sync from live database" sub="Copies new and changed invoices, stock, customers and users from the live system. Never writes back to it."
+      testID="legacy-sync-panel"
+      right={<Btn label={running ? "Syncing…" : "Sync now"} tone="primary" icon="sync-outline" busy={running || start.isPending}
+        disabled={running || !st.data?.configured} onPress={() => start.mutate()} testID="legacy-sync-start" />}>
+      {!st.data ? <Loading /> : !st.data.configured ? (
+        <Sub>The live database connection is not set up on this server.</Sub>
+      ) : !job ? (
+        <Sub>No sync has run here yet.</Sub>
+      ) : (
+        <View style={{ gap: 6 }}>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <Pill label={running ? "Running" : job.status === "done" ? "Done" : "Failed"} tone={running ? "info" : job.status === "done" ? "ok" : "bad"} />
+            <Sub testID="legacy-sync-when">Started {dayjs(job.started_at).format("DD MMM YYYY, HH:mm")}{job.finished_at ? ` · finished ${dayjs(job.finished_at).format("HH:mm")}` : ""}</Sub>
+          </View>
+          {summary ? <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.onSurfaceSecondary }}>{summary}</Text> : null}
+          {job.status === "failed" ? <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: colors.coral }} numberOfLines={6}>{job.log.slice(-600)}</Text> : null}
+        </View>
+      )}
+    </Panel>
+  );
+}
 
 export default function Migrations() {
   const { colors } = useTheme();
@@ -29,6 +71,7 @@ export default function Migrations() {
 
   return (
     <AdminShell title="Migration console" sub="admin.tredi.app/migration" testID="sa17-migrations">
+      <LiveSync />
       <Panel pad={0} title="Legacy ingests" sub="Open a run to map fields, dry-run it and commit">
         {!d.data ? <Loading /> : <Table cols={cols} rows={d.data.rows} minWidth={720} onRowPress={(r) => router.push(`/admin/migration/${r.id}` as any)} empty="No migrations queued" />}
       </Panel>
