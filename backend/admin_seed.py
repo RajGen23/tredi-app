@@ -52,7 +52,7 @@ PERMISSION_MATRIX = [
 ]
 
 NAMED = [
-    {"name": "Tredi Ventures", "tin": "12345678-0001", "city": "Lagos", "sector": "retail", "plan": "pro", "status": "healthy",
+    {"name": "TradaBooks Ventures", "tin": "12345678-0001", "city": "Lagos", "sector": "retail", "plan": "pro", "status": "healthy",
      "owner": {"name": "Adaeze Nwosu", "phone": "+234 803 442 1180"}, "volume": 1_280_000, "storage": 1.9,
      "shops": [("Ikeja", "Retail", 2, 642_000, True), ("Surulere", "Retail", 1, 428_000, False),
                ("Yaba", "Retail", 1, 214_000, False), ("Central warehouse", "Stock only", 1, 0, False)],
@@ -172,20 +172,20 @@ async def seed_admin(force: bool = False) -> dict:
 
     # ---------------------------------------------------------------- users
     if await db.admin_users.count_documents({}) == 0:
-        tv, wi = by_name["Tredi Ventures"], by_name["Wichtech Industries ltd"]
+        tv, wi = by_name["TradaBooks Ventures"], by_name["Wichtech Industries ltd"]
         users = [
-            {"name": "Adaeze Nwosu", "contact": "+234 803 442 1180", "business_ids": [str(tv["_id"])], "business_names": ["Tredi Ventures"],
+            {"name": "Adaeze Nwosu", "contact": "+234 803 442 1180", "business_ids": [str(tv["_id"])], "business_names": ["TradaBooks Ventures"],
              "role": "Owner", "title": "Owner", "custom": False, "shops": "All 4", "devices": 2, "device_os": "Android 14",
              "last_seen": now() - timedelta(minutes=4), "status": "active", "failed_pins": 0},
-            {"name": "Chidi Okeke", "contact": "+234 802 118 4410", "business_ids": [str(tv["_id"])], "business_names": ["Tredi Ventures"],
+            {"name": "Chidi Okeke", "contact": "+234 802 118 4410", "business_ids": [str(tv["_id"])], "business_names": ["TradaBooks Ventures"],
              "role": "Stock", "title": "Stock", "custom": False, "shops": "Ikeja +1", "devices": 1, "device_os": "Android 12",
              "last_seen": now() - timedelta(hours=2), "status": "active", "failed_pins": 0},
-            {"name": "Amina Yusuf", "contact": "+234 706 118 9002", "business_ids": [str(tv["_id"])], "business_names": ["Tredi Ventures"],
+            {"name": "Amina Yusuf", "contact": "+234 706 118 9002", "business_ids": [str(tv["_id"])], "business_names": ["TradaBooks Ventures"],
              "role": "Senior sales", "title": "Senior sales", "custom": True, "shops": "Surulere", "devices": 1, "device_os": "iOS 17",
              "last_seen": now() - timedelta(minutes=18), "status": "active", "failed_pins": 0,
              "custom_note": "Can discount above 5% and sell on credit, cannot see cost prices."},
             {"name": "Tunde Bello", "contact": "tunde@ledger.ng", "business_ids": [str(tv["_id"]), str(wi["_id"]), str(by_name["Benue Cement Depot"]["_id"])],
-             "business_names": ["Tredi Ventures", "Wichtech Industries ltd", "Benue Cement Depot"], "role": "Accountant",
+             "business_names": ["TradaBooks Ventures", "Wichtech Industries ltd", "Benue Cement Depot"], "role": "Accountant",
              "title": "Accountant", "custom": False, "shops": "All", "devices": 1, "device_os": "Web",
              "last_seen": now() - timedelta(days=1), "status": "active", "failed_pins": 0},
             {"name": "Obinna Nwankwo", "contact": "+234 805 862 8890", "business_ids": [str(wi["_id"])], "business_names": ["Wichtech Industries ltd"],
@@ -196,7 +196,7 @@ async def seed_admin(force: bool = False) -> dict:
              "last_seen": now() - timedelta(days=2), "status": "locked", "failed_pins": 5},
         ]
         for t in tenants:
-            if t["name"] in ("Tredi Ventures", "Wichtech Industries ltd"):
+            if t["name"] in ("TradaBooks Ventures", "Wichtech Industries ltd"):
                 continue
             users.append({"name": t["owner"]["name"], "contact": t["owner"]["phone"], "business_ids": [str(t["_id"])],
                           "business_names": [t["name"]], "role": "Owner", "title": "Owner", "custom": False,
@@ -219,13 +219,13 @@ async def seed_admin(force: bool = False) -> dict:
         rows = [
             {"actor": "Gaurav", "actor_kind": "admin", "business": "Wichtech Industries ltd", "shop": "", "event": "Support access granted",
              "entity": "session 7f21", "source": "Admin panel", "category": "impersonation", "minutes_ago": 12},
-            {"actor": "Amina Yusuf", "actor_kind": "user", "business": "Tredi Ventures", "shop": "Surulere", "event": "Discount applied",
+            {"actor": "Amina Yusuf", "actor_kind": "user", "business": "TradaBooks Ventures", "shop": "Surulere", "event": "Discount applied",
              "entity": "INV-1051 · ₦6,400", "source": "Android", "category": "event", "minutes_ago": 49},
-            {"actor": "Chidi Okeke", "actor_kind": "user", "business": "Tredi Ventures", "shop": "Ikeja", "event": "Stock adjusted −2",
+            {"actor": "Chidi Okeke", "actor_kind": "user", "business": "TradaBooks Ventures", "shop": "Ikeja", "event": "Stock adjusted −2",
              "entity": "Sugar 50kg · damaged", "source": "Android", "category": "event", "minutes_ago": 93},
-            {"actor": "Adaeze Nwosu", "actor_kind": "user", "business": "Tredi Ventures", "shop": "Head office", "event": "Payment deleted",
+            {"actor": "Adaeze Nwosu", "actor_kind": "user", "business": "TradaBooks Ventures", "shop": "Head office", "event": "Payment deleted",
              "entity": "₦60,000 · entered twice", "source": "Android", "category": "deletion", "minutes_ago": 290},
-            {"actor": "Adaeze Nwosu", "actor_kind": "user", "business": "Tredi Ventures", "shop": "", "event": "Role changed",
+            {"actor": "Adaeze Nwosu", "actor_kind": "user", "business": "TradaBooks Ventures", "shop": "", "event": "Role changed",
              "entity": "Chidi → Stock", "source": "Android", "category": "permission", "minutes_ago": 340},
             {"actor": "System", "actor_kind": "system", "business": "All tenants", "shop": "", "event": "Nightly snapshot completed",
              "entity": "1,284 tenants · 41 GB", "source": "Scheduler", "category": "event", "minutes_ago": 1020},
@@ -251,7 +251,7 @@ async def seed_admin(force: bool = False) -> dict:
              "last_error": "401 token expired — needs re-auth", "attempts": 12, "state": "stuck", "created_at": now()},
             {"business": "Wichtech Industries ltd", "device": "device 2b4c", "os": "Android 14", "records": 4, "oldest_hours": 1,
              "last_error": "409 conflict on stock_movement · auto-resolved", "attempts": 2, "state": "conflict", "created_at": now()},
-            {"business": "Tredi Ventures", "device": "device 55de", "os": "iOS 17", "records": 2, "oldest_hours": 2,
+            {"business": "TradaBooks Ventures", "device": "device 55de", "os": "iOS 17", "records": 2, "oldest_hours": 2,
              "last_error": "409 conflict on customer edit · field merge", "attempts": 1, "state": "conflict", "created_at": now()},
             {"business": "Okeke Logistics", "device": "device 8a10", "os": "Android 10", "records": 6, "oldest_hours": 40,
              "last_error": "422 invalid payload — legacy build", "attempts": 18, "state": "rejected", "created_at": now()},
@@ -264,7 +264,7 @@ async def seed_admin(force: bool = False) -> dict:
             {"type": "pre_migration", "scope": "Wichtech Industries ltd", "size_gb": 1.2, "hours_ago": 21},
             {"type": "nightly", "scope": "All tenants", "size_gb": 40, "hours_ago": 36},
             {"type": "nightly", "scope": "All tenants", "size_gb": 40, "hours_ago": 60},
-            {"type": "manual", "scope": "Tredi Ventures", "size_gb": 0.9, "hours_ago": 74},
+            {"type": "manual", "scope": "TradaBooks Ventures", "size_gb": 0.9, "hours_ago": 74},
         ]
         await db.admin_snapshots.insert_many([{**r, "verified": True, "taken": now() - timedelta(hours=r.pop("hours_ago"))} for r in rows])
 

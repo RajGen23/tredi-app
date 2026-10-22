@@ -1,4 +1,4 @@
-// 00.2 What TREDI does — 3 onboarding steps, then Sign in.
+// 00.2 What TradaBooks does — 3 onboarding steps, then Sign in.
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -9,7 +9,7 @@ import { useBottomPad } from "@/src/safe";
 import { fonts, makeStyles } from "@/src/theme";
 
 const STEPS = [
-  { title: "Record the sale now.\nSync when the network is back.", sub: "Sales, stock counts and new customers all save to the phone first. TREDI uploads them the moment you have signal." },
+  { title: "Record the sale now.\nSync when the network is back.", sub: "Sales, stock counts and new customers all save to the phone first. TradaBooks uploads them the moment you have signal." },
   { title: "Know who owes you,\nbefore they forget.", sub: "Every customer carries a running balance. Overdue invoices show days late and amount due on the row itself." },
   { title: "Stock, priced honestly.", sub: "Every manual change needs a reason. Low stock is flagged before the shelf runs empty." },
 ];

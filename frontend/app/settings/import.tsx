@@ -139,7 +139,7 @@ export default function Import() {
           </Row>
           {target === "items" ? (
             <Sub style={{ marginTop: 8 }}>
-              {"Put the supplier's name on each row. A batch upload is a delivery, so Tredi raises one purchase order per supplier — the goods come in against that PO and the supplier is owed. Leave supplier empty and the row counts as opening stock."}
+              {"Put the supplier's name on each row. A batch upload is a delivery, so TradaBooks raises one purchase order per supplier — the goods come in against that PO and the supplier is owed. Leave supplier empty and the row counts as opening stock."}
             </Sub>
           ) : null}
           <Btn label="Download the template" variant="ghost" small style={{ marginTop: 10 }} loading={grab.isPending}

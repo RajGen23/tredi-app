@@ -15,7 +15,7 @@ from routes import activity, admin, admin_customers, billing, documents, invoici
 from plans import TRIAL_DAYS
 from dummy_photos import pick_dummy_photo
 
-app = FastAPI(title="TREDI API")
+app = FastAPI(title="TradaBooks API")
 api = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tredi")

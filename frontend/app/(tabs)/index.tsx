@@ -51,7 +51,7 @@ export default function Home() {
         <IconBtn teal name="settings-outline" testID="home-settings" onPress={() => router.push("/(tabs)/more")} />
         <Pressable style={{ flex: 1, alignItems: "center", paddingHorizontal: 4 }} testID="home-business-switcher"
           onPress={() => router.push("/shops")} onLongPress={() => router.push("/businesses")}>
-          <Text style={s.bizName} numberOfLines={1}>{business?.name ?? "TREDI"} ⌄</Text>
+          <Text style={s.bizName} numberOfLines={1}>{business?.name ?? "TradaBooks"} ⌄</Text>
           <Text style={s.shop} numberOfLines={1}>{shops.data?.active || "All shops"}</Text>
         </Pressable>
         <IconBtn teal name="search-outline" testID="home-search" onPress={() => router.push("/search")} />

@@ -207,7 +207,7 @@ export default function InvoiceTemplates() {
       const asked = await ImagePicker.requestMediaLibraryPermissionsAsync();
       granted = asked.granted;
       if (!asked.granted && !asked.canAskAgain) {
-        return Alert.alert("Photos are blocked", "Tredi needs your photos to put your logo on invoices.",
+        return Alert.alert("Photos are blocked", "TradaBooks needs your photos to put your logo on invoices.",
           [{ text: "Not now", style: "cancel" }, { text: "Open Settings", onPress: () => Linking.openSettings() }]);
       }
     } else if (!granted) {

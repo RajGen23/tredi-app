@@ -44,7 +44,7 @@ export default function Analytics() {
   ];
 
   return (
-    <AdminShell title="Analytics" sub="admin.tredi.app/analytics"
+    <AdminShell title="Analytics" sub="TradaBooks admin · /analytics"
       actions={<Btn label="Export" icon="download-outline" disabled={!d.data} onPress={doExport} testID="analytics-export" />} testID="sa12-analytics">
       <Row gap={8} wrapped>
         <Tabs items={WINDOWS} value={days} onChange={setDays} />

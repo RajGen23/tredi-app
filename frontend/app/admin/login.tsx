@@ -1,7 +1,7 @@
 // SA.1 Sign in — the rule is stated at the door: cross-tenant reads are
 // attributed and visible to the tenant. There is no silent mode.
 import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Image, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
@@ -56,9 +56,9 @@ export default function AdminLogin() {
   const left = (
     <View style={s.left}>
       <Row gap={10}>
-        <View style={s.mark}><Text style={{ fontFamily: fonts.extrabold, fontSize: 17, color: colors.deep }}>t</Text></View>
+        <View style={s.mark}><Image source={require("../../assets/images/tradabooks-mark.png")} style={{ width: 24, height: 24 }} resizeMode="contain" /></View>
         <View>
-          <Text style={s.brand}>tredi</Text>
+          <Text style={s.brand}>TradaBooks</Text>
           <Text style={s.kicker}>Super Admin</Text>
         </View>
       </Row>
@@ -78,7 +78,7 @@ export default function AdminLogin() {
       <View style={[s.wrap, !wide && { flexDirection: "column" }]}>
         {left}
         <View style={[s.right, !wide && { width: "100%" }]}>
-          <Lbl>admin.tredi.app/login</Lbl>
+          <Lbl>TradaBooks admin · /login</Lbl>
           <H1>Verify it is you</H1>
           <Sub>Signed in last {ago((ctx.data as any)?.last_sign_in)} ago · {(ctx.data as any)?.last_place || "—"}</Sub>
           <View style={{ gap: 8, marginTop: 6 }}>

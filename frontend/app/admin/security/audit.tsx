@@ -59,7 +59,7 @@ export default function AuditLog() {
   ];
 
   return (
-    <AdminShell title="Audit log" sub="admin.tredi.app/security/audit" search={q} onSearch={(v) => { setQ(v); setPage(1); }}
+    <AdminShell title="Audit log" sub="TradaBooks admin · /security/audit" search={q} onSearch={(v) => { setQ(v); setPage(1); }}
       actions={<Row gap={8}><Pill label={d.data?.retention ?? "Append-only"} tone="mut" /><Btn label="Export" icon="download-outline" busy={exporting} onPress={doExport} testID="audit-export" />
         <Btn label="Monitor" onPress={() => router.push("/admin/security")} /></Row>}
       testID="sa11-audit">

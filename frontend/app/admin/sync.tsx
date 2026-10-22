@@ -54,7 +54,7 @@ export default function SyncMonitor() {
   ];
 
   return (
-    <AdminShell title="Sync monitor" sub="admin.tredi.app/sync"
+    <AdminShell title="Sync monitor" sub="TradaBooks admin · /sync"
       actions={<Row gap={8}>
         <Pill label={`${d.data?.stuck ?? 0} stuck`} tone="bad" />
         <Btn label={picked.length ? `Replay ${picked.length} selected` : "Replay all stuck"} tone="primary" icon="repeat-outline"

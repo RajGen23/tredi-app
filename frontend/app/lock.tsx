@@ -43,7 +43,7 @@ export default function Lock() {
   useEffect(() => { bioState().then(setBio); }, []);
 
   const unlockWithBio = useCallback(async () => {
-    const res = await bioUnlock(`Unlock ${business?.name ?? "TREDI"}`);
+    const res = await bioUnlock(`Unlock ${business?.name ?? "TradaBooks"}`);
     if (res.ok) return router.replace("/(tabs)");
     if (res.message) toast.show(res.message);
   }, [business?.name, router, toast]);
@@ -75,7 +75,7 @@ export default function Lock() {
     <View style={[s.root, { paddingTop: insets.top }]} testID="lock-screen">
       <Av icon="lock-closed" tone="mint" size={58} />
       <Text style={s.title}>Enter your PIN</Text>
-      <Sub style={{ marginTop: 4 }}>{user?.name ?? "You"} · {business?.name ?? "TREDI"}</Sub>
+      <Sub style={{ marginTop: 4 }}>{user?.name ?? "You"} · {business?.name ?? "TradaBooks"}</Sub>
       <View style={s.dots}>
         {[0, 1, 2, 3, 4, 5].slice(0, Math.max(4, pin.length)).map((i) => <View key={i} style={[s.dot, i < pin.length && s.dotOn]} />)}
       </View>

@@ -64,7 +64,7 @@ export default function Roles() {
     : [];
 
   return (
-    <AdminShell title="Roles & permissions" sub="admin.tredi.app/roles"
+    <AdminShell title="Roles & permissions" sub="TradaBooks admin · /roles"
       actions={<Row gap={8}>
         <Btn label="Compare two roles" icon="git-compare-outline" onPress={() => setComparing(true)} testID="compare-roles" />
         <Btn label="New template" tone="primary" icon="add" onPress={() => setCreating(true)} testID="new-template" />

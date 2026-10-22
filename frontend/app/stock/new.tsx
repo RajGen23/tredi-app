@@ -19,6 +19,7 @@ import { useToast } from "@/src/components/sheet";
 import { useLookup, useShops } from "@/src/lookups";
 import { money, parseNum, sym } from "@/src/format";
 import { useBottomPad } from "@/src/safe";
+import { bulkDraft } from "@/src/bulk-draft";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -37,8 +38,11 @@ export default function NewItem() {
   const pad = useBottomPad();
   const router = useRouter();
   // Arrives from a Quick sale scan that found nothing — the code is already known.
-  const params = useLocalSearchParams<{ barcode?: string; edit?: string }>();
+  const params = useLocalSearchParams<{ barcode?: string; edit?: string; collect?: string; row?: string }>();
   const editId = params.edit || "";
+  // ?collect=1 — filling one entry of "Add several items": Save puts it on that list instead
+  const collect = params.collect === "1";
+  const draftRow = params.row ? bulkDraft.find(params.row) : undefined;
   const qc = useQueryClient();
   const toast = useToast();
   const cats = useLookup("item_category");
@@ -76,7 +80,7 @@ export default function NewItem() {
   useEffect(() => { if (!location && writeShop) setLocation(writeShop); }, [writeShop, location]);
 
   useEffect(() => {
-    const it: any = editQ.data;
+    const it: any = editQ.data ?? draftRow;
     if (!it || name) return;
     setKind(it.kind ?? "product");
     setName(it.name ?? "");
@@ -94,7 +98,8 @@ export default function NewItem() {
     setExpiryOn(!!it.expiry);
     setExpiry(it.expiry ?? "");
     setPhoto(it.photo_url ?? "");
-  }, [editQ.data, name]);
+    if (it.quantity) setQty(String(it.quantity));
+  }, [editQ.data, name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!photo) return setPhotoUri("");
@@ -116,6 +121,12 @@ export default function NewItem() {
       router.replace(`/stock/${it.id}`);
     },
   });
+
+  const addToList = () => {
+    bulkDraft.put({ ...payload(), name: name.trim(), key: params.row });
+    toast.show(`${name.trim()} ${params.row ? "updated" : "added to the list"}`, "Saved.");
+    router.back();
+  };
 
   const addPhoto = async () => {
     setUploading(true);
@@ -145,9 +156,15 @@ export default function NewItem() {
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="new-item-screen">
-      <AppBar title={editId ? (step === 0 ? "Edit item" : "Prices & stock") : step === 0 ? "New item" : "Pricing & stock"}
+      <AppBar title={collect ? (params.row ? "Edit list item" : "Add to list") : editId ? (step === 0 ? "Edit item" : "Prices & stock") : step === 0 ? "New item" : "Pricing & stock"}
         close={step === 0} back={step === 1} onBack={() => (step === 1 ? setStep(0) : router.back())}
-        rightText={step === 0 ? "Next" : undefined} onRightText={() => (name.trim() ? setStep(1) : toast.show("Give the item a name first"))} />
+        right={!editId && !collect && step === 0 ? (
+          <Pressable hitSlop={8} onPress={() => router.replace("/stock/bulk")} testID="item-add-several" style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+            <Ionicons name="add-circle" size={22} color={colors.green700} />
+            <Text style={{ fontFamily: fonts.semibold, fontSize: 13, color: colors.green700 }}>Several</Text>
+          </Pressable>
+        ) : undefined}
+        rightText={step === 0 && (editId || collect) ? "Next" : undefined} onRightText={() => (name.trim() ? setStep(1) : toast.show("Give the item a name first"))} />
       <KeyboardAwareScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }} bottomOffset={80} keyboardShouldPersistTaps="handled">
         {step === 0 ? (
           <>
@@ -246,7 +263,8 @@ export default function NewItem() {
       <View style={[s.footer, { paddingBottom: pad }]}>
         {step === 0
           ? <Btn testID="item-next" label={editId ? "Continue to prices" : "Continue to pricing"} onPress={() => (name.trim() ? setStep(1) : toast.show("Give the item a name first"))} />
-          : <Btn testID="item-save" label={editId ? "Save changes" : "Save item"} onPress={() => m.mutate()} loading={m.isPending} disabled={!sell} />}
+          : <Btn testID="item-save" label={collect ? (params.row ? "Update item on list" : "Add item to list") : editId ? "Save changes" : "Save item"}
+              onPress={() => (collect ? addToList() : m.mutate())} loading={m.isPending} disabled={!sell} />}
       </View>
       <Scanner visible={scan} onClose={() => setScan(false)} onScan={(code) => { setBarcode(code); setScan(false); toast.show(`Bar code ${code} saved to this item`); }} title="Scan the bar code" hint="The code lands in the Barcode field" />
     </View>

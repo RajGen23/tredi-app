@@ -36,7 +36,7 @@ export function LegalReader({ doc, testID }: { doc: LegalDoc; testID: string }) 
           ))}
           <Btn label="Read it on tredibooks.com" variant="ghost" small style={{ marginTop: 14 }}
             testID="legal-web" onPress={() => Linking.openURL(doc.web)} />
-          <Sub style={{ textAlign: "center", marginTop: 10 }}>TREDI Technologies Ltd · Lagos, Nigeria</Sub>
+          <Sub style={{ textAlign: "center", marginTop: 10 }}>TradaBooks Technologies Ltd · Lagos, Nigeria</Sub>
         </Card>
       </ScrollView>
     </View>

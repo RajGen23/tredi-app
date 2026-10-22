@@ -537,7 +537,7 @@ async def reply_message(mid: str, body: ReplyIn, admin: Admin):
     if len(body.message.strip()) < 4:
         raise HTTPException(400, "Write a reply the owner can act on")
     await db.support_messages.update_one({"_id": m["_id"]}, {
-        "$push": {"replies": {"by": admin.get("name", "Tredi support"), "message": body.message.strip(), "at": now()}},
+        "$push": {"replies": {"by": admin.get("name", "TradaBooks support"), "message": body.message.strip(), "at": now()}},
         "$set": {"status": "answered", "updated_at": now()}})
     await audit(admin, m.get("business_name", ""), "Support message answered", m.get("subject", ""))
     return {"ok": True, "message": f"Reply sent to {m.get('business_name', 'the business')}"}

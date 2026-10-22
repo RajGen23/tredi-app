@@ -121,7 +121,7 @@ export default function BusinessDetail() {
     ) },
     { key: "amount", label: "Amount", flex: 1, align: "right", render: (r) => <Fig>{money(r.amount || 0)}</Fig> },
     { key: "by", label: "By", flex: 1.6, render: (r) => (
-      <Sub numberOfLines={2}>{r.source === "admin" ? `Tredi team · ${r.by}` : `In app · ${r.by}`}{r.reference ? ` · ref ${r.reference}` : ""}</Sub>
+      <Sub numberOfLines={2}>{r.source === "admin" ? `TradaBooks team · ${r.by}` : `In app · ${r.by}`}{r.reference ? ` · ref ${r.reference}` : ""}</Sub>
     ) },
   ];
 
@@ -237,7 +237,7 @@ export default function BusinessDetail() {
         <Panel pad={0} title="Team activity" sub="When each person was last in the books" style={{ flex: 1, width: wide ? undefined : "100%" }}>
           <Table cols={teamCols} rows={c.team} minWidth={420} empty="No one on this account yet" testID="team-table" />
         </Panel>
-        <Panel pad={0} title="Plan history" sub="Every activation, in the app or by the Tredi team" style={{ flex: 1, width: wide ? undefined : "100%" }}>
+        <Panel pad={0} title="Plan history" sub="Every activation, in the app or by the TradaBooks team" style={{ flex: 1, width: wide ? undefined : "100%" }}>
           <Table cols={histCols} rows={c.history} minWidth={460} empty="No plan changes yet" testID="history-table" />
         </Panel>
       </View>

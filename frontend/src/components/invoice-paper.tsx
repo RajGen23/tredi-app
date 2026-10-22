@@ -9,7 +9,7 @@ import { longDate, money } from "@/src/format";
 import { Brand, photoPx, readable } from "@/src/invoice-templates";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
-const MARK = require("../../assets/images/tredi-wordmark.png");
+const MARK = require("../../assets/images/tradabooks-wordmark.png");
 
 const useStyles = makeStyles((c) => ({
   paper: { backgroundColor: c.surfaceSecondary, borderRadius: 6, padding: 12, overflow: "hidden" },
@@ -34,7 +34,7 @@ const useStyles = makeStyles((c) => ({
   band: { padding: 10, borderRadius: 9, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   accent: { position: "absolute", left: 0, top: 0, bottom: 0, width: 7 },
   foot: { marginTop: 10, paddingTop: 7, borderTopWidth: 1, borderTopColor: c.border, alignItems: "center" },
-  mark: { width: 42, height: 13 },
+  mark: { width: 60, height: 13 },
   rcpWrap: { alignItems: "center", paddingVertical: 10 },
   rcpPaper: { width: 268, backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border, borderRadius: 4, padding: 14, gap: 1 },
   rcpName: { fontFamily: fonts.docBold, fontSize: 13, letterSpacing: 0.6, color: c.onSurface, textAlign: "center" },
@@ -43,7 +43,7 @@ const useStyles = makeStyles((c) => ({
   rcpNum: { fontFamily: fonts.monoSemibold },
   rcpStrong: { fontFamily: fonts.monoSemibold, fontSize: 11.5, color: c.onSurface },
   rcpRule: { fontFamily: fonts.mono, fontSize: 9, color: c.ink40, marginVertical: 5, textAlign: "center" },
-  rcpMark: { width: 36, height: 11 },
+  rcpMark: { width: 51, height: 11 },
 }));
 
 const discCell = (l: any) => (!l.discount ? "0.00%" : l.discount_type === "percent" ? `${Number(l.discount_value).toFixed(2)}%` : money(l.discount, { symbol: false }));

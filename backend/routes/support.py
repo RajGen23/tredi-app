@@ -54,7 +54,7 @@ class MessageIn(BaseModel):
 
 def row(m: dict) -> dict:
     out = clean(m)
-    out["replies"] = [{"by": r.get("by", "Tredi support"), "message": r.get("message", ""),
+    out["replies"] = [{"by": r.get("by", "TradaBooks support"), "message": r.get("message", ""),
                        "at": r["at"].isoformat() if hasattr(r.get("at"), "isoformat") else ""}
                       for r in m.get("replies", [])]
     return out

@@ -66,7 +66,7 @@ export default function BusinessCard() {
       <div style="font-family:monospace;font-size:15px">${f.hours ?? ""}</div>
       ${f.show_tin && f.tin ? `<div style="font-family:monospace;font-size:14px;margin-top:10px">TIN ${f.tin}</div>` : ""}
       ${f.include_bank && f.bank ? `<div style="font-family:monospace;font-size:14px">${f.bank.name} · ${f.bank.detail}</div>` : ""}
-      <div style="margin-top:22px;font-size:12px;opacity:.7">made with tredi</div></div></body>`;
+      <div style="margin-top:22px;font-size:12px;opacity:.7">made with TradaBooks</div></div></body>`;
     if (Platform.OS === "web") return printHtml(html);
     try {
       await sharePdf(html, pdfName([f.name, "Business-card"]));

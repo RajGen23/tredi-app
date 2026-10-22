@@ -15,7 +15,7 @@ import { ReportDoc, reportCsv, reportFileName, reportHtml, shareCsv } from "@/sr
 export function useReportMeta() {
   const { business } = useAuth();
   const { active } = useShops();
-  return { business: business?.name ?? "TREDI", shop: active || "All shops" };
+  return { business: business?.name ?? "TradaBooks", shop: active || "All shops" };
 }
 
 export function ExportBar({ build, testID = "report" }: { build: () => ReportDoc | null | undefined; testID?: string }) {

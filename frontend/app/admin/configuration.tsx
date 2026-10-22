@@ -84,7 +84,7 @@ export default function Configuration() {
                   trackColor={{ true: colors.brandPrimary, false: colors.switchOff }} testID="switch-photos" />
               </Row>
               <Row style={{ justifyContent: "space-between", paddingVertical: 5 }}>
-                <Lbl>tredi mark in footer</Lbl>
+                <Lbl>TradaBooks mark in footer</Lbl>
                 <Switch value={!!draft.invoice.tredi_footer} onValueChange={(v) => setInvoice("tredi_footer", v)}
                   trackColor={{ true: colors.brandPrimary, false: colors.switchOff }} />
               </Row>

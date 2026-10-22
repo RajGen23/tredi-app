@@ -18,7 +18,7 @@ from plans import FEATURE_NAMES, LIMIT_NAMES, PAID_KEYS, PLANS, plan_by_key
 from routes.admin import Admin, audit
 
 router = APIRouter(prefix="/api/admin/customers")
-TEAM = {"_id": "tredi-team", "name": "Tredi team"}
+TEAM = {"_id": "tredi-team", "name": "TradaBooks team"}
 
 
 def iso(d) -> Optional[str]:
@@ -135,7 +135,7 @@ async def activate(bid: str, body: ActivateIn, admin: Admin):
     cadence = cadence_for(body.months)
     await db.businesses.update_one({"_id": biz["_id"]}, {
         "$set": {"plan": plan["key"], "plan_cadence": cadence, "plan_months": body.months, "renews_at": renews,
-                 "plan_activated_at": now(), "plan_changed_at": now(), "plan_changed_by": f"{admin.get('name', 'admin')} (Tredi team)"},
+                 "plan_activated_at": now(), "plan_changed_at": now(), "plan_changed_by": f"{admin.get('name', 'admin')} (TradaBooks team)"},
         "$unset": {"trial_ends_at": ""}})
     await db.plan_requests.update_many({"business_id": bid, "status": "pending"},
                                        {"$set": {"status": "approved", "approved_at": now(),
@@ -145,9 +145,9 @@ async def activate(bid: str, body: ActivateIn, admin: Admin):
                                       "note": body.note.strip(), "by": admin.get("name", "admin"), "source": "admin",
                                       "created_at": now()})
     words = f"{body.months} month{'s' if body.months > 1 else ''}"
-    await audit(admin, biz.get("name", ""), f"{plan['name']} activated by Tredi team",
+    await audit(admin, biz.get("name", ""), f"{plan['name']} activated by TradaBooks team",
                 f"{words} · {plan_rules.money(body.amount)}{' · ref ' + body.reference.strip() if body.reference.strip() else ''}", "billing")
-    await log_activity(bid, TEAM, "plan", f"{plan['name']} activated by Tredi team · {words}", "Plan & billing", body.amount)
+    await log_activity(bid, TEAM, "plan", f"{plan['name']} activated by TradaBooks team · {words}", "Plan & billing", body.amount)
     return {"ok": True, "message": f"{biz.get('name', 'Customer')} is on {plan['name']} until {renews.strftime('%d %b %Y')}"}
 
 
@@ -175,7 +175,7 @@ async def set_custom(bid: str, body: CustomIn, admin: Admin):
     caps = ", ".join(f"{LIMIT_NAMES[k]} {'unlimited' if v is None else v}" for k, v in limits.items())
     await audit(admin, biz.get("name", ""), "Custom plan saved",
                 f"{custom['name'] or 'Custom'}{' · ' + plan_rules.money(body.price) if body.price is not None else ''}{' · ' + caps if caps else ''}", "billing")
-    await log_activity(bid, TEAM, "plan", f"Plan tailored by Tredi team{': ' + custom['name'] if custom['name'] else ''}", "Plan & billing")
+    await log_activity(bid, TEAM, "plan", f"Plan tailored by TradaBooks team{': ' + custom['name'] if custom['name'] else ''}", "Plan & billing")
     return {"ok": True, "message": f"Custom plan saved for {biz.get('name', 'this customer')}"}
 
 
@@ -196,7 +196,7 @@ async def end_plan(bid: str, admin: Admin):
     if not biz:
         raise HTTPException(404, "Customer not found")
     await db.businesses.update_one({"_id": biz["_id"]}, {"$set": {"renews_at": now() - timedelta(seconds=1), "trial_ends_at": now() - timedelta(seconds=1)}})
-    await audit(admin, biz.get("name", ""), "Plan ended by Tredi team", "", "billing")
+    await audit(admin, biz.get("name", ""), "Plan ended by TradaBooks team", "", "billing")
     return {"ok": True, "message": "Plan ended — the customer is read-only until they renew"}
 
 
@@ -260,7 +260,7 @@ async def overview(admin: Admin, window: str = "30"):
             {"label": "Paying", "value": f"{len(paying):,}", "delta": f"{len([r for r in rows if r['status'] == 'trialing'])} on trial"},
             {"label": "Active this week", "value": f"{len([r for r in rows if (r['last_active'] or '') >= week]):,}",
              "delta": f"of {len(rows):,} businesses"},
-            {"label": "People on Tredi", "value": f"{await db.users.count_documents({}):,}", "delta": "owners and staff"},
+            {"label": "People on TradaBooks", "value": f"{await db.users.count_documents({}):,}", "delta": "owners and staff"},
             {"label": "Plan value", "value": plan_rules.money(sum(monthly_value(r) for r in rows)), "delta": "current paid plans"},
         ],
         "attention": attention, "series": series, "recent": recent,

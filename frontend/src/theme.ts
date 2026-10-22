@@ -1,4 +1,4 @@
-// Design tokens for TREDI. Light theme only — colours lifted straight from the
+// Design tokens for TradaBooks. Light theme only — colours lifted straight from the
 // logo and the supplied HTML screen set (design_guidelines.json).
 import { useMemo } from "react";
 import { Appearance, StyleSheet, useColorScheme } from "react-native";

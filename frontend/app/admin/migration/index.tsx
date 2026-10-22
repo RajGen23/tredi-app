@@ -70,7 +70,7 @@ export default function Migrations() {
   ];
 
   return (
-    <AdminShell title="Migration console" sub="admin.tredi.app/migration" testID="sa17-migrations">
+    <AdminShell title="Migration console" sub="TradaBooks admin · /migration" testID="sa17-migrations">
       <LiveSync />
       <Panel pad={0} title="Legacy ingests" sub="Open a run to map fields, dry-run it and commit">
         {!d.data ? <Loading /> : <Table cols={cols} rows={d.data.rows} minWidth={720} onRowPress={(r) => router.push(`/admin/migration/${r.id}` as any)} empty="No migrations queued" />}

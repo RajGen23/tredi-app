@@ -55,7 +55,7 @@ export default function SignIn() {
         </Pressable>
         <Text style={s.title}>{mode === "in" ? "Sign in to your book" : "Create your account"}</Text>
         <Sub style={{ marginTop: 6 }}>
-          {mode === "in" ? "Use the email and password from your TREDI account. " : "It takes a minute. "}
+          {mode === "in" ? "Use the email and password from your TradaBooks account. " : "It takes a minute. "}
           <Text style={s.link} onPress={() => { setMode(mode === "in" ? "up" : "in"); setErr(""); }} testID="sign-in-toggle-mode">
             {mode === "in" ? "New here? Create account" : "Already have one? Sign in"}
           </Text>
@@ -77,7 +77,7 @@ export default function SignIn() {
             <Av icon="refresh" tone="green" size={26} />
             <View style={{ flex: 1 }}>
               <H4>Restoring a phone?</H4>
-              <Sub>Sign in with the same account and TREDI will pull your last cloud backup automatically.</Sub>
+              <Sub>Sign in with the same account and TradaBooks will pull your last cloud backup automatically.</Sub>
             </View>
           </View>
         </Card>

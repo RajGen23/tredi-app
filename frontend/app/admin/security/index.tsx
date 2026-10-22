@@ -50,7 +50,7 @@ export default function Security() {
   ];
 
   return (
-    <AdminShell title="Security" sub="admin.tredi.app/security"
+    <AdminShell title="Security" sub="TradaBooks admin · /security"
       actions={<Tabs items={[{ key: "monitor", label: "Monitor" }, { key: "audit", label: "Audit log" }]} value="monitor"
         onChange={(k) => k === "audit" && router.push("/admin/security/audit")} />}
       testID="sa10-security">

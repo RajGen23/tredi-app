@@ -70,7 +70,7 @@ export default function MigrationConsole() {
   ];
 
   return (
-    <AdminShell title="Migration console" sub={`admin.tredi.app/migration/${m?.tenant ?? ""}`}
+    <AdminShell title="Migration console" sub={`TradaBooks admin · /migration/${m?.tenant ?? ""}`}
       actions={<Row gap={8}>
         <Btn label="Back" icon="arrow-back" onPress={() => router.push("/admin/migration")} />
         <Pill label={m?.committed ? "Committed" : "Dry run · nothing written"} tone={m?.committed ? "ok" : "warn"} />

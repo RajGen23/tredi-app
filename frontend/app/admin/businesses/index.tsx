@@ -74,7 +74,7 @@ export default function Businesses() {
   ];
 
   return (
-    <AdminShell title="Businesses" sub="Every shop using Tredi · activate, tailor and watch activity"
+    <AdminShell title="Businesses" sub="Every shop using TradaBooks · activate, tailor and watch activity"
       search={q} onSearch={setQ}
       actions={<Btn label="Export CSV" icon="download-outline" disabled={!d.data} onPress={doExport} testID="businesses-export" />}
       testID="sa-customers">

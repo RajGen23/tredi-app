@@ -74,8 +74,8 @@ export function Scanner({ visible, onClose, onScan, title = "Scan bar code", hin
             <H4 style={{ fontSize: 19 }}>Scan instead of typing</H4>
             <Sub style={{ marginTop: 6 }}>
               {permission && !permission.canAskAgain
-                ? "The camera is blocked for TREDI. Allow it in Settings and the scanner works again — you can still search by name in the meantime."
-                : "TREDI uses the camera to read the bar code on a product so it lands in the sale straight away. Nothing is recorded or uploaded."}
+                ? "The camera is blocked for TradaBooks. Allow it in Settings and the scanner works again — you can still search by name in the meantime."
+                : "TradaBooks uses the camera to read the bar code on a product so it lands in the sale straight away. Nothing is recorded or uploaded."}
             </Sub>
             <Btn label={permission && !permission.canAskAgain ? "Open Settings" : "Allow camera"} loading={asking} onPress={allow} style={{ marginTop: 18 }} testID="scanner-allow" />
             <Btn label="Search by name instead" variant="ghost" onPress={onClose} style={{ marginTop: 8 }} testID="scanner-skip" />

@@ -160,7 +160,7 @@ const st = StyleSheet.create({
   stage: { flex: 1, alignItems: "center", justifyContent: "center", marginVertical: 16 },
   dim: { backgroundColor: "rgba(0,0,0,0.55)" },
   frame: { position: "absolute", borderWidth: 2 },
-  window: { ...StyleSheet.absoluteFillObject, overflow: "hidden" },
+  window: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, overflow: "hidden" },
   handle: { position: "absolute", width: 28, height: 28, borderRadius: 14, borderWidth: 3, borderColor: "#FFFFFF" },
   row: { flexDirection: "row", gap: 10, justifyContent: "center", marginTop: 10 },
   chip: { minHeight: 40, paddingHorizontal: 16, borderRadius: 20, justifyContent: "center", backgroundColor: "#1F2826" },

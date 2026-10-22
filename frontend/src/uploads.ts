@@ -192,7 +192,7 @@ export async function pickAndUploadPhoto(opts?: { camera?: boolean; crop?: boole
   if (!granted) {
     if (!current.canAskAgain) {
       Alert.alert(camera ? "Camera is blocked" : "Photos are blocked",
-        camera ? "Tredi uses the camera to photograph stock and receipts." : "Tredi needs your photos to show items on invoices.",
+        camera ? "TradaBooks uses the camera to photograph stock and receipts." : "TradaBooks needs your photos to show items on invoices.",
         [{ text: "Not now", style: "cancel" }, { text: "Open Settings", onPress: () => Linking.openSettings() }]);
       return "";
     }

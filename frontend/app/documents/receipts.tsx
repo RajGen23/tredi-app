@@ -66,7 +66,7 @@ export default function Receipts() {
       if (!asked.granted && !asked.canAskAgain) {
         return Alert.alert(
           fromCamera ? "Camera is blocked" : "Photos are blocked",
-          fromCamera ? "Tredi needs the camera to snap a supplier bill." : "Tredi needs your photos to attach a bill you already took.",
+          fromCamera ? "TradaBooks needs the camera to snap a supplier bill." : "TradaBooks needs your photos to attach a bill you already took.",
           [{ text: "Not now", style: "cancel" }, { text: "Open Settings", onPress: () => Linking.openSettings() }],
         );
       }

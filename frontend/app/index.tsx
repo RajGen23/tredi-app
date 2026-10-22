@@ -1,4 +1,4 @@
-// 00.1 Splash — green field, the tredi logo, then route by auth state.
+// 00.1 Splash — green field, the TradaBooks logo, then route by auth state.
 import { useEffect } from "react";
 import { Image, Text, View } from "react-native";
 import { useRouter } from "expo-router";
@@ -10,7 +10,7 @@ import { fonts, makeStyles } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.brandPrimary, alignItems: "center", justifyContent: "center" },
-  logo: { width: 252, height: 74 },
+  logo: { width: 260, height: 76 },
   tagline: { position: "absolute", bottom: 40, fontFamily: fonts.medium, fontSize: 13, color: c.onDeepSoft },
 }));
 
@@ -42,7 +42,7 @@ export default function Splash() {
     <View style={s.root} testID="splash-screen">
       <StatusBar style="light" />
       <Animated.View style={[{ alignItems: "center" }, anim]}>
-        <Image source={require("../assets/images/tredi-logo-green.png")} style={s.logo} resizeMode="contain" testID="splash-logo" />
+        <Image source={require("../assets/images/tradabooks-logo-green.png")} style={s.logo} resizeMode="contain" testID="splash-logo" />
       </Animated.View>
       <Text style={s.tagline}>Sales, stock and debtors — one book</Text>
     </View>

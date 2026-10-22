@@ -55,7 +55,7 @@ export default function SetupBusiness() {
         <View style={{ gap: 10 }}>
           <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
             <Av icon="add" tone="sq" size={52} radiusOverride={14} />
-            <Field testID="biz-name" label="Business name" value={name} onChangeText={setName} placeholder="Tredi Ventures" style={{ flex: 1 }} />
+            <Field testID="biz-name" label="Business name" value={name} onChangeText={setName} placeholder="Ada Ventures" style={{ flex: 1 }} />
           </View>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <Field testID="biz-type" label="Type" value={type} onPress={() => setType(type === "Retail" ? "Wholesale" : type === "Wholesale" ? "Services" : "Retail")} style={{ flex: 1 }} right={<Sub>⌄</Sub>} />
@@ -79,7 +79,7 @@ export default function SetupBusiness() {
         </View>
         {m.error ? <Text style={s.err} testID="biz-error">{(m.error as Error).message}</Text> : null}
         <Sub style={{ textAlign: "center", marginTop: 20, marginBottom: 9 }}>TIN and address are saved once and printed on every invoice.</Sub>
-        <Btn testID="biz-submit" label="Start using TREDI" onPress={() => (name ? m.mutate() : null)} loading={m.isPending} disabled={!name} />
+        <Btn testID="biz-submit" label="Start using TradaBooks" onPress={() => (name ? m.mutate() : null)} loading={m.isPending} disabled={!name} />
       </KeyboardAwareScrollView>
     </View>
   );

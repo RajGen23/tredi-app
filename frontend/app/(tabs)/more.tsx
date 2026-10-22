@@ -88,7 +88,7 @@ export default function More() {
           </View>
         ))}
         <Btn label="Sign out" variant="ghost" testID="more-sign-out" style={{ marginTop: 16 }} onPress={async () => { await signOut(); router.replace("/sign-in"); }} />
-        <Sub style={{ textAlign: "center", marginTop: 12 }}>TREDI · rev 05 · Made with tredi</Sub>
+        <Sub style={{ textAlign: "center", marginTop: 12 }}>TradaBooks · rev 05 · Made with TradaBooks</Sub>
       </ScrollView>
     </View>
   );

@@ -27,7 +27,7 @@ export default function SystemHealth() {
   const tone = (l: string) => (l === "ERR" ? colors.coralSoft : l === "WRN" ? "#E8C67A" : "#8FD8BE");
 
   return (
-    <AdminShell title="System health" sub="admin.tredi.app/system"
+    <AdminShell title="System health" sub="TradaBooks admin · /system"
       actions={<Row gap={8}><Pill label={d.data?.incident?.open ? "Incident open" : "All services up"} tone={d.data?.incident?.open ? "warn" : "ok"} /><Sub>Updated 30s ago</Sub></Row>} testID="sa14-system">
       {!d.data ? <Loading /> : (
         <>

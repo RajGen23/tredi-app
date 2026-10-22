@@ -172,7 +172,7 @@ async def guard_writes(request: Request, user: dict):
         return
     sub = await subscription_of(str(user["business_id"]))
     if sub["suspended"]:
-        raise HTTPException(403, "This account is paused by the Tredi team. Your books are safe and readable — contact support to restore saving.")
+        raise HTTPException(403, "This account is paused by the TradaBooks team. Your books are safe and readable — contact support to restore saving.")
     if sub["status"] == "expired":
         raise HTTPException(402, plan_rules.expired_message(plan_rules.plan_by_key(sub["plan"]), sub["trialing"]))
 

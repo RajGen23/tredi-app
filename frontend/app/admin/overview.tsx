@@ -46,7 +46,7 @@ export default function Overview() {
   ];
 
   return (
-    <AdminShell title="Overview" sub="Every figure here is a real business on Tredi"
+    <AdminShell title="Overview" sub="Every figure here is a real business on TradaBooks"
       actions={<Btn label="Audit log" icon="receipt-outline" onPress={() => router.push("/admin/security/audit")} />}
       testID="sa2-overview">
       {!d.data ? <Loading label="Reading the platform" /> : (

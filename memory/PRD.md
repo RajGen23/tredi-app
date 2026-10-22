@@ -624,3 +624,9 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - POST /api/items with opening qty also writes an "opening" PO, so all stock creation shows in Purchases.
 - /purchases/new: multi-select items sheet with search; lines are editable in place (qty/cost); "New item" lines (name + sell price) create real stock items on save (_ensure_items).
 - src/components/cropper.tsx: JS cropper (drag frame, resize corners, Free/Square) mounted as <CropHost/> in the root layout. Used for product photos (pickAndUploadPhoto({crop:true})) and the business logo (PNG kept).
+
+## Rebrand to TradaBooks + reworked "Add several items" (Oct 2026)
+- App name is now TradaBooks (app.json name and all user-facing strings, legal text, admin). Bundle ID stays com.brandjunction.tredi.
+- New logo assets cut from the brand PDF: icon, adaptive-icon (green background #00C98D), favicon, splash-mark, splash-green, tradabooks-logo-green (in-app splash), tradabooks-wordmark (invoice "Made with"). The base64 BRAND_MARK sits in invoice-templates.ts.
+- /stock/bulk is now a list. "+ Add item" opens the normal /stock/new?collect=1. "Add item to list" stores the entry in src/bulk-draft.ts; tapping a row edits it (?row=key). "Save N items" calls POST /items/bulk, which writes one opening PO.
+- The New item app bar has a "+ Several" shortcut to /stock/bulk.

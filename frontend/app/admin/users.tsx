@@ -1,4 +1,4 @@
-// SA.8 Users — every real person signed in to Tredi, with the business they
+// SA.8 Users — every real person signed in to TradaBooks, with the business they
 // belong to and when they were last active.
 import { useState } from "react";
 import { Text, View } from "react-native";
@@ -62,7 +62,7 @@ export default function Users() {
   ];
 
   return (
-    <AdminShell title="Users" sub="Everyone on Tredi · tap a person to open their business" search={q} onSearch={(v) => { setQ(v); setPage(1); }}
+    <AdminShell title="Users" sub="Everyone on TradaBooks · tap a person to open their business" search={q} onSearch={(v) => { setQ(v); setPage(1); }}
       actions={<Btn label="Export" icon="download-outline" busy={exporting} onPress={doExport} testID="users-export" />} testID="sa8-users">
       <Tabs value={tab} onChange={(k) => { setTab(k); setPage(1); }}
         items={[{ key: "all", label: "All", count: counts.all }, { key: "owners", label: "Owners", count: counts.owners },

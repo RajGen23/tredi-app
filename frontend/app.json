@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TREDI",
+    "name": "TradaBooks",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -20,7 +20,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#00C98D"
       },
       "package": "com.brandjunction.tredi",
       "permissions": [

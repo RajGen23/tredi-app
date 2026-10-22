@@ -4,7 +4,7 @@
 // two clients can diverge without breaking each other.
 import React, { useState } from "react";
 import {
-  ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, TextProps, useWindowDimensions, View, ViewStyle,
+  ActivityIndicator, Image, Modal, Pressable, ScrollView, Text, TextInput, TextProps, useWindowDimensions, View, ViewStyle,
 } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -378,9 +378,9 @@ export function AdminShell({ title, sub, actions, children, search, onSearch, te
   const rail = (
     <View style={s.rail}>
       <Pressable style={s.brand} onPress={() => router.push("/admin/overview")}>
-        <View style={s.brandMark}><Text style={{ fontFamily: fonts.extrabold, fontSize: 14, color: colors.deep }}>t</Text></View>
+        <View style={s.brandMark}><Image source={require("../../assets/images/tradabooks-mark.png")} style={{ width: 20, height: 20 }} resizeMode="contain" /></View>
         <View>
-          <Text style={s.brandText}>tredi</Text>
+          <Text style={s.brandText}>TradaBooks</Text>
           <Text style={s.brandSub}>Super Admin</Text>
         </View>
       </Pressable>

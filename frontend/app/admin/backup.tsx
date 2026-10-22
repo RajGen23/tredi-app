@@ -53,7 +53,7 @@ export default function Backup() {
   const tenantName = d.data?.tenants?.find((t: any) => t.id === tenant)?.name ?? "—";
 
   return (
-    <AdminShell title="Backup & snapshots" sub="admin.tredi.app/backup"
+    <AdminShell title="Backup & snapshots" sub="TradaBooks admin · /backup"
       actions={<Row gap={8}>
         <Sub>Last full backup {ago(d.data?.rows?.[0]?.taken)} ago</Sub>
         <Btn label="Run snapshot now" tone="primary" icon="cloud-upload-outline" busy={snap.isPending} onPress={() => snap.mutate()} testID="run-snapshot" />

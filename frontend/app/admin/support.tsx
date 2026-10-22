@@ -70,7 +70,7 @@ export default function Support() {
   const s = d.data?.session;
 
   return (
-    <AdminShell title="Support" sub="admin.tredi.app/support"
+    <AdminShell title="Support" sub="TradaBooks admin · /support"
       actions={<Tabs items={[{ key: "access", label: "Access requests" }, { key: "messages", label: `Messages${d.data?.messages_open ? ` · ${d.data.messages_open}` : ""}` }, { key: "broadcast", label: "Broadcast" }]} value={tab} onChange={setTab} />}
       testID="sa18-support">
       {!d.data ? <Loading /> : tab === "access" ? (

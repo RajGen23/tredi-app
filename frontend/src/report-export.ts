@@ -75,7 +75,7 @@ export function reportHtml(doc: ReportDoc): string {
     ${kpis}
     ${doc.sections.map(table).join("")}
     ${doc.note ? `<div class="meta" style="margin-top:14px">${esc(doc.note)}</div>` : ""}
-    <div class="foot"><span>Printed ${esc(printed)}</span><span>Made with tredi</span></div>
+    <div class="foot"><span>Printed ${esc(printed)}</span><span>Made with TradaBooks</span></div>
   </body></html>`;
 }
 
