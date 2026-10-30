@@ -630,3 +630,9 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - New logo assets cut from the brand PDF: icon, adaptive-icon (green background #00C98D), favicon, splash-mark, splash-green, tradabooks-logo-green (in-app splash), tradabooks-wordmark (invoice "Made with"). The base64 BRAND_MARK sits in invoice-templates.ts.
 - /stock/bulk is now a list. "+ Add item" opens the normal /stock/new?collect=1. "Add item to list" stores the entry in src/bulk-draft.ts; tapping a row edits it (?row=key). "Save N items" calls POST /items/bulk, which writes one opening PO.
 - The New item app bar has a "+ Several" shortcut to /stock/bulk.
+
+## Speed + offline viewing + customer search (Oct 2026)
+- Backend: indexes on business_id/created_at for every main collection, created at startup. Batched deps.decorate_invoices replaces per-invoice queries. list_customers, customer detail and customer summary are batched too.
+- Frontend: React Query offlineFirst with gcTime 24h. src/offline-cache.ts saves each query to its own AsyncStorage entry and restores them on start. auth.tsx opens straight away on the saved profile (tradabooks_me) and checks /auth/me in the background. A 401/403 clears everything, and a different user signing in clears the cache. API calls time out after 15s. (tabs)/_layout redirects to /sign-in when there is no user.
+- Customers: the search icon toggles a search box (name, email, phone; 234 is read as 0). The list is a FlatList. Error states with a retry button on the Customers, Sales and Stock lists.
+- Not built yet: recording sales or invoices while offline (offline writes).

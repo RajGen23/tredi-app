@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 36: checked the 3 bugs the user reported (slow lists, customer search, offline) plus regression. BACKEND, 7/7 pytest pass: GET /api/customers and GET /api/invoices give the same numbers as the old per-row maths. For every row, balance, open_invoices, days_overdue, paid, due, status, customer_name, payments sum, bank_accounts, terms, totals.shipping and totals.discount_total were rebuilt directly from Mongo and compared, for both the owner (7 customers, 313 invoices) and the real migrated Wichflow business (156 customers, 99 invoices). Speed: customers 0.16-0.19s, invoices 0.16-0.24s. GET /customers/{id}, GET /invoices/{id}, and POST /customers then POST /invoices then the lists update correctly. FRONTEND (390x844): login to home takes 1.8s. Customer search works: the icon opens an autofocused input; it filters by name (any case), email, phone digits ('812 555', '0192', '8099887'); 'No match' shows; it works together with Unpaid/All; the close icon hides the input and clears the term; rows open the customer detail. Creating a customer from the UI works. Offline: the cache has customers, invoices, sales, items, dashboard and more (about 490KB for the owner). With context.set_offline(True), Sales, Stock, More and Customers all show cached data. Reloading with every /api call failing (network error) shows cached Home, Sales, Stock and Customers with no sign-out. Sign-out empties localStorage. Problems found: (1) HIGH: after a 401 (expired or bad token) the cache and the tradabooks_me profile are NOT cleared, so the next account to sign in sees the previous account's data. Reproduced: rep amina@tredi.app saw owner's 'All 365' sales instead of her own 13, because the restored data is under 30s old and is not refetched. (2) Any HTTP error on /auth/me (e.g. a 502 from the gateway) counts as a sign-out: the user is sent to /onboarding although the cached profile exists. (3) Startup waits for /auth/me and then /business, with no fetch timeout. When /auth/me took 12s, home took 14s, even with a cached profile and data. On a weak connection this is still 'takes forever to load'. (4) A customer detail never opened before shows an endless spinner offline, with no offline message. (5) Bug from before this change: POST /api/invoices/preview gave 500 (NameError: f) — FIXED by tester.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/invoices/preview", "issue": "Bug from before this change: NameError 'f' not defined, so it returned 500. FIXED by tester (added f = biz_filter(user)). Now 200."},
+      {"endpoint": "GET /api/customers/{id}", "issue": "Bug from before this change: 'unpaid' adds up `due` across ALL invoices, including draft, quote and cancelled ones. total_purchases leaves out drafts only. Example: Adeola Stores shows Unpaid debt ₦16,242,605, which is more than Purchased ₦14,317,283 and more than the list balance ₦14,221,283. Filter the invoices by LIVE_SALE before summing. Reference: server.py:279-283"},
+      {"endpoint": "GET /api/customers/{id}/summary", "issue": "Still makes one invoice_paid query per invoice (the N+1 pattern this change removed elsewhere). It is slow for customers with hundreds of invoices (Adeola: 197) and is used on the new-invoice screen. Reference: server.py customer_summary"},
+      {"endpoint": "decorate_invoices", "issue": "Small change from before: `payments` now has one entry per allocation, where it used to have one per payment. A payment with two allocations to the same invoice now shows twice. Totals are unchanged."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Customer detail offline", "issue": "A customer detail never opened before shows an endless spinner when offline (offlineFirst pauses the query). An 'You're offline, open this once online' state is needed.", "testID": "customers/[id]", "priority": "LOW"},
+      {"component": "Customers search", "issue": "A phone search needs 3 or more digits. Typing '07' gives 'No match' even though 0700 and 0706 exist. Minor.", "testID": "customers-search-input", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "401 then a different user signs in", "issue": "In auth.tsx load(), the ApiError branch calls setUser(null) but does not clear tradabooks_cache_v1 or tradabooks_me, and does not call qc.clear(). The next signIn (finish then load) keeps the hydrated cache, and staleTime is 30s. Reproduced: amina (rep, 11 invoices + 2 sales) saw the owner's All 365 / Overdue 114 sales list. This leaks data across accounts.", "affected_testIDs": ["invoices-screen", "customers-screen", "stock-screen"]},
+      {"flow": "5xx on /auth/me", "issue": "api() throws ApiError for every non-OK status. load() only uses the cached profile when the error is NOT an ApiError, so a 502/503/504 (gateway, cold start) sends the user to /onboarding. Only 401/403 should mean signed out.", "affected_testIDs": ["home-screen", "onboarding-screen"]},
+      {"flow": "Startup on a slow network", "issue": "The AuthProvider sets ready only after `await load()`, which chains /auth/me then /business. fetch has no timeout. With /auth/me delayed 12s, home took 14s even though tradabooks_me and the query cache were already there. On poor connections the 'forever to load' complaint remains.", "affected_testIDs": ["home-screen"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "AsyncStorage cache size", "issue": "The whole React Query cache is saved as ONE AsyncStorage value (about 490KB for the demo owner, and it grows with invoices). On Android, AsyncStorage rows over about 2MB fail to read (CursorWindow limit), and storage helpers fail silently, so big businesses would lose the offline cache with no error. Reference: /app/frontend/src/offline-cache.ts:28-33"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter36_batched_lists.py", "/app/test_reports/pytest/iter36_results.xml"],
+  "action_items": [
+    "HIGH: In auth.tsx load(), on ApiError 401/403: clear the cache (clearCache), remove ME_KEY and call qc.clear(). Also, in finish(), clear the cache when the newly signed-in user id differs from the cached profile id, or key the cache per user id (e.g. tradabooks_cache_v1_<uid>).",
+    "Treat only 401/403 as signed out in load(). For 5xx or timeouts, fall back to the cached profile like a network error.",
+    "Startup: if tradabooks_me exists, set user/business from it and setReady(true) right away, then check /auth/me in the background. Add an AbortController timeout (~10-15s) to api().",
+    "Show an offline empty state (not an endless spinner) for screens with no cached data while offline, e.g. customers/[id].",
+    "GET /customers/{id}: compute unpaid (and total_purchases) from LIVE_SALE invoices only.",
+    "Batch customer_summary the same way as list_customers.",
+    "Consider limiting what is saved (e.g. the main lists only) or splitting the cache across keys, to stay under Android's AsyncStorage per-row limit."
+  ],
+  "critical_code_review_comments": [
+    "offline-cache.ts save(): storage.setItem already JSON-serializes, so JSON.stringify makes a double-encoded string. It works because restore JSON.parses it, but it adds size.",
+    "offline-cache.ts: a query that finishes after signOut (in flight during sign-out) can trigger save() 1.5s later and write the cache back. Set a flag or unsubscribe on signOut.",
+    "list_customers loads every payment for the business on each call. Fine now (0.2s), but a $group aggregation would scale better."
+  ],
+  "updated_files": ["/app/backend/server.py (preview_invoice: added missing f = biz_filter(user))", "/app/backend/tests/test_iter36_batched_lists.py (new)"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "~80% (search, offline viewing and regression pass; 3 auth/offline problems in edge cases)"},
+  "seed_data_creation": "Created 'ZZ Iter36 Cust' (+1 invoice) via the API and 'ZZ Search Tester' via the UI. Both deleted, along with their invoices and activity.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use pytest -n 0 for test_iter36_batched_lists.py (it compares against pymongo and needs EXPO_PUBLIC_BACKEND_URL exported). On web, set_offline + page reload fails (no service worker). Simulate an offline cold start with page.route('**/api/**', abort('internetdisconnected')). The token is in localStorage key tredi_token (JSON string). Cross-account leak repro: log in as owner, open Sales, set tredi_token to a bad value, reload, sign in as amina@tredi.app, open Sales: it shows 365 instead of 13.",
+  "rca_of_issue": "Cross-account cache: AuthProvider.load() catch branch (src/auth.tsx:40-52) only clears React state on ApiError. restoreCache() had already hydrated the previous user's queries, and hydrated dataUpdatedAt is under 30s old, so useQuery does not refetch on mount."
+}

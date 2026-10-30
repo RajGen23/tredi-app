@@ -143,7 +143,10 @@ export default function Stock() {
                 {sort !== "name" ? <Chip label={SORTS.find(([k]) => k === sort)?.[1] ?? ""} on onPress={() => setSort("name")} testID="stock-clear-sort" /> : null}
               </Row>
             ) : null}
-            {q.isLoading || (chip === "archived" && archivedQ.isLoading) ? <Loading /> : list.length === 0 ? (
+            {q.isLoading || (chip === "archived" && archivedQ.isLoading) ? <Loading /> : q.isError && !q.data ? (
+              <Card><Empty icon="cloud-offline-outline" title="Couldn't load stock" sub="Check your connection and try again."
+                action={<Btn label="Try again" testID="stock-retry" onPress={() => q.refetch()} />} /></Card>
+            ) : list.length === 0 ? (
               <Card><Empty icon="cube-outline" title={chip === "all" ? "Nothing in stock yet" : "Nothing matches this filter"}
                 sub={chip === "all" ? "Add your first item to start tracking." : "Try another chip above."}
                 action={chip === "all" ? <Btn label="Add item" testID="stock-empty-add" onPress={() => router.push("/stock/new")} /> : undefined} /></Card>

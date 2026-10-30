@@ -9,7 +9,7 @@ import asyncio
 import logging
 
 from deps import (VAT_RATE, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
-                  db, decorate_invoice, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_cost, line_totals, log_activity, stamp_costs, next_number, now, oid,
+                  db, decorate_invoice, decorate_invoices, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_cost, line_totals, log_activity, stamp_costs, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, admin_customers, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, support, users_roles
 from plans import TRIAL_DAYS
@@ -213,19 +213,31 @@ def money_words(v: float) -> str:
 @api.get("/customers")
 async def list_customers(user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
+    biz = f["business_id"]
+    # whole-business totals in three queries, not several per customer
+    billed, open_count, overdue_days, paid_in = {}, {}, {}, {}
+    invs = [i async for i in db.invoices.find({**f, "deleted_at": None, "status": LIVE_SALE, "customer_id": {"$nin": [None, ""]}},
+                                              {"customer_id": 1, "totals.total": 1, "status": 1, "due_date": 1})]
+    alloc = {}
+    async for p in db.payments.find({"business_id": biz, "deleted_at": None}, {"customer_id": 1, "amount": 1, "allocations": 1}):
+        if p.get("customer_id"):
+            paid_in[p["customer_id"]] = paid_in.get(p["customer_id"], 0) + p["amount"]
+        for a in p.get("allocations", []):
+            alloc[a.get("invoice_id")] = alloc.get(a.get("invoice_id"), 0) + a["amount"]
+    for inv in invs:
+        cid = inv["customer_id"]
+        billed[cid] = billed.get(cid, 0) + inv["totals"]["total"]
+        st = invoice_status(inv, round(alloc.get(str(inv["_id"]), 0), 2))
+        if st["due"] > 0:
+            open_count[cid] = open_count.get(cid, 0) + 1
+            overdue_days[cid] = max(overdue_days.get(cid, 0), st["days_overdue"])
     out = []
     async for c in db.customers.find(f).sort("name", 1):
         d = clean(c)
-        d["balance"] = await customer_balance(f["business_id"], d["id"])
-        inv_count = 0
-        overdue = 0
-        async for inv in db.invoices.find({**f, "customer_id": d["id"], "status": LIVE_SALE}):
-            st = invoice_status(inv, await invoice_paid(f["business_id"], str(inv["_id"])))
-            if st["due"] > 0:
-                inv_count += 1
-                overdue = max(overdue, st["days_overdue"])
-        d["open_invoices"] = inv_count
-        d["days_overdue"] = overdue
+        opening = c.get("opening_balance", 0) * (1 if c.get("opening_type") == "owes_me" else -1)
+        d["balance"] = round(opening + billed.get(d["id"], 0) - paid_in.get(d["id"], 0), 2)
+        d["open_invoices"] = open_count.get(d["id"], 0)
+        d["days_overdue"] = overdue_days.get(d["id"], 0)
         out.append(d)
     return out
 
@@ -262,15 +274,13 @@ async def get_customer(cid: str, user: Annotated[dict, Depends(current_user)]):
         raise HTTPException(404, "Customer not found")
     d = clean(c)
     d["balance"] = await customer_balance(f["business_id"], cid)
-    invoices = []
-    async for inv in db.invoices.find({**f, "customer_id": cid}).sort("created_at", -1):
-        invoices.append(await decorate_invoice(inv))
+    invoices = await decorate_invoices([inv async for inv in db.invoices.find({**f, "customer_id": cid}).sort("created_at", -1)])
     d["invoices"] = invoices
     d["total_purchases"] = round(sum(i["totals"]["total"] for i in invoices if i["status"] != "draft"), 2)
     d["total_received"] = round(sum([p["amount"] async for p in db.payments.find({**f, "customer_id": cid})]), 2)
     d["overdue_count"] = sum(1 for i in invoices if i["status"] == "overdue")
     d["max_days_overdue"] = max([i["days_overdue"] for i in invoices] or [0])
-    d["unpaid"] = round(sum(i["due"] for i in invoices), 2)
+    d["unpaid"] = round(sum(i["due"] for i in invoices if i.get("status") not in ("draft", "quote", "cancelled")), 2)
     d["returns_total"] = round(sum([r.get("total") or 0 async for r in db.returns.find({**f, "customer_id": cid})]), 2)
     d["returns_count"] = await db.returns.count_documents({**f, "customer_id": cid})
     limit = c.get("credit_limit")
@@ -292,9 +302,14 @@ async def customer_summary(cid: str, user: Annotated[dict, Depends(current_user)
     limit = c.get("credit_limit")
     purchased = unpaid = 0.0
     count = 0
-    async for inv in db.invoices.find({**f, "customer_id": cid, "status": LIVE_SALE}):
+    invs = [i async for i in db.invoices.find({**f, "customer_id": cid, "status": LIVE_SALE})]
+    alloc: dict = {}
+    async for p in db.payments.find({"business_id": f["business_id"], "deleted_at": None, "allocations.invoice_id": {"$in": [str(i["_id"]) for i in invs]}}):
+        for a in p.get("allocations", []):
+            alloc[a.get("invoice_id")] = alloc.get(a.get("invoice_id"), 0) + a["amount"]
+    for inv in invs:
         purchased += inv["totals"]["total"]
-        unpaid += invoice_status(inv, await invoice_paid(f["business_id"], str(inv["_id"])))["due"]
+        unpaid += invoice_status(inv, round(alloc.get(str(inv["_id"]), 0), 2))["due"]
         count += 1
     last = await db.invoices.find_one({**f, "customer_id": cid, "status": LIVE_SALE}, sort=[("created_at", -1)])
     returns = round(sum([r.get("total") or 0 async for r in db.returns.find({**f, "customer_id": cid})]), 2)
@@ -664,11 +679,12 @@ def _issued_at(value: Optional[str]) -> datetime:
 @api.get("/invoices")
 async def list_invoices(user: Annotated[dict, Depends(current_user)]):
     f = await scoped(user, "sales")
-    return [await decorate_invoice(inv) async for inv in db.invoices.find(f).sort("created_at", -1)]
+    return await decorate_invoices([inv async for inv in db.invoices.find(f).sort("created_at", -1)])
 
 
 @api.post("/invoices/preview")
 async def preview_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_user)]):
+    f = biz_filter(user)
     lines = await stamp_costs(f["business_id"], [line_totals(l) for l in data.lines])
     return {"lines": lines, "totals": invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)}
 
@@ -1415,6 +1431,15 @@ app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], 
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
+    # every list is read per business; without these each query scans the whole collection
+    for col in ("customers", "invoices", "payments", "items", "sales", "expenses", "purchases", "suppliers", "supplier_payments",
+                "movements", "accounts", "returns", "activity", "transfers", "terms"):
+        await db[col].create_index([("business_id", 1), ("created_at", -1)])
+    await db.invoices.create_index([("business_id", 1), ("customer_id", 1)])
+    await db.payments.create_index([("business_id", 1), ("customer_id", 1)])
+    await db.payments.create_index([("business_id", 1), ("allocations.invoice_id", 1)])
+    await db.movements.create_index([("business_id", 1), ("item_id", 1)])
+    await db.expenses.create_index([("business_id", 1), ("purchase_id", 1)])
     asyncio.create_task(admin.legacy_sync_loop())
     try:
         await purchases.backfill_upfront_expenses()

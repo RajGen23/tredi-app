@@ -464,39 +464,54 @@ def bank_lines(a: dict) -> dict:
 
 
 async def decorate_invoice(inv: dict) -> dict:
-    out = clean(inv)
-    paid = await invoice_paid(inv["business_id"], out["id"])
-    out.update(invoice_status(inv, paid))
-    out["totals"].setdefault("shipping", 0)
-    out["totals"].setdefault("discount_total", round(out["totals"].get("line_discount", 0) + out["totals"].get("invoice_discount", 0), 2))
-    # Which bank accounts print on this document, and the terms set behind it.
-    ids = [i for i in (inv.get("bank_account_ids") or []) if ObjectId.is_valid(i)]
-    out["bank_accounts"] = [bank_lines(a) async for a in db.accounts.find({"_id": {"$in": [ObjectId(i) for i in ids]}})] if ids else []
-    terms = await db.terms.find_one({"_id": ObjectId(inv["terms_id"])}) if ObjectId.is_valid(inv.get("terms_id") or "") else None
-    out["terms"] = {"name": terms.get("name", ""), "payment_structure": terms.get("payment_structure", ""),
-                    "delivery_condition": terms.get("delivery_condition", ""), "additional_notes": terms.get("additional_notes", ""),
-                    "shop": terms.get("shop", "")} if terms else None
-    # Item photos: taken from the line snapshot, or from the item if the line was
-    # raised before photos existed.
-    missing = [ObjectId(l["item_id"]) for l in out.get("lines", [])
-               if not l.get("photo_url") and ObjectId.is_valid(l.get("item_id") or "")]
-    if missing:
-        photos = {str(i["_id"]): i.get("photo_url", "") async for i in db.items.find({"_id": {"$in": missing}})}
-        for l in out["lines"]:
+    return (await decorate_invoices([inv]))[0]
+
+
+async def decorate_invoices(invs: list) -> list:
+    """Everything a screen shows about invoices, fetched in a handful of queries
+    for the whole list (one query per invoice made long lists crawl)."""
+    if not invs:
+        return []
+    biz = invs[0]["business_id"]
+    ids = {str(i["_id"]) for i in invs}
+    pays: dict = {}
+    async for p in db.payments.find({"business_id": biz, "deleted_at": None, "allocations.invoice_id": {"$in": list(ids)}}).sort("created_at", 1):
+        for a in p.get("allocations", []):
+            if a.get("invoice_id") in ids:
+                pays.setdefault(a["invoice_id"], []).append({"method": p.get("method", "cash"), "amount": a["amount"],
+                    "date": p["created_at"].isoformat() if hasattr(p.get("created_at"), "isoformat") else ""})
+    acc_ids = {i for inv in invs for i in (inv.get("bank_account_ids") or []) if ObjectId.is_valid(i)}
+    accounts = {str(a["_id"]): bank_lines(a) async for a in db.accounts.find({"_id": {"$in": [ObjectId(i) for i in acc_ids]}})} if acc_ids else {}
+    term_ids = {inv["terms_id"] for inv in invs if ObjectId.is_valid(inv.get("terms_id") or "")}
+    terms = {str(t["_id"]): t async for t in db.terms.find({"_id": {"$in": [ObjectId(i) for i in term_ids]}})} if term_ids else {}
+    missing = {l["item_id"] for inv in invs for l in inv.get("lines", [])
+               if not l.get("photo_url") and ObjectId.is_valid(l.get("item_id") or "")}
+    photos = {str(i["_id"]): i.get("photo_url", "") async for i in db.items.find({"_id": {"$in": [ObjectId(i) for i in missing]}}, {"photo_url": 1})} if missing else {}
+    cust_ids = {inv["customer_id"] for inv in invs if ObjectId.is_valid(inv.get("customer_id") or "")}
+    custs = {str(c["_id"]): c async for c in db.customers.find({"_id": {"$in": [ObjectId(i) for i in cust_ids]}}, {"name": 1, "phone": 1, "address": 1})} if cust_ids else {}
+    out = []
+    for inv in invs:
+        d = clean(inv)
+        mine = pays.get(d["id"], [])
+        d.update(invoice_status(inv, round(sum(p["amount"] for p in mine), 2)))
+        d["totals"].setdefault("shipping", 0)
+        d["totals"].setdefault("discount_total", round(d["totals"].get("line_discount", 0) + d["totals"].get("invoice_discount", 0), 2))
+        # Which bank accounts print on this document, and the terms set behind it.
+        d["bank_accounts"] = [accounts[i] for i in (inv.get("bank_account_ids") or []) if i in accounts]
+        t = terms.get(inv.get("terms_id") or "")
+        d["terms"] = {"name": t.get("name", ""), "payment_structure": t.get("payment_structure", ""),
+                      "delivery_condition": t.get("delivery_condition", ""), "additional_notes": t.get("additional_notes", ""),
+                      "shop": t.get("shop", "")} if t else None
+        # Item photos: from the line snapshot, or the item if the line predates photos.
+        for l in d.get("lines", []):
             if not l.get("photo_url"):
                 l["photo_url"] = photos.get(l.get("item_id") or "", "")
-    out["payments"] = [{"method": p.get("method", "cash"), "amount": sum(a["amount"] for a in p.get("allocations", []) if a["invoice_id"] == out["id"]),
-                        "date": p["created_at"].isoformat() if hasattr(p.get("created_at"), "isoformat") else ""}
-                       async for p in db.payments.find({"business_id": inv["business_id"], "deleted_at": None, "allocations.invoice_id": out["id"]}).sort("created_at", 1)]
-    if inv.get("customer_id"):
-        c = await db.customers.find_one({"_id": ObjectId(inv["customer_id"])})
-        out["customer_name"] = c["name"] if c else "Cash sale"
-        out["customer_phone"] = c.get("phone", "") if c else ""
-        out["customer_address"] = c.get("address", "") if c else ""
-    else:
-        out["customer_name"] = "Cash sale"
-        out["customer_phone"] = ""
-        out["customer_address"] = ""
+        d["payments"] = mine
+        c = custs.get(inv.get("customer_id") or "")
+        d["customer_name"] = c["name"] if c else "Cash sale"
+        d["customer_phone"] = c.get("phone", "") if c else ""
+        d["customer_address"] = c.get("address", "") if c else ""
+        out.append(d)
     return out
 
 

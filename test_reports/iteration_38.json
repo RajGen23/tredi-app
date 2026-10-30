@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 38 frontend retest of the iteration_37 fixes (390x844, Playwright against the public URL). (1) HIGH, FIXED: with storage cleared and a fresh sign-in, switching tabs by click (no reload) saved 13 tradabooks_cache:* keys plus the index (customers, invoices, sales, items, items-stats, dashboard and others). An offline cold start (all /api aborted) then showed Sales 'All 365', Stock 'All 10' at ₦78,512,800, and Customers 'All 7'. No retry cards appeared. (2) FIXED for tabs: /auth/me delayed 3s and then 401. Home opened, and at 6s the app was on /sign-in with localStorage empty. GAP: if a stack screen outside (tabs) is on top when the late 401 arrives (web deep link to /customers, or the user tapped More then Customers within the delay), the user stays there and the previous owner's 7 customer rows stay visible. Only pressing back reaches /sign-in. (3) FIXED: with /customers, /invoices and /items returning 500 and nothing cached, the 'Couldn't load …' cards with invoices-retry, stock-retry and customers-retry all show. The 'Add customer' empty CTA is no longer shown. Tapping customers-retry after recovery loaded All 7. (4) FIXED: '0706' and '+234 706' find Kunle Stores (+234 706 118 9002). '07' finds Grace Mwangi, Grace Offline and Kunle. '7' gives No match. Name search works ('grace', 'ADEOLA'). The search toggle opens and closes. REGRESSION, all pass: owner sees 365 sales; then a bad token and a cold start go to /onboarding with storage emptied; amina sees only 'All 13' and tradabooks_me is amina. Sign-out from More goes to /sign-in, clears every key, and back does not return to Home.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Sales list partial failure", "issue": "When /invoices fails but /sales works, the chip shows 'All 52' while the list shows only the 'Couldn't load sales' card, so the 52 quick sales that did load are hidden. invoices-retry refetches only q (invoices), not salesQ. If only /sales fails, no error appears and quick sales silently disappear. Reference: app/(tabs)/sales.tsx:187-191", "testID": "invoices-retry", "priority": "LOW"},
+      {"component": "Sales SyncStamp on error", "issue": "With the invoices request failed and never loaded, the stamp says 'Last synced just now', because dataUpdatedAt 0 falls back to Date.now() in Math.min(q.dataUpdatedAt || Date.now(), …). It should say 'Not synced yet', as Stock does. Reference: app/(tabs)/sales.tsx:155", "testID": "invoices-sync", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Late 401 while a non-tab screen is open", "issue": "MEDIUM: the auth guard lives only in app/(tabs)/_layout.tsx, and its <Redirect> fires only when the tabs are focused. Reproduced: /auth/me delayed 4s then 401. Home, then More, then Customers within 4s; after the 401 the user is still on /customers with 7 owner rows on screen (qc.clear() does not reset results already held by mounted observers). It goes to /sign-in only after back. The same happens on a web deep link straight to /customers. Fix: put the guard in the root app/_layout.tsx, e.g. useEffect on [ready, user, segments] calling router.replace('/sign-in') when the route is not public (sign-in, onboarding, admin, legal).", "affected_testIDs": ["customers-screen", "sign-in-screen"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "MEDIUM: Move the ready && !user guard from (tabs)/_layout.tsx into the root layout, so a late 401 also leaves pushed screens such as /customers, /invoices/[id] and /stock/[id].",
+    "LOW: Sales: show the quick sales that loaded even when /invoices fails (or show the error only when both fail), make invoices-retry refetch both queries, and show 'Not synced yet' instead of 'just now' when the data never loaded.",
+    "LOW (carried over): a global 401 handler in api() that signs out, for tokens that expire mid-session; loginRequest has no timeout."
+  ],
+  "critical_code_review_comments": [
+    "offline-cache.ts: entries are still double-JSON-encoded, the index is never pruned, and restoreCache reads entries one by one (unchanged from iteration 37).",
+    "offline-cache.ts save() is async with awaits in a loop. If signOut runs clearCache while a save is part-way through, the save can rewrite a key or the index afterwards. Not seen in testing (keys were [] after sign-out), but a 'generation' counter checked inside save() would close the race."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only request)", "frontend": "~92% (all 4 fixes and the regression verified; 1 medium gap in the auth guard, 2 low Sales issues)"},
+  "seed_data_creation": "None. Nothing was created; the tests only read data and switched accounts.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login API is OAuth2 form data: POST /api/auth/login with username and password fields. Owner customers have no emails; Kunle Stores phone is +234 706 118 9002. To reproduce the guard gap: sign in, then page.route('**/api/auth/me') sleeping 4s then fulfilling 401, goto '/', tap tab-more then more-customers, wait 5s. To fake an error state: route regex .*/api/(customers|invoices|items)(\\?.*)?$ to 500 before the first visit after a fresh sign-in.",
+  "rca_of_issue": "Guard gap: expo-router <Redirect> inside a nested layout only acts when that navigator is focused. Pushed root-stack screens (customers, etc.) sit above (tabs), so the redirect waits until they are popped. Also, qc.clear() does not reset mounted observers, so the stale data stays on screen."
+}

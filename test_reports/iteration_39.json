@@ -1,0 +1,27 @@
+{
+  "summary": "Iteration 39 frontend retest of the root SignedOutGuard (Playwright, 390x844, public URL, owner@tredi.app). All 5 requested checks PASS: (1) With /auth/me delayed 4s then 401, the path Home → More → Customers ended on /sign-in after the 401. sign-in-screen was visible, customers-screen was unmounted, no 'Kunle' text remained and localStorage was []. A web deep link to /customers with the same late 401 also ended on /sign-in. (2) A late 401 on the Home tab went to /sign-in with storage empty. (3) A fresh launch with no storage went / → /onboarding with no loop. (4) More → more-sign-out went to /sign-in and cleared every key. (5) /onboarding and /sign-in stay put without a session. sign-in-back goes to /onboarding. No page errors. NEW LOW GAP (regression from removing the (tabs) <Redirect>): the guard only fires on a signed-in → signed-out change. So, signed out: (a) browser back from /sign-in after a sign-out or a 401 now lands on the (tabs) Home shell, with an empty hero spinner, 'Could not load figures' and a working tab bar. In iteration 38 back did not return to Home. (b) A cold web deep link to /customers with no session renders the Customers screen ('Couldn't load customers', All 0) instead of going to sign-in. No data leaks in either case: the cache is empty and the API returns 401.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Signed-out access to protected routes (web back / cold deep link)", "issue": "LOW: SignedOutGuard redirects only when `had.current` was true, meaning a user existed during this mount. The (tabs) Redirect was removed, so nothing guards protected routes when there was never a user in this mount. Reproduced: sign out from More, then browser back gives / with home-screen (empty shell, tabs usable). localStorage.clear() then goto /customers gives customers-screen with 'Couldn't load customers'. No data shown. Reference: app/_layout.tsx:25-39", "affected_testIDs": ["home-screen", "customers-screen", "sign-in-screen"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "LOW: In SignedOutGuard, also redirect when `ready && !user` and the current route is not public. Use useSegments(); the public routes are index (splash), onboarding, sign-in, admin/*, legal/*, help if public, and setup-business only if signed in. Keep the dismissAll + replace('/sign-in') path for a signed-in → signed-out change. This closes browser-back-to-Home after sign-out and cold deep links to /customers, /sales, etc."
+  ],
+  "critical_code_review_comments": [
+    "_layout.tsx SignedOutGuard: `router` from useRouter is in the deps; it is stable in expo-router, so this is fine. canDismiss()/dismissAll() worked on web (customers-screen unmounted).",
+    "Carried over: offline-cache save() vs clearCache race, double-JSON entries, no global 401 handler in api() for tokens that expire mid-session."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only request)", "frontend": "100% of the 5 requested checks; 1 low follow-up gap"},
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Late 401 repro: sign in via sign-in-email/sign-in-password/sign-in-submit, then page.route('**/api/auth/me') that sleeps 4s and fulfills 401, goto '/', tap tab-more then more-customers, wait 6s. Sign-out testID: more-sign-out (no confirm dialog). Gap repro: after sign-out, page.go_back() shows home-screen; or localStorage.clear() then goto /customers. Expo was restarted mid-run once (transient Cloudflare 502), so retry if you see 502.",
+  "rca_of_issue": "The guard keys on a change in user state (had.current), not on the route. A route that mounts while already signed out (browser history entry, cold deep link) never triggers it, and the (tabs) layout no longer has its own Redirect."
+}

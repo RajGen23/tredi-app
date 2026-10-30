@@ -1,9 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { api, loginRequest, registerRequest, TOKEN_KEY } from "@/src/api";
+import { ApiError, api, loginRequest, registerRequest, TOKEN_KEY } from "@/src/api";
 import { setCurrency } from "@/src/format";
+import { clearCache, restoreCache, startCacheSaver } from "@/src/offline-cache";
 import { storage } from "@/src/utils/storage";
+
+const ME_KEY = "tradabooks_me";
 
 export type User = { id: string; name: string; email: string; business_id: string | null };
 export type Business = { id: string; name: string; type: string; currency: string; tin: string; address: string; phone: string; track_stock: boolean; shops: { name: string; address: string }[] };
@@ -29,19 +32,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const load = useCallback(async () => {
     try {
       const u = await api<User>("/auth/me");
-      setUser(u);
       const b = u.business_id ? await api<Business | null>("/business") : null;
+      const prev = await storage.getItem<string | null>(ME_KEY, null);
+      if (prev && JSON.parse(prev).u?.id !== u.id) {   // someone else's saved screens must never show
+        await clearCache();
+        qc.clear();
+      }
+      setUser(u);
       setCurrency(b?.currency);
       setBusiness(b);
-    } catch {
+      storage.setItem(ME_KEY, JSON.stringify({ u, b }));
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        // really signed out: forget the person and everything saved for them
+        await storage.secureRemove(TOKEN_KEY);
+        await storage.removeItem(ME_KEY);
+        await clearCache();
+        qc.clear();
+        setUser(null);
+        setBusiness(null);
+        return;
+      }
+      // No signal or a server hiccup is not a sign-out: keep the saved profile.
+      const saved = await storage.getItem<string | null>(ME_KEY, null);
+      if (saved) {
+        const { u, b } = JSON.parse(saved);
+        setUser(u);
+        setCurrency(b?.currency);
+        setBusiness(b);
+        return;
+      }
       setUser(null);
       setBusiness(null);
     }
-  }, []);
+  }, [qc]);
 
   useEffect(() => {
     (async () => {
+      startCacheSaver();
       const token = await storage.secureGet<string | null>(TOKEN_KEY, null);
+      const saved = token ? await storage.getItem<string | null>(ME_KEY, null) : null;
+      if (saved) {
+        // open straight away on the saved profile and screens; check with the server behind
+        await restoreCache();
+        const { u, b } = JSON.parse(saved);
+        setUser(u);
+        setCurrency(b?.currency);
+        setBusiness(b);
+        setReady(true);
+        load();
+        return;
+      }
+      await clearCache();
       if (token) await load();
       setReady(true);
     })();
@@ -60,6 +102,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signUp: async (name, email, password) => finish(await registerRequest(name, email, password)),
     signOut: async () => {
       await storage.secureRemove(TOKEN_KEY);
+      await storage.removeItem(ME_KEY);
+      await clearCache();
       qc.clear();
       setUser(null);
       setBusiness(null);

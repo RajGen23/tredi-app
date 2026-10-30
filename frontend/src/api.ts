@@ -27,12 +27,20 @@ async function parse(res: Response) {
 
 export async function api<T = any>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, ...rest } = init;
-  const res = await fetch(`${BASE}${path}`, {
-    ...rest,
-    headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(await authHeaders()), ...(rest.headers || {}) },
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
-  return parse(res);
+  // a weak signal must fail in good time, so screens fall back to the saved copy
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      signal: ctl.signal,
+      ...rest,
+      headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(await authHeaders()), ...(rest.headers || {}) },
+      body: json !== undefined ? JSON.stringify(json) : rest.body,
+    });
+    return await parse(res);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function loginRequest(email: string, password: string) {

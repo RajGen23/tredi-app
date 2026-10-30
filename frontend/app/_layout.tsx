@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { LogBox, View } from "react-native";
 import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
@@ -11,7 +11,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { preloadInvoiceFonts } from "@/src/invoice-fonts";
 import { queryClient } from "@/src/query-client";
-import { AuthProvider } from "@/src/auth";
+import { AuthProvider, useAuth } from "@/src/auth";
 import { ToastProvider } from "@/src/components/sheet";
 import { PeriodProvider } from "@/src/period";
 import { CropHost } from "@/src/components/cropper";
@@ -19,6 +19,30 @@ import { CropHost } from "@/src/components/cropper";
 // Disable logbox errors etc so that users can see the app
 // and agent works as expected.
 LogBox.ignoreAllLogs(true);
+
+const PUBLIC = new Set(["", "index", "onboarding", "sign-in", "admin", "legal", "lock", "+html"]);
+
+/** Whatever screen is open, losing the session (expired token found late on a
+ *  slow line) lands on sign-in instead of leaving the last person's data up. */
+function SignedOutGuard() {
+  const { ready, user } = useAuth();
+  const router = useRouter();
+  const segments = useSegments();
+  const had = useRef(false);
+  const top = String(segments[0] ?? "");
+  useEffect(() => {
+    if (!ready) return;
+    if (user) { had.current = true; return; }
+    if (had.current) {
+      had.current = false;
+      if (router.canDismiss()) router.dismissAll();
+      router.replace("/sign-in");
+    } else if (!PUBLIC.has(top)) {
+      router.replace("/sign-in");
+    }
+  }, [ready, user, router, top]);
+  return null;
+}
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -75,6 +99,7 @@ export default function RootLayout() {
                     <Stack.Screen name="lock" options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
                   </Stack>
                   <CropHost />
+                  <SignedOutGuard />
                 </ToastProvider>
                 </PeriodProvider>
               </AuthProvider>

@@ -184,7 +184,12 @@ export default function Sales() {
             </Row>
           </Card>
         ) : null}
-        {loading ? <Loading /> : list.length === 0 ? (
+        {loading ? <Loading /> : q.isError && !q.data ? (
+          <Card style={{ marginTop: 9 }}>
+            <Empty icon="cloud-offline-outline" title="Couldn't load sales" sub="Check your connection and try again."
+              action={<Btn label="Try again" testID="invoices-retry" onPress={() => q.refetch()} />} />
+          </Card>
+        ) : list.length === 0 ? (
           <Card style={{ marginTop: 9 }}>
             <Empty icon="receipt-outline" title="Nothing here yet" sub="Raise an invoice or ring up a quick sale from the + button." action={<Btn label="New invoice" testID="invoices-empty-new" onPress={() => router.push("/invoices/new")} />} />
           </Card>

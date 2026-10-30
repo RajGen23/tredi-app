@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 37 retest of the iteration_36 fixes. BACKEND 13/13 pytest pass (new test_iter37 + iter36 regression). (e) GET /customers/{id} 'unpaid' now leaves out draft/quote/cancelled and equals /summary 'unpaid' for every customer (owner + Wichflow). (f) The batched /customers/{id}/summary gives the same purchased, unpaid, invoice count and balance as the old per-invoice maths for all 7 owner and 60 Wichflow customers. /customers and /invoices values still match (0.13-0.16s). FRONTEND (390x844): (a) Data leak FIXED. Owner sees 365 sales, then a bad token and a cold start at / go to onboarding with localStorage emptied; amina then sees only her own 13 sales, and tradabooks_me is amina. (b) FIXED: a 502 on /auth/me keeps the user on Home with the token kept. (c) FIXED: with /auth/me delayed 12s, Home opens in 1.7s; the api() 15s abort works (request aborted at 16s, retried once, aborted again at 32s). (d) PARTLY: each query is saved as its own entry (tradabooks_cache:[...] plus the index). Offline cold start shows cached Sales (All 365), Stock (10 items, ₦78.5M) and Customers (7). Sign-out removes every cache key. (g) FIXED: '07' finds Grace Mwangi and Grace Offline; a single '7' gives No match; name and email search work. NEW HIGH BUG: after a fresh sign-in, nothing is saved for offline use until the app is restarted. restoreCache(), which starts the save subscription, is only called on the startup path that has a saved profile. Reproduced: cleared storage, signed in, browsed Sales/Stock/Home; localStorage held only tredi_token and tradabooks_me. An offline cold start then showed Sales 'All 0' and Stock 'Nothing in stock yet'. NEW MEDIUM BUG: if /auth/me returns 401 after the splash has already routed (more than ~900ms, normal on mobile data), storage is cleared but the user stays on Home with a spinner and 'Could not load figures', and is never sent to sign-in. There is no auth guard outside the splash, and 401s on screen queries never sign the user out.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Customers list on load error", "issue": "When /customers fails (timeout or 5xx) and nothing is cached, the screen shows 'No customers yet' with an Add customer button instead of an error with a retry. A user on a weak signal would think their customers were lost. Other lists probably behave the same (Sales showed 'Nothing here yet' after a 401). Reference: app/customers/index.tsx:68-72 (no q.isError branch)", "testID": "customers-screen", "priority": "MEDIUM"},
+      {"component": "Customers search phone format", "issue": "Phones are saved as '+234 706 118 9002', so typing the local form '0706' gives No match ('706' works). Nigerian users type the leading 0. Consider normalising a leading 0 to 234 (or dropping the 234 prefix) before matching.", "testID": "customers-search-input", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Fresh sign-in, then offline", "issue": "HIGH: restoreCache() is the only place that subscribes to the query cache, and auth.tsx calls it only at startup when tradabooks_me exists (line 76). After signIn/signUp, which go through finish() then load(), nothing is ever saved to disk during that session. A user who signs in, browses, loses signal and restarts the app gets empty Sales and Stock. Fix: start the subscription separately from hydration (e.g. export startCacheSync() and call it at module load or in finish()), or call restoreCache() in finish() after a successful load.", "affected_testIDs": ["invoices-screen", "stock-screen", "customers-screen"]},
+      {"flow": "Token expired, slow /auth/me at startup", "issue": "MEDIUM: startup opens on the saved profile, then the background load() gets a 401 and clears user, token and cache. index.tsx only redirects while the splash is mounted (900ms timer). If the 401 arrives later, the user stays on (tabs) with user=null, a spinner and 'Could not load figures', with no way back except More then Sign out. Reproduced with /auth/me delayed 3s then 401. Fix: in the root layout or (tabs)/_layout, redirect to /sign-in when ready && !user. Optionally, a global 401 handler in api() could call signOut.", "affected_testIDs": ["home-screen", "onboarding-screen"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter37_customer_summary_unpaid.py", "/app/backend/tests/test_iter36_batched_lists.py", "/app/test_reports/pytest/iter37_results.xml"],
+  "action_items": [
+    "HIGH: Make the offline cache save after a fresh sign-in, not only after a restart. Split restoreCache() into hydrate and subscribe, and start the subscription at app start or in finish().",
+    "MEDIUM: Add an auth guard: when ready && !user on any non-public route, router.replace('/sign-in') (e.g. in app/(tabs)/_layout.tsx). Consider treating a 401 from any api() call as a sign-out.",
+    "MEDIUM: Show an error/offline state with a retry, instead of 'No customers yet' / 'Nothing here yet', when a list query fails and there is no cached data.",
+    "LOW: Customer phone search: normalise a leading 0 against +234 so '0706' matches '+234 706 ...'.",
+    "LOW: loginRequest() uses plain fetch with no timeout. Give it the same 15s AbortController as api(). Also, a 5xx on /auth/me right after a fresh sign-in sends the user to onboarding with no error message (load() swallows it). signIn should show an error instead."
+  ],
+  "critical_code_review_comments": [
+    "offline-cache.ts save(): storage.setItem already JSON-serialises, so JSON.stringify(q) double-encodes each entry. The ['invoices'] entry is about 410KB for the owner. It works, but it adds size and parse time.",
+    "offline-cache.ts save(): it reads and rewrites the index on every save, and entries are never pruned (an old ['customer', id] entry stays forever). Over time a user who opens many customers or invoices builds up many entries, and restoreCache reads all of them one by one at startup. Consider a cap or pruning by age.",
+    "auth.tsx startup: restoreCache() awaits a getItem for every entry one after another before setReady. With many entries on Android this delays the first screen. Use multiGet or Promise.all.",
+    "Query retry:1 plus a 15s timeout means a hung request shows a spinner for about 31s before falling back. Acceptable, but consider retry:0 for timeouts."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter37_customer_summary_unpaid.py (new)"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "~75% (fixes a, b, c, e, f, g verified; d works only after an app restart; new auth-guard and error-state issues)"},
+  "seed_data_creation": "None kept. The iter36 create-flow test makes and deletes its own ZZ customer and invoice. Checked: 0 ZZ/TEST_ customers or invoices left.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use pytest -n 0 with EXPO_PUBLIC_BACKEND_URL exported. To reproduce the fresh-sign-in cache bug: localStorage.clear(), reload, sign in, switch tabs with tab-sales/tab-stock clicks (NOT page.goto, because a reload starts the subscription and hides the bug), then check Object.keys(localStorage) for tradabooks_cache:* entries. Simulate an offline cold start with page.route('**/api/**', abort('internetdisconnected')). Tab testIDs: tab-home, tab-sales, tab-stock, tab-more. Amina should see Sales 'All 13'; owner sees 365.",
+  "rca_of_issue": "Fresh-sign-in cache: offline-cache.ts restoreCache() both hydrates and installs the queryCache.subscribe listener (guarded by `started`). auth.tsx calls it only in the startup branch `if (saved)`. The no-saved-profile branch calls clearCache(), and finish() never calls it, so the listener is missing for the whole first session. Stuck-on-tabs after a late 401: the redirect logic exists only in app/index.tsx's splash effect, which unmounts after router.replace('/(tabs)')."
+}
