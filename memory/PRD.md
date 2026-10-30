@@ -636,3 +636,7 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - Frontend: React Query offlineFirst with gcTime 24h. src/offline-cache.ts saves each query to its own AsyncStorage entry and restores them on start. auth.tsx opens straight away on the saved profile (tradabooks_me) and checks /auth/me in the background. A 401/403 clears everything, and a different user signing in clears the cache. API calls time out after 15s. (tabs)/_layout redirects to /sign-in when there is no user.
 - Customers: the search icon toggles a search box (name, email, phone; 234 is read as 0). The list is a FlatList. Error states with a retry button on the Customers, Sales and Stock lists.
 - Not built yet: recording sales or invoices while offline (offline writes).
+
+## Legacy VAT + sync no longer overwrites app edits (Oct 2026)
+- The old app stored VAT per line (invoice_items.tax_percent); the invoice tax_percentage was always 0. The import now uses the line rate as vat_rate (mixed rates are summed per line). 2,789 of 2,802 migrated invoice totals now match the live total_amount; the 13 that don't are live rows with a 0 or odd total.
+- Migration.upsert stores `_sync_sig` (an md5 of what it wrote, ignoring cost_at_sale). On re-sync, a record whose fields changed since then (or that has updated_by and no sig) is left as is (tally `kind:kept_app_edit`). That stops the 6-hourly auto-sync from undoing edits such as adding VAT or issuing a draft.

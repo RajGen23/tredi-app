@@ -11,6 +11,8 @@ verifies, so every trader keeps their existing password.
 """
 import argparse
 import asyncio
+import hashlib
+import json
 import re
 import os
 import sys
@@ -54,6 +56,26 @@ def rows(cur, sql, args=()):
     return cur.fetchall()
 
 
+def _norm(v):
+    if isinstance(v, datetime):
+        v = v.astimezone(timezone.utc).replace(tzinfo=None) if v.tzinfo else v
+        return v.isoformat(timespec="milliseconds")
+    if isinstance(v, dict):   # cost_at_sale is stamped by the sync itself afterwards
+        return {k: _norm(x) for k, x in v.items() if k != "cost_at_sale"}
+    if isinstance(v, (list, tuple)):
+        return [_norm(x) for x in v]
+    if isinstance(v, (ObjectId, Decimal)):
+        return str(v)
+    if isinstance(v, float) and v.is_integer():
+        return int(v)
+    return v
+
+
+def sig(doc: dict) -> str:
+    """Fingerprint of what the sync wrote, to tell later whether the app changed it."""
+    return hashlib.md5(json.dumps(_norm(doc), sort_keys=True, default=str).encode()).hexdigest()
+
+
 class Migration:
     def __init__(self, db, cur, source: str, commit: bool):
         self.db, self.cur, self.source, self.commit = db, cur, source, commit
@@ -71,18 +93,27 @@ class Migration:
 
     async def upsert(self, coll, legacy_uuid: str, doc: dict, kind: str, insert_only: dict | None = None) -> str:
         """Insert or update on legacy_uuid. `insert_only` fields (plan, etc.) are
-        written once and then owned by the new app, so a refresh never undoes them."""
+        written once and then owned by the new app, so a refresh never undoes them.
+        A record changed in the new app since the last sync (an invoice edited,
+        a draft issued, stock sold) is left alone: the app's version wins."""
         insert_only = insert_only or {}
-        existing = await coll.find_one({"legacy_uuid": legacy_uuid}, {"_id": 1})
+        existing = await coll.find_one({"legacy_uuid": legacy_uuid})
         if existing:
+            if "_sync_sig" in existing:
+                changed = sig({k: existing.get(k) for k in doc}) != existing["_sync_sig"]
+            else:
+                changed = bool(existing.get("updated_by"))
+            if changed:
+                self.tally(f"{kind}:kept_app_edit")
+                return str(existing["_id"])
             if self.commit:
-                await coll.update_one({"_id": existing["_id"]}, {"$set": doc})
+                await coll.update_one({"_id": existing["_id"]}, {"$set": {**doc, "_sync_sig": sig(doc)}})
             self.tally(f"{kind}:updated")
             return str(existing["_id"])
         if not self.commit:
             self.tally(f"{kind}:new")
             return f"dry-{legacy_uuid}"
-        res = await coll.insert_one({**doc, **insert_only, "legacy_uuid": legacy_uuid})
+        res = await coll.insert_one({**doc, **insert_only, "legacy_uuid": legacy_uuid, "_sync_sig": sig(doc)})
         self.tally(f"{kind}:new")
         return str(res.inserted_id)
 
@@ -284,8 +315,15 @@ class Migration:
             after = gross - line_disc
             inv_disc = round(after * num(inv.get("discount_percentage")) / 100, 2)
             taxable = round(after - inv_disc, 2)
-            vat_rate = num(inv.get("tax_percentage"))
-            vat = round(taxable * vat_rate / 100, 2)
+            # the old app charged VAT per line (invoice_items.tax_percent); the invoice
+            # field was always 0. Carry the line rate as the invoice's VAT rate.
+            rates = [num(li.get("tax_percent")) for li in lines_by_invoice.get(inv["uuid"], [])]
+            vat_rate = num(inv.get("tax_percentage")) or max(set(rates), key=rates.count, default=0)
+            if num(inv.get("tax_percentage")) or len(set(rates)) <= 1:
+                vat = round(taxable * vat_rate / 100, 2)
+            else:   # mixed rates: each line's own VAT, after its share of the invoice discount
+                share = (taxable / after) if after else 0
+                vat = round(sum(x["total"] * share * r / 100 for x, r in zip(lines, rates)), 2)
             total = round(taxable + vat + num(inv.get("shipping_fee")), 2)
             if not lines and num(inv.get("total_amount")):
                 total = num(inv["total_amount"])   # keep the figure even when the lines are gone
@@ -299,7 +337,7 @@ class Migration:
                 "legacy_number": inv.get("invoice_number"),
                 "lines": lines,
                 "totals": {"gross": gross, "line_discount": line_disc, "invoice_discount": inv_disc,
-                           "taxable": taxable, "vat": vat, "total": total},
+                           "taxable": taxable, "vat": vat, "shipping": num(inv.get("shipping_fee")), "total": total},
                 "invoice_discount_type": "percent", "invoice_discount_value": num(inv.get("discount_percentage")),
                 "vat_rate": vat_rate, "shipping_fee": num(inv.get("shipping_fee")),
                 "due_date": inv["due_date"].date().isoformat() if inv.get("due_date") else None,
