@@ -193,8 +193,10 @@ export default function NewInvoice() {
   const draftTotals = useMemo(() => calcTotals(lines, discMode, parseNum(discDraft), vatOn), [lines, discMode, discDraft, vatOn]);
   const editing = lines.find((l) => l.key === editKey);
 
+  const specialQ = useQuery({ queryKey: ["customer-prices", customerId], queryFn: () => api<any[]>(`/customers/${customerId}/prices`), enabled: !!customerId });
   const addItem = (it: any) => {
-    const price = wholesale && it.wholesale_price ? it.wholesale_price : it.selling_price;
+    const special = (specialQ.data ?? []).find((p) => p.item_id === it.id)?.price;
+    const price = special || (wholesale && it.wholesale_price ? it.wholesale_price : it.selling_price);
     setLines((ls) => {
       const ex = ls.find((l) => l.item_id === it.id);
       if (ex) return ls.map((l) => (l.item_id === it.id ? { ...l, quantity: l.quantity + 1 } : l));

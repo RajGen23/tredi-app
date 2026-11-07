@@ -7,6 +7,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { useAuth } from "@/src/auth";
+import { api } from "@/src/api";
 import { Av, Btn, Card, Field, H4, Sub } from "@/src/components/ui";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -31,14 +32,32 @@ export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+
+  const sendCode = async () => {
+    setErr("");
+    if (!email || !password || !name) return setErr("Fill in every field to continue.");
+    setBusy(true);
+    try {
+      await api("/auth/signup-code", { method: "POST", json: { email: email.trim() } });
+      setCodeSent(true);
+    } catch (e: any) {
+      setErr(e.message || "Could not send the code");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submit = async () => {
     setErr("");
     if (!email || !password || (mode === "up" && !name)) return setErr("Fill in every field to continue.");
+    if (mode === "up" && !codeSent) return sendCode();
+    if (mode === "up" && code.trim().length !== 6) return setErr("Enter the 6-digit code we emailed you.");
     setBusy(true);
     try {
       if (mode === "in") await signIn(email, password);
-      else await signUp(name, email, password);
+      else await signUp(name, email, password, code.trim());
       router.replace("/");
     } catch (e: any) {
       setErr(e.message || "Could not sign in");
@@ -62,7 +81,7 @@ export default function SignIn() {
         </Sub>
         <View style={{ gap: 10, marginTop: 18 }}>
           {mode === "up" ? <Field testID="sign-up-name" label="Your name" value={name} onChangeText={setName} placeholder="Adaeze Okafor" autoCapitalize="words" /> : null}
-          <Field testID="sign-in-email" label="Email" value={email} onChangeText={setEmail} placeholder="you@shop.ng" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+          <Field testID="sign-in-email" label="Email" value={email} onChangeText={(v) => { setEmail(v); setCodeSent(false); setCode(""); }} placeholder="you@shop.ng" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
           <Field testID="sign-in-password" label="Password" value={password} onChangeText={setPassword} placeholder="••••••••"
             secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} onSubmitEditing={submit} returnKeyType="go"
             right={
@@ -81,7 +100,14 @@ export default function SignIn() {
             </View>
           </View>
         </Card>
-        <Btn testID="sign-in-submit" label={mode === "in" ? "Sign in and continue" : "Create account"} onPress={submit} loading={busy} style={{ marginTop: 16 }} />
+        {mode === "up" && codeSent ? (
+          <View style={{ marginTop: 12, gap: 6 }}>
+            <Field testID="sign-up-code" label={`Code sent to ${email.trim()}`} value={code} onChangeText={setCode} placeholder="6-digit code"
+              keyboardType="number-pad" maxLength={6} mono />
+            <Text style={s.link} onPress={sendCode} testID="sign-up-resend">Didn&apos;t get it? Send again</Text>
+          </View>
+        ) : null}
+        <Btn testID="sign-in-submit" label={mode === "in" ? "Sign in and continue" : codeSent ? "Create account" : "Email me a code"} onPress={submit} loading={busy} style={{ marginTop: 16 }} />
       </KeyboardAwareScrollView>
     </View>
   );

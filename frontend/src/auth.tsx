@@ -8,7 +8,7 @@ import { storage } from "@/src/utils/storage";
 
 const ME_KEY = "tradabooks_me";
 
-export type User = { id: string; name: string; email: string; business_id: string | null };
+export type User = { id: string; name: string; email: string; business_id: string | null; role?: string; can_see_money?: boolean };
 export type Business = { id: string; name: string; type: string; currency: string; tin: string; address: string; phone: string; track_stock: boolean; shops: { name: string; address: string }[] };
 
 type Ctx = {
@@ -16,7 +16,7 @@ type Ctx = {
   user: User | null;
   business: Business | null;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (name: string, email: string, password: string) => Promise<void>;
+  signUp: (name: string, email: string, password: string, code?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -99,7 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     business,
     signIn: async (email, password) => finish(await loginRequest(email, password)),
-    signUp: async (name, email, password) => finish(await registerRequest(name, email, password)),
+    signUp: async (name, email, password, code) => finish(await registerRequest(name, email, password, code)),
     signOut: async () => {
       await storage.secureRemove(TOKEN_KEY);
       await storage.removeItem(ME_KEY);

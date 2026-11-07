@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 41: retest of the iteration 40 fixes only, on the public URL with a 390x844 viewport. Backend: 37 of 38 tests pass (tests/test_iter41_money_guard_payment_fix.py). Fixed and verified: (1) PUT /payments with only date or only note keeps account_id; an explicit null clears it; moving the payment updates both account balances; (2) a foreign account_id gets 400 on PUT /payments and POST /customers/{id}/payment-out; (3) for a sales rep (a TEST_ rep, and the seeded amina), these return 403: /accounts/{id}, /reports/summary, pnl, debtors, receivables, cashflow, stock-valuation, /shops/overview and /expenses. The owner still gets 200 on all of them. Turning on can.reports unlocks them, and turning it off locks them again. Staff daily reads (dashboard, customers, items, invoices, shortcuts, notifications, the accounts list) still return 200. Staff can still take a payment and log an expense. NEW CRITICAL: PUT /team/{uid} and POST /team have no owner/manager check. A sales rep can make themselves manager, after which /reports/summary returns 200, can grant themselves can.reports, and can invite a new manager. This bypasses the whole money guard. Frontend, as amina: Home hides Summary, the KPIs and the Money in/out chart; /accounts shows the restricted state 'Only the owner can see accounts'; the More badge shows 'Sales'; Expenses and Reports are hidden in More. Sign-up: editing the email removes the code field and the button goes back to 'Email me a code'. Still open: the default 'Reports' shortcut is still on Home for staff. Tapping it, or deep-linking to /reports, /reports/summary, /expenses or /shops/overview, shows a spinner that never stops (the 403 is never shown). Owner regression check: Home, Summary, Accounts and the More 'Owner' badge all work. No page errors. No deprecated Expo packages.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/team/{uid}, POST /api/team", "issue": "No role check. A sales rep can PUT /team/{own id} with {role:'manager'} or {can:{reports:true}} (200), and the money guard then lets them through: /reports/summary goes 403 → 200. They can also POST /team to invite a manager (201). Reproduce with tests/probe_iter41_team_escalation.py. Limit team and role writes (POST/PUT /team, /team/{uid}/dormant, /roles, handover) to the owner (or manager), and never let a user edit their own role or can.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/business/addresses", "issue": "Still not fixed from iteration 40: AddressIn (routes/shops.py:36) has no email field, so the doc_business email fallback can never be filled."},
+      {"endpoint": "GET /api/dashboard", "issue": "Still returns money figures to staff (Owed ₦307,665 is shown in the Home hero for amina). It is scoped, but decide whether staff should see 'Owed'."},
+      {"endpoint": "PUT /api/customers/{cid}/prices", "issue": "Still accepts any valid ObjectId as an item id (not checked against the business). It is filtered out on GET, so low risk."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Home shortcuts", "issue": "The default shortcut 'reports' (DEFAULT_SHORTCUTS in routes/activity.py:14) is still shown to staff. Tapping it opens /reports, where the 'At a glance' card spins forever. Filter money shortcuts (reports, and expense if wanted) out of GET /shortcuts and the Home list when can_see_money is false.", "testID": "shortcut-reports", "priority": "MEDIUM"},
+      {"component": "Reports / Summary / Expenses / All shops screens", "issue": "When the API returns 403, these screens never leave the loading state (no isError handling): app/reports/index.tsx, reports/summary.tsx, expenses/index.tsx, shops/overview.tsx. Show a restricted state like accounts-restricted.", "testID": "reports, summary, expenses, shops-overview", "priority": "MEDIUM"},
+      {"component": "Home total sales card", "issue": "For staff the card is disabled, but it still says 'Tap to see this month's sales…' and shows the chevron.", "testID": "home-total-sales-card", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Sign-up", "issues": ["The code field is still below the 'Restoring a phone?' card instead of under the password field (carried over from iteration 40)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter41_money_guard_payment_fix.py", "/app/backend/tests/probe_iter41_team_escalation.py", "/app/test_reports/pytest/iter41_results.xml"],
+  "action_items": [
+    "CRITICAL: Add an owner/manager guard to POST /team, PUT /team/{uid}, /team/{uid}/dormant, /team/{uid}/handover and /roles, and block editing your own role or can. Without it, any rep can bypass can_see_money.",
+    "Hide the 'reports' shortcut, on the server or the client, for users with can_see_money=false.",
+    "Handle a 403 (isError) on Reports, Summary, Expenses and All shops with a restricted state instead of an endless spinner.",
+    "Add email to AddressIn and the Addresses UI (still open from iteration 40).",
+    "Low: remove the 'Tap to see…' hint and chevron from the disabled staff hero card; move the sign-up code field under the password field."
+  ],
+  "critical_code_review_comments": [
+    "money_guard depends on role and can, and both are writable by the user themselves through /team/{uid}. That makes the guard only cosmetic until the team routes are protected.",
+    "server.py is still about 1,700 lines (over 700)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter41_money_guard_payment_fix.py", "/app/backend/tests/probe_iter41_team_escalation.py"],
+  "success_rate": {"backend": "97% (37/38)", "frontend": "80% (the iteration 40 UI fixes are verified; the Reports shortcut and the 403 spinners remain)"},
+  "seed_data_creation": "Each pytest or probe run registers an isolated TEST_ owner (test_<tag>@resend.dev / Testpw12345) with a TEST_Biz, accounts, item and customer, plus a TEST_Rep (Reppw12345). The probe also made a TEST_Rep2 manager inside its own TEST_ business. The UI requested sign-up codes for test_ui_<tag>@resend.dev but created no account. Seeded data was only read (owner@tredi.app account list; amina's read-only GETs).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run pytest with -n 0. The signup code is recovered from the db.signup_codes hash (see _signup_code). After the team guard is fixed, test_rep_cannot_self_escalate should pass, and the probe should show 403 for the rep's PUT /team and POST /team. The UI login as amina shows Home with only the Activity rail."
+}

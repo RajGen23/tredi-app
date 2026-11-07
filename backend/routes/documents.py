@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List, Literal, Optional
 from bson import ObjectId
 
-from deps import CurrentUser, biz_filter, clean, db, log_activity, next_number, now, oid, scoped, writing_shop
+from deps import CurrentUser, doc_business, biz_filter, clean, db, log_activity, next_number, now, oid, scoped, writing_shop
 
 router = APIRouter(prefix="/api")
 
@@ -125,7 +125,7 @@ async def get_waybill(wid: str, user: CurrentUser):
     if not w:
         raise HTTPException(404, "Waybill not found")
     d = clean(w)
-    d["business"] = clean(await db.businesses.find_one({"_id": ObjectId(f["business_id"])}))
+    d["business"] = await doc_business(f["business_id"])
     if w.get("invoice_id"):
         inv = await db.invoices.find_one({"_id": ObjectId(w["invoice_id"])})
         d["invoice_number"] = inv["number"] if inv else ""

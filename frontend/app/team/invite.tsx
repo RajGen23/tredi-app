@@ -20,7 +20,7 @@ export default function Invite() {
   const router = useRouter();
   const toast = useToast();
   const qc = useQueryClient();
-  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "tredi1234" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [role, setRole] = useState("sales");
   const [shops, setShops] = useState<string[]>([]);
 
@@ -31,7 +31,7 @@ export default function Invite() {
     mutationFn: () => api("/team", { method: "POST", json: { ...form, role, shops } }),
     onSuccess: (r: any) => {
       qc.invalidateQueries({ queryKey: ["team"] });
-      toast.show(`${r.name} can sign in with ${form.password}`, "Invited");
+      toast.show(r.emailed ? `Login details emailed to ${r.email}` : `Email could not be sent — ${r.name} signs in with ${r.password ?? form.password}`, "Invited");
       router.back();
     },
     onError: (e: any) => toast.show(e.message),
@@ -45,7 +45,7 @@ export default function Invite() {
           <Field label="Name" placeholder="Amina Yusuf" value={form.name} onChangeText={(v) => setForm({ ...form, name: v })} testID="invite-name" />
           <Field label="Email" placeholder="amina@shop.com" autoCapitalize="none" keyboardType="email-address" value={form.email} onChangeText={(v) => setForm({ ...form, email: v })} testID="invite-email" />
           <Field label="Phone" placeholder="+234 …" keyboardType="phone-pad" value={form.phone} onChangeText={(v) => setForm({ ...form, phone: v })} testID="invite-phone" />
-          <Field label="Starter password" value={form.password} onChangeText={(v) => setForm({ ...form, password: v })} testID="invite-password" />
+          <Field label="Starter password — optional" placeholder="Leave blank to create one and email it" value={form.password} onChangeText={(v) => setForm({ ...form, password: v })} testID="invite-password" />
         </Card>
 
         <Lbl style={{ marginTop: 14, marginBottom: 6 }}>Role</Lbl>

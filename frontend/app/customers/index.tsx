@@ -41,7 +41,7 @@ export default function Customers() {
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="customers-screen">
-      <AppBar title="Customers" back right={<><IconBtn name={searching ? "close" : "search-outline"} testID="customers-search" onPress={() => { setSearching(!searching); setTerm(""); }} /><IconBtn name="add" testID="customers-add" onPress={() => router.push("/customers/new")} /></>} />
+      <AppBar title="Customers" back right={<><IconBtn name={searching ? "close" : "search-outline"} testID="customers-search" onPress={() => { setSearching(!searching); setTerm(""); }} /><IconBtn name="git-merge-outline" testID="customers-merge" onPress={() => router.push("/customers/merge")} /><IconBtn name="add" testID="customers-add" onPress={() => router.push("/customers/new")} /></>} />
       <View style={{ paddingHorizontal: 14 }}>
         {searching ? (
           <TextInput autoFocus value={term} onChangeText={setTerm} placeholder="Search name, phone or email" placeholderTextColor={colors.ink40}

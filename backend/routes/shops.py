@@ -1,5 +1,5 @@
 """Rail 10 — shops, all-shops view, business switching; plus 05.7/05.8 stock transfers and 00.5 addresses."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Literal
 from datetime import timedelta
@@ -7,7 +7,7 @@ from bson import ObjectId
 
 from plans import TRIAL_DAYS
 
-from deps import (CurrentUser, LIVE_QUICK, LIVE_SALE, apply_stock, biz_filter, clean, db, ensure_feature, ensure_limit, log_activity, next_number,
+from deps import (CurrentUser, LIVE_QUICK, LIVE_SALE, money_guard, apply_stock, biz_filter, clean, db, ensure_feature, ensure_limit, log_activity, next_number,
                   now, oid, period_range, date_query, shop_qty, shop_scope, stock_map)
 
 router = APIRouter(prefix="/api")
@@ -193,7 +193,7 @@ async def set_active_shop(body: dict, user: CurrentUser):
     return {"shop": shop}
 
 
-@router.get("/shops/overview")
+@router.get("/shops/overview", dependencies=[Depends(money_guard)])
 async def shops_overview(user: CurrentUser, period: str = "month"):
     f = biz_filter(user)
     biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})

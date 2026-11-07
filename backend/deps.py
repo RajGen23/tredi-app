@@ -197,10 +197,30 @@ async def ensure_invoice_room(user: dict):
     await ensure_limit(user, "invoices", await db.invoices.count_documents({"business_id": bid, "deleted_at": None}))
 
 
+STAFF_SCOPES = {"sales": "own", "stock": "shop", "customers": "shop", "reports": "own"}
+
+
+def can_see_money(u: dict) -> bool:
+    """Bank balances, company totals and reports: owners, managers, accountants,
+    or anyone the owner ticked "Open reports" for."""
+    role = u.get("role", "owner")
+    if role in ("owner", "manager", "accountant"):
+        return True
+    return bool((u.get("can") or {}).get("reports"))
+
+
+async def money_guard(user: dict = Depends(current_user)) -> dict:
+    """Route dependency: staff without "Open reports" get a 403 on money screens."""
+    if not can_see_money(user):
+        raise HTTPException(403, "Your account isn't allowed to see company figures — ask the owner")
+    return user
+
+
 def public_user(u: dict) -> dict:
     return {"id": str(u["_id"]), "name": u.get("name", ""), "email": u["email"],
             "business_id": str(u["business_id"]) if u.get("business_id") else None,
-            "role": u.get("role", "owner"), "scope": u.get("scope", "all"), "shop": u.get("shop", "")}
+            "role": u.get("role", "owner"), "scope": u.get("scope", "all"), "shop": u.get("shop", ""),
+            "can_see_money": can_see_money(u)}
 
 
 def biz_filter(user: dict) -> dict:
@@ -229,7 +249,7 @@ async def shop_scope(user: dict, area: str = "sales") -> dict:
     all_shops = await business_shops(f["business_id"])
     main = all_shops[0]
     role = user.get("role", "owner")
-    sc = "all" if role == "owner" else ((user.get("scopes") or {}).get(area) or "shop")
+    sc = "all" if role == "owner" else ((user.get("scopes") or {}).get(area) or (STAFF_SCOPES.get(area, "shop") if role in ("sales", "stock") else "shop"))
     assigned = [s for s in (user.get("shops") or []) if s in all_shops]
     # A rep with no explicit posting is still not a roaming owner: they are tied
     # to the shop they are standing in (the main branch if that is all there is).
@@ -461,6 +481,18 @@ def bank_lines(a: dict) -> dict:
         bank = a.get("name", "")
     return {"id": str(a["_id"]), "name": a.get("name", ""), "bank": "" if bank == holder else bank,
             "number": number, "holder": holder}
+
+
+async def doc_business(business_id: str) -> dict:
+    """The business as printed on documents: phone, email and address fall back
+    to the default entry under Settings → Addresses & numbers."""
+    b = clean(await db.businesses.find_one({"_id": ObjectId(business_id)}) or {"_id": ObjectId(business_id)})
+    addrs = [a async for a in db.addresses.find({"business_id": business_id, "deleted_at": None}).sort("created_at", 1)]
+    main = next((a for a in addrs if a.get("is_default")), addrs[0] if addrs else {})
+    for k in ("phone", "email", "address"):
+        if not b.get(k):
+            b[k] = main.get(k) or next((a.get(k) for a in addrs if a.get(k)), "")
+    return b
 
 
 async def decorate_invoice(inv: dict) -> dict:

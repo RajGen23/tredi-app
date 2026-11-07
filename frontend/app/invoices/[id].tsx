@@ -34,6 +34,7 @@ export default function InvoiceDetail() {
   const [repeat, setRepeat] = useState(false);
   const [usePrices, setUsePrices] = useState(true);
   const [issueOpen, setIssueOpen] = useState(false);
+  const [payAsk, setPayAsk] = useState(false);
   const [killOpen, setKillOpen] = useState(false);
   const [reason, setReason] = useState("");
   const q = useQuery({ queryKey: ["invoice", id], queryFn: () => api(`/invoices/${id}`) });
@@ -53,8 +54,14 @@ export default function InvoiceDetail() {
 
   const confirmIssue = useMutation({
     mutationFn: () => api(`/invoices/${id}/issue`, { method: "POST" }),
-    onSuccess: (n: any) => { fresh(); setIssueOpen(false); toast.show(`${n.number} is now a sales order — stock deducted`, "Issued."); },
+    onSuccess: (n: any) => { fresh(); setIssueOpen(false); setPayAsk(true); toast.show(`${n.number} is now a sales order — stock deducted`, "Issued."); },
     onError: (e: any) => toast.show(e.message),
+  });
+
+  const emailIt = useMutation({
+    mutationFn: () => api<any>(`/invoices/${id}/email`, { method: "POST", json: {} }),
+    onSuccess: (r) => toast.show(`Sent to ${r.to}`, "Emailed."),
+    onError: (e: any) => toast.show(e.message, "Not sent"),
   });
 
   const kill = useMutation({
@@ -173,6 +180,10 @@ export default function InvoiceDetail() {
                 onPress={() => router.push(inv.due > 0 ? `/invoices/reminder/${id}` : `/invoices/pdf/${id}`)} />
             </View>
           )}
+          {!draft && !cancelled ? (
+            <Btn small variant="ghost" icon="mail-outline" label="Email to customer" style={{ marginTop: 8 }} loading={emailIt.isPending}
+              testID="invoice-email" onPress={() => emailIt.mutate()} />
+          ) : null}
           {!draft && !cancelled && inv.due <= 0 ? (
             <Sub style={{ marginTop: 6 }} testID="invoice-paid-note">
               This one is settled. Anything extra you record becomes credit on {inv.customer_name}’s account.
@@ -243,6 +254,15 @@ export default function InvoiceDetail() {
       )}
 
       {/* The stock-deduction disclaimer, before a draft becomes a sales order */}
+      <Sheet visible={payAsk} onClose={() => setPayAsk(false)} testID="invoice-pay-ask-sheet">
+        <H4>Record a payment now?</H4>
+        <Sub style={{ marginTop: 4 }}>Enter the amount, the account it went into and the date. You can also skip and record it later.</Sub>
+        <Row style={{ gap: 8, marginTop: 14 }}>
+          <Btn small variant="ghost" label="Later" style={{ flex: 1 }} testID="invoice-pay-later" onPress={() => setPayAsk(false)} />
+          <Btn small label="Record payment" style={{ flex: 1 }} testID="invoice-pay-now"
+            onPress={() => { setPayAsk(false); router.push({ pathname: "/payments/new", params: { customer_id: inv?.customer_id, invoice_id: id } }); }} />
+        </Row>
+      </Sheet>
       <Sheet visible={issueOpen} onClose={() => setIssueOpen(false)} testID="invoice-issue-sheet">
         <H4>Confirm this invoice as a sales order?</H4>
         <Sub style={{ marginTop: 3 }}>{issuePreview.data?.note ?? "Working out what leaves the shelf…"}</Sub>

@@ -53,6 +53,9 @@ const useStyles = makeStyles((c) => ({
   name: { fontFamily: fonts.bold, fontSize: 15, color: c.onSurface },
 }));
 
+// hidden from staff who are not allowed to see money (see deps.can_see_money)
+const MONEY_ROUTES = ["/expenses", "/accounts", "/reports", "/shops/overview", "/settings/plan", "/team"];
+
 export default function More() {
   const s = useStyles();
   const { colors } = useTheme();
@@ -71,9 +74,9 @@ export default function More() {
             <Sub>{user?.name} · {user?.email}</Sub>
             {business?.tin ? <Tag>TIN {business.tin}</Tag> : null}
           </View>
-          <Badge tone="paid">Owner</Badge>
+          <Badge tone="paid">{user?.role && user.role !== "owner" ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : "Owner"}</Badge>
         </Card>
-        {GROUPS.map((g) => (
+        {GROUPS.map((g) => ({ ...g, items: g.items.filter((it) => user?.can_see_money !== false || !MONEY_ROUTES.includes(it.route ?? "")) })).map((g) => (
           <View key={g.title}>
             <Lbl style={{ marginTop: 14, marginBottom: 6 }}>{g.title}</Lbl>
             <Card style={{ paddingVertical: 4 }}>

@@ -3,6 +3,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 from typing import Dict, List, Optional, Literal
 from bson import ObjectId
+import secrets
+
+import mailer
 
 from deps import (CurrentUser, LIVE_QUICK, LIVE_SALE, biz_filter, clean, db, ensure_feature, ensure_limit, hash_password, invoice_paid,
                   invoice_status, log_activity, now, oid, period_range, date_query, public_user, rep_clause, scoped)
@@ -46,7 +49,7 @@ class InviteIn(BaseModel):
     name: str
     email: EmailStr
     phone: str = ""
-    password: str = Field(default="tredi1234", min_length=6, max_length=72)
+    password: str = Field(default="", max_length=72)   # blank: a strong one is made and emailed
     role: str = "sales"
     shops: List[str] = []
 
@@ -132,17 +135,32 @@ async def team(user: CurrentUser):
 
 @router.post("/team", status_code=201)
 async def invite(data: InviteIn, user: CurrentUser):
+    ensure_team_admin(user)
+    if data.role == "owner" and user.get("role") != "owner":
+        raise HTTPException(403, "Only the owner can add another owner")
     f = biz_filter(user)
     email = data.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(409, "Someone already uses that email")
     await ensure_limit(user, "users", await db.users.count_documents({"business_id": f["business_id"]}))
     base = await resolve_role(f["business_id"], data.role)
-    res = await db.users.insert_one({"name": data.name, "email": email, "phone": data.phone, "password_hash": hash_password(data.password),
+    password = data.password or secrets.token_urlsafe(7)
+    if len(password) < 6:
+        raise HTTPException(400, "The password needs at least 6 characters")
+    res = await db.users.insert_one({"name": data.name, "email": email, "phone": data.phone, "password_hash": hash_password(password),
                                      "business_id": f["business_id"], "role": data.role, "shops": data.shops, "can": base["can"],
                                      "scopes": base["scopes"], "active": True, "created_at": now()})
     await log_activity(f["business_id"], user, "user", f"{data.name} invited", base["label"])
-    return {"id": str(res.inserted_id), "name": data.name, "email": email, "role": data.role}
+    biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])}) or {}
+    emailed = await mailer.send(email, f"Your TradaBooks login for {biz.get('name', 'your team')}", mailer.layout(
+        "Welcome to TradaBooks", [
+            f"Hello {mailer.e(data.name)},",
+            f"{mailer.e(user.get('name', 'Your manager'))} added you to <b>{mailer.e(biz.get('name', ''))}</b> as <b>{mailer.e(base['label'])}</b>.",
+            f"Sign in to the TradaBooks app with:<br>Email: <b>{mailer.e(email)}</b><br>Password: <b>{mailer.e(password)}</b>",
+            "Please change your password after your first sign-in.",
+        ]), text=f"Sign in to TradaBooks with {email} / {password}", reply_to=user.get("email", ""))
+    return {"id": str(res.inserted_id), "name": data.name, "email": email, "role": data.role, "emailed": emailed,
+            "password": None if emailed else password}
 
 
 @router.get("/team/{uid}")
@@ -161,9 +179,22 @@ async def get_member(uid: str, user: CurrentUser):
             "roles": await role_catalogue(f["business_id"])}
 
 
+def ensure_team_admin(user: dict, target_uid: str = ""):
+    """Only the owner, a manager, or someone allowed to manage users may change
+    the team — and nobody changes their own role or permissions."""
+    role = user.get("role", "owner")
+    if role not in ("owner", "manager") and not (user.get("can") or {}).get("manage_users"):
+        raise HTTPException(403, "Only the owner can change the team")
+    if target_uid and target_uid == str(user["_id"]) and role != "owner":
+        raise HTTPException(403, "You can't change your own role or permissions")
+
+
 @router.put("/team/{uid}")
 async def update_member(uid: str, data: PermissionsIn, user: CurrentUser):
+    ensure_team_admin(user, uid)
     f = biz_filter(user)
+    if data.role == "owner" and user.get("role") != "owner":
+        raise HTTPException(403, "Only the owner can make someone an owner")
     base = await resolve_role(f["business_id"], data.role)
     fields = {"role": data.role, "shops": data.shops,
               "can": {**base["can"], **data.can}, "scopes": {**base["scopes"], **data.scopes}}
@@ -182,6 +213,7 @@ async def update_member(uid: str, data: PermissionsIn, user: CurrentUser):
 async def set_member_dormant(uid: str, body: dict, user: CurrentUser):
     """People are never deleted. A dormant account cannot sign in and stops
     appearing as a rep, but every sale they ever recorded stays on the books."""
+    ensure_team_admin(user, uid)
     f = biz_filter(user)
     u = await db.users.find_one({"_id": oid(uid), "business_id": f["business_id"]})
     if not u:
@@ -206,6 +238,7 @@ async def roles(user: CurrentUser):
 
 @router.post("/roles", status_code=201)
 async def create_role(data: RoleIn, user: CurrentUser):
+    ensure_team_admin(user)
     f = biz_filter(user)
     await ensure_feature(user, "custom_roles")
     base = await resolve_role(f["business_id"], data.start_from)
@@ -372,6 +405,7 @@ async def handover_preview(uid: str, user: CurrentUser):
 
 @router.post("/team/{uid}/handover")
 async def handover(uid: str, data: HandoverIn, user: CurrentUser):
+    ensure_team_admin(user, uid)
     f = biz_filter(user)
     u = await db.users.find_one({"_id": oid(uid), "business_id": f["business_id"]})
     if not u:

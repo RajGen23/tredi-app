@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 40. I tested the 10-item batch on the backend and the frontend, using the public URL and a 390x844 viewport. Backend: 18 of 20 pytest tests pass. Working: (1) confirming a draft no longer records a payment; (2) PUT /payments/{id} moves the payment to another account and date, and both account balances update; (3) POST /customers/{id}/payment-out stores a negative payment, lowers the account balance and shows as 'Payment out' in the ledger; (4) GET /customers/{id}/items; (5) GET/PUT special prices, which drops zero and invalid ids; (6) /customers-duplicates finds 2348… against 080… phone matches and name matches, and the merge moves invoices and fills in missing details; (7) the invoice email returns 200 through Resend, and 400 when the customer has no email; (8) /auth/signup-code returns 409 for an existing email and 429 on a fast resend, register needs the right code, and a wrong code returns 400; (9) a team invite with no password emails a strong generated one (emailed:true, password:null), and a password under 6 characters gets 400; (10) the sales role gets can_see_money=false and a restricted /accounts list; and invoice documents now take the phone and address from the default address. Two failures: PUT /payments with only a date wipes account_id, and GET /accounts/{id} still shows balances to staff. Frontend: tested by tapping through each screen. The confirm → 'Record a payment now?' sheet works (Later / Record payment goes to /payments/new with the invoice preselected). 'Email to customer' sends. Payment out from the customer screen saves. Tapping a ledger payment opens 'Correct payment', and changing the account saves and shows in the ledger. The customer items, special pricing and merge screens render. Sign-up shows 'Email me a code', then the code field; a wrong code shows the error, and 'Send again' shows the wait message. For amina (sales), the More menu hides Expenses, Accounts, Reports, Shops overview, Plan and Team. Gaps: staff can still see money in other places (Home 'Reports' and Summary links, the /accounts deep link, and the /accounts/{id}, /reports/summary, /shops/overview and /expenses APIs). No page errors. No deprecated Expo packages were introduced.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/accounts/{aid}", "issue": "Staff without can_see_money (amina, sales) get the full statement: 200 with closing balance 15000.0 and every entry. Only the list endpoint is restricted. Add `if not can_see_money(user): raise HTTPException(403)` (server.py:1130).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "PUT /api/payments/{pid}", "issue": "patch always sets account_id = data.account_id or None, so a body with only {date} or {note} moves the payment to Cash/no account. Reproduced: account_id became None. Only set account_id when 'account_id' is in data.model_fields_set (server.py:~1252). Also check that the account_id belongs to this business (the same applies to payment-out)."},
+      {"endpoint": "GET /api/reports/summary, /api/shops/overview, /api/expenses, /api/dashboard", "issue": "These still return money figures to a sales rep: money_in/out, stock_value of 78,721,200, and profit. They are shop/own-scoped, but this goes against the new 'staff never see company totals/reports' rule, which is only enforced in the UI by hiding links in More."},
+      {"endpoint": "POST /api/business/addresses", "issue": "AddressIn has no email field, so doc_business's email fallback can never be filled from addresses created in the app. Reproduced: the invoice business.email stayed ''. Phone and address fallback work."},
+      {"endpoint": "POST /api/customers/merge", "issue": "Duplicates are hard-deleted (delete_many) and there is no undo. Consider a soft delete with merged_into, which the duplicate query already filters on."},
+      {"endpoint": "GET /api/customers/{cid}/prices", "issue": "The items lookup is not scoped by business_id. PUT accepts any valid ObjectId as an item id, including another tenant's."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "More profile card", "issue": "The badge is hardcoded to 'Owner' (more.tsx:77), so amina (sales) is shown as Owner.", "testID": "more-profile-card", "priority": "LOW"},
+      {"component": "Accounts screen (deep link as staff)", "issue": "For a restricted user, /accounts shows 'Total balance ₦0', ₦0 on each account, broken subtext '· entries ·' (entries is undefined), and the add and edit buttons. It should show a restricted state or redirect.", "testID": "accounts", "priority": "MEDIUM"},
+      {"component": "Sign-up code step", "issue": "codeSent is not reset when the email (or mode) changes. If the user corrects their email after asking for a code, 'Create account' sends the old code for the new email and gets 'Ask for a new code'. The resend link uses the new email, so it can recover, but the flow is confusing. Reset codeSent and code in the email onChangeText.", "testID": "sign-up-code", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Staff money visibility on Home", "issue": "For a sales rep, Home still shows the 'Reports' shortcut, the 'Summary – Sales, purchases, expenses and profit' link, the Expenses card and Money in/out. MONEY_ROUTES is applied only in More.", "affected_testIDs": ["home-screen"]}
+    ],
+    "design_issues": [
+      {"screen": "Sign-up", "issues": ["The code field appears below the 'Restoring a phone?' info card, far from the email field. Place it directly under the password field."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter40_payments_pricing_merge_email.py", "/app/backend/tests/probe_iter40_staff_money.py", "/app/backend/tests/prep_iter40_ui.py", "/app/test_reports/pytest/iter40_results.xml"],
+  "action_items": [
+    "HIGH: Gate GET /api/accounts/{aid} with can_see_money (403 for staff).",
+    "Fix PUT /payments/{pid} so an omitted account_id leaves the account as it is (use model_fields_set), and check that account_id belongs to the business in PUT /payments and POST /customers/{id}/payment-out.",
+    "Apply can_see_money on the server to /reports/*, /shops/overview and /expenses, and decide what the dashboard shows staff. On Home, hide the Reports shortcut, Summary link, Expenses card and Money in/out for restricted users.",
+    "Accounts screen: when accounts.restricted is true, show a restricted state (no ₦0 totals, no add or edit buttons, no '· entries ·' text) or redirect.",
+    "Add an email field to AddressIn and the Addresses UI so the doc_business email fallback can work.",
+    "Sign-in: reset codeSent and code when the email changes. Show the real role in the More profile badge."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now about 1,900 lines, well over the 700-line limit. Move the new payments, customer-extras and email endpoints into routes/ modules.",
+    "/auth/signup-code returns 409 for a registered email, which lets anyone check which emails have accounts (low risk).",
+    "In the account statement, payment-out rows are tagged kind 'in' with a negative amount. The totals are correct, but the label is wrong.",
+    "customer_items does not check that the customer exists; it returns [] for any id."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter40_payments_pricing_merge_email.py", "/app/backend/tests/probe_iter40_staff_money.py", "/app/backend/tests/prep_iter40_ui.py"],
+  "success_rate": {"backend": "90% (18/20)", "frontend": "90% (all new flows work; there are gaps in hiding money from staff)"},
+  "seed_data_creation": "Each pytest run registers an isolated TEST_ owner (test_<tag>@resend.dev / Testpw12345) with its own TEST_Biz, accounts, item, customer, invoices and invited TEST_Rep users (@resend.dev). The UI run used test_fb1fe1@resend.dev. No seeded or owner data was changed. Read-only GETs were made as amina@tredi.app.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Resend is configured in the running backend: the RESEND_API_KEY and MAIL_FROM values are not in backend/.env (they were stripped) but are in the process env. So /auth/register needs a code. The test fixture _signup_code() calls /auth/signup-code and then recovers the 6-digit code by brute-forcing the stored sha256(email:code:JWT_SECRET) hash in db.signup_codes (about 1s). Run pytest with -n 0 because pytest.ini enables xdist and the module fixtures are order-dependent. The UI draft for the confirm flow is made by tests/prep_iter40_ui.py. Testids used: invoice-confirm-issue → issue-confirm → invoice-pay-ask-sheet / invoice-pay-now / invoice-pay-later; invoice-email; customer-shortcut-payment-out; payment-out-amount/account/date/note/save; ledger-entry-N (payment rows open /payments/out?edit=); sign-in-toggle-mode, sign-up-name, sign-up-code, sign-up-resend.",
+  "rca_of_issue": "PUT /payments account wipe: the patch dict is built as {'account_id': data.account_id or None, ...} without checking whether the field was sent. Reproduce: PUT /api/payments/{id} {\"date\":\"2026-01-11\"} → the response has account_id null. Account statement leak: the can_see_money check was added only to list_accounts (server.py:1097); account_statement (server.py:1130) has no role check. Reproduce: log in as amina@tredi.app, GET /api/accounts (restricted) and take an id, then GET /api/accounts/{id} → 200 with the closing balance."
+}

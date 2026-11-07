@@ -1,7 +1,7 @@
 // 03.3 Customer ledger — running balance, mono, statement share.
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
@@ -16,6 +16,7 @@ import { fonts, makeStyles } from "@/src/theme";
 const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface } }));
 
 export default function Ledger() {
+  const router = useRouter();
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -60,7 +61,8 @@ export default function Ledger() {
           </View>
           <Card style={{ paddingVertical: 4 }}>
             {entries.map((e: any, i: number) => (
-              <Li key={e.ref_id + i} testID={`ledger-entry-${i}`}>
+              <Li key={e.ref_id + i} testID={`ledger-entry-${i}`}
+                onPress={e.kind === "payment" ? () => router.push({ pathname: "/payments/out", params: { edit: e.ref_id, amount: String(e.amount), account_id: e.account_id ?? "", date: e.date, note: e.note ?? "" } }) : undefined}>
                 <View style={{ width: 40 }}><Tag>{shortDate(e.date)}</Tag></View>
                 <View style={{ flex: 1 }}><H4 style={e.kind === "sale" ? { fontFamily: fonts.monoSemibold, fontSize: 12.5 } : undefined}>{e.title}</H4><Sub>{e.sub}</Sub></View>
                 <View style={{ alignItems: "flex-end" }}><Money tone={e.amount > 0 ? "neg" : "pos"}>{e.amount > 0 ? "+ " : "− "}{money(Math.abs(e.amount), { symbol: false })}</Money><Tag>bal {money(e.balance, { symbol: false })}</Tag></View>

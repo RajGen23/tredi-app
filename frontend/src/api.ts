@@ -55,6 +55,6 @@ export async function loginRequest(email: string, password: string) {
   return parse(res);
 }
 
-export async function registerRequest(name: string, email: string, password: string) {
-  return api("/auth/register", { method: "POST", json: { name, email: email.trim(), password } });
+export async function registerRequest(name: string, email: string, password: string, code = "") {
+  return api("/auth/register", { method: "POST", json: { name, email: email.trim(), password, code } });
 }

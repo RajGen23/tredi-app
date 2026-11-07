@@ -2,13 +2,18 @@ from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional, Annotated, Literal
+from typing import Dict, List, Optional, Annotated, Literal
 from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
 import asyncio
+import hashlib
 import logging
+import os
+import re
+import secrets
 
-from deps import (VAT_RATE, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
+import mailer
+from deps import (VAT_RATE, can_see_money, doc_business, money_guard, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
                   db, decorate_invoice, decorate_invoices, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_cost, line_totals, log_activity, stamp_costs, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, admin_customers, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, support, users_roles
@@ -26,6 +31,15 @@ class RegisterIn(BaseModel):
     name: str = Field(min_length=1)
     email: EmailStr
     password: str = Field(min_length=6, max_length=72)
+    code: str = ""   # the 6-digit code emailed by /auth/signup-code
+
+
+class SignupCodeIn(BaseModel):
+    email: EmailStr
+
+
+def _code_hash(email: str, code: str) -> str:
+    return hashlib.sha256(f"{email}:{code}:{os.environ.get('JWT_SECRET', '')}".encode()).hexdigest()
 
 
 class BusinessIn(BaseModel):
@@ -150,11 +164,41 @@ async def health():
     return {"ok": True}
 
 
+@api.post("/auth/signup-code")
+async def signup_code(data: SignupCodeIn):
+    """Step one of creating an account: email a 6-digit code that proves the
+    address is real. Valid for 15 minutes, 5 tries."""
+    email = data.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(409, "Email already registered — sign in instead")
+    recent = await db.signup_codes.find_one({"email": email, "sent_at": {"$gt": now() - timedelta(seconds=45)}})
+    if recent:
+        raise HTTPException(429, "A code was just sent — wait a moment before asking again")
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    await db.signup_codes.update_one({"email": email}, {"$set": {"hash": _code_hash(email, code), "sent_at": now(),
+                                     "expires_at": now() + timedelta(minutes=15), "tries": 0}}, upsert=True)
+    ok = await mailer.send(email, f"Your TradaBooks code: {code}", mailer.layout("Confirm your email", [
+        "Use this code to finish creating your TradaBooks account:",
+        f"<span style='font-size:28px;font-weight:700;letter-spacing:6px'>{code}</span>",
+        "It expires in 15 minutes. If you didn't ask for it, you can ignore this email."]), text=f"Your TradaBooks code is {code}")
+    if not ok:
+        raise HTTPException(502, "We couldn't send the code right now — try again shortly")
+    return {"ok": True, "message": f"Code sent to {email}"}
+
+
 @api.post("/auth/register", status_code=201)
 async def register(data: RegisterIn):
     email = data.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(409, "Email already registered")
+    if mailer.configured():
+        rec = await db.signup_codes.find_one({"email": email})
+        if not rec or rec["expires_at"].replace(tzinfo=timezone.utc) < now() or rec.get("tries", 0) >= 5:
+            raise HTTPException(400, "Ask for a new code — that one has expired")
+        if rec["hash"] != _code_hash(email, data.code.strip()):
+            await db.signup_codes.update_one({"_id": rec["_id"]}, {"$inc": {"tries": 1}})
+            raise HTTPException(400, "That code is not right — check the email and try again")
+        await db.signup_codes.delete_one({"_id": rec["_id"]})
     res = await db.users.insert_one({"name": data.name, "email": email, "password_hash": hash_password(data.password), "business_id": None, "created_at": now()})
     return {"access_token": create_access_token(str(res.inserted_id)), "token_type": "bearer", "user": public_user(await db.users.find_one({"_id": res.inserted_id}))}
 
@@ -353,9 +397,11 @@ async def customer_ledger(cid: str, user: Annotated[dict, Depends(current_user)]
     opening = c.get("opening_balance", 0) * (1 if c.get("opening_type") == "owes_me" else -1)
     async for inv in db.invoices.find({**f, "customer_id": cid, "status": LIVE_SALE}):
         entries.append({"date": inv["created_at"], "title": inv["number"], "sub": f"Sale · {len(inv['lines'])} items", "amount": inv["totals"]["total"], "kind": "sale", "ref_id": str(inv["_id"])})
-    async for p in db.payments.find({**f, "customer_id": cid}):
+    async for p in db.payments.find({**f, "customer_id": cid, "deleted_at": None}):
         acc = await db.accounts.find_one({"_id": ObjectId(p["account_id"])}) if p.get("account_id") and ObjectId.is_valid(p["account_id"]) else None
-        entries.append({"date": p["created_at"], "title": "Payment received", "sub": acc["name"] if acc else "Payment", "amount": -p["amount"], "kind": "payment", "ref_id": str(p["_id"])})
+        entries.append({"date": p["created_at"], "title": "Payment out" if p["amount"] < 0 else "Payment received",
+                        "sub": f"{acc['name'] if acc else 'Cash'} · tap to correct", "amount": -p["amount"], "kind": "payment", "ref_id": str(p["_id"]),
+                        "account_id": p.get("account_id"), "note": p.get("note", "")})
     entries.sort(key=lambda e: e["date"])
     bal = opening
     for e in entries:
@@ -732,7 +778,7 @@ async def get_invoice(iid: str, user: Annotated[dict, Depends(current_user)]):
         raise HTTPException(404, "Invoice not found")
     d = await decorate_invoice(inv)
     d["payments"] = [clean(p) async for p in db.payments.find({**f, "allocations.invoice_id": iid}).sort("created_at", -1)]
-    d["business"] = clean(await db.businesses.find_one({"_id": ObjectId(f["business_id"])}))
+    d["business"] = await doc_business(f["business_id"])
     wb = await db.waybills.find_one({**f, "invoice_id": iid}, sort=[("created_at", -1)])
     d["waybill"] = {"id": str(wb["_id"]), "number": wb.get("number", "")} if wb else None
     return d
@@ -832,10 +878,8 @@ async def issue_invoice(iid: str, user: Annotated[dict, Depends(current_user)]):
     }})
     for l in inv.get("lines", []):
         await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", number, user, "Draft confirmed", shop)
-    if inv.get("payment_mode") and inv["payment_mode"] != "credit":
-        await db.payments.insert_one({**f, "customer_id": inv.get("customer_id"), "amount": inv["totals"]["total"], "account_id": inv.get("account_id"),
-                                      "method": inv["payment_mode"], "shop": shop, "allocations": [{"invoice_id": iid, "amount": inv["totals"]["total"]}],
-                                      "note": f"Paid at sale · {number}", "created_by": user.get("name", ""), "created_at": now()})
+    # Payment is never assumed on confirmation: the app asks next, and the user
+    # enters the amount, account and date themselves (or skips it for later).
     await log_activity(f["business_id"], user, "invoice", f"{number} confirmed as a sales order", "Stock deducted", inv["totals"]["total"], iid, shop)
     return await decorate_invoice(await db.invoices.find_one({"_id": inv["_id"]}))
 
@@ -952,7 +996,7 @@ async def get_sale(sid: str, user: Annotated[dict, Depends(current_user)]):
     cust = await db.customers.find_one({"_id": ObjectId(s["customer_id"])}) if s.get("customer_id") and ObjectId.is_valid(s.get("customer_id") or "") else None
     d["customer_name"] = cust["name"] if cust else "Cash sale"
     d["customer_phone"] = (cust or {}).get("phone", "")
-    d["business"] = clean(await db.businesses.find_one({"_id": ObjectId(f["business_id"])}))
+    d["business"] = await doc_business(f["business_id"])
     missing = [ObjectId(l["item_id"]) for l in d.get("lines", []) if not l.get("photo_url") and ObjectId.is_valid(l.get("item_id") or "")]
     if missing:
         photos = {str(i["_id"]): i.get("photo_url", "") async for i in db.items.find({"_id": {"$in": missing}})}
@@ -1050,6 +1094,10 @@ async def uncancel_sale(sid: str, user: Annotated[dict, Depends(current_user)]):
 async def list_accounts(user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     accs = [clean(a) async for a in db.accounts.find(f)]
+    if not can_see_money(user):
+        # staff can still pick where a payment landed, but never see balances or movements
+        return {"accounts": [{"id": a["id"], "name": a.get("name", ""), "kind": a.get("kind", ""), "detail": a.get("detail", ""),
+                              "dormant": a.get("dormant", False)} for a in accs], "recent": [], "restricted": True}
     total_in = total_out = 0.0
     for a in accs:
         inn = sum([p["amount"] async for p in db.payments.find({**f, "account_id": a["id"]})])
@@ -1079,7 +1127,7 @@ async def list_accounts(user: Annotated[dict, Depends(current_user)]):
     return {"accounts": accs, "total": round(sum(a["balance"] for a in accs), 2), "in": round(total_in, 2), "out": round(total_out, 2), "recent": recent[:8]}
 
 
-@api.get("/accounts/{aid}")
+@api.get("/accounts/{aid}", dependencies=[Depends(money_guard)])
 async def account_statement(aid: str, user: Annotated[dict, Depends(current_user)], period: str = "all"):
     """Money in and money out of one account, line by line, with a running
     balance — and anything raised from an invoice links back to it."""
@@ -1187,8 +1235,201 @@ async def delete_payment(pid: str, reason: str, user: Annotated[dict, Depends(cu
     return {"ok": True}
 
 
+class PaymentFixIn(BaseModel):
+    account_id: Optional[str] = None
+    date: Optional[str] = None
+    note: Optional[str] = None
+
+
+@api.put("/payments/{pid}")
+async def fix_payment(pid: str, data: PaymentFixIn, user: Annotated[dict, Depends(current_user)]):
+    """Correct where a payment landed or the day it came in. The amount and the
+    invoices it settles stay as they were."""
+    f = biz_filter(user)
+    p = await db.payments.find_one({"_id": oid(pid), **f, "deleted_at": None})
+    if not p:
+        raise HTTPException(404, "Payment not found")
+    patch = {"updated_by": user.get("name", ""), "updated_at": now()}
+    acc = None
+    if "account_id" in data.model_fields_set:
+        if data.account_id:
+            acc = await db.accounts.find_one({"_id": oid(data.account_id), **f})
+            if not acc:
+                raise HTTPException(400, "That account doesn't belong to this business")
+        patch["account_id"] = data.account_id or None
+    if data.date:
+        patch["created_at"] = _issued_at(data.date)
+    if data.note is not None:
+        patch["note"] = data.note
+    await db.payments.update_one({"_id": p["_id"]}, {"$set": patch})
+    await log_activity(f["business_id"], user, "payment", "Payment corrected", f"Now in {acc['name']}" if acc else "", p["amount"], pid, p.get("shop", ""))
+    return clean(await db.payments.find_one({"_id": p["_id"]}))
+
+
+class PaymentOutIn(BaseModel):
+    amount: float
+    account_id: Optional[str] = None
+    date: Optional[str] = None
+    note: str = ""
+
+
+@api.post("/customers/{cid}/payment-out", status_code=201)
+async def customer_payment_out(cid: str, data: PaymentOutIn, user: Annotated[dict, Depends(current_user)]):
+    """Money paid back to a customer (a refund of their credit). Stored as a
+    negative payment so the account and the customer's balance both move."""
+    f = biz_filter(user)
+    c = await db.customers.find_one({"_id": oid(cid), **f})
+    if not c:
+        raise HTTPException(404, "Customer not found")
+    if data.amount <= 0:
+        raise HTTPException(400, "Amount must be greater than zero")
+    if data.account_id and not await db.accounts.find_one({"_id": oid(data.account_id), **f}):
+        raise HTTPException(400, "That account doesn't belong to this business")
+    doc = {**f, "customer_id": cid, "amount": -round(data.amount, 2), "account_id": data.account_id, "method": "payment_out",
+           "allocations": [], "note": data.note or "Payment out · refund", "shop": await writing_shop(user),
+           "created_by": user.get("name", ""), "created_at": _issued_at(data.date), "deleted_at": None}
+    res = await db.payments.insert_one(doc)
+    await log_activity(f["business_id"], user, "payment", f"Paid out to {c['name']}", doc["note"], -data.amount, str(res.inserted_id), doc["shop"])
+    return clean(await db.payments.find_one({"_id": res.inserted_id}))
+
+
+@api.get("/customers/{cid}/items")
+async def customer_items(cid: str, user: Annotated[dict, Depends(current_user)]):
+    """Everything this customer has been sold, item by item."""
+    f = biz_filter(user)
+    rows: dict = {}
+    async for inv in db.invoices.find({**f, "customer_id": cid, "deleted_at": None, "status": LIVE_SALE}).sort("created_at", -1):
+        for l in inv.get("lines", []):
+            k = l.get("item_id") or l["name"]
+            r = rows.setdefault(k, {"item_id": l.get("item_id"), "name": l["name"], "unit": l.get("unit", ""), "quantity": 0, "total": 0,
+                                    "times": 0, "last_date": inv["created_at"].isoformat(), "last_price": l.get("unit_price", 0)})
+            r["quantity"] += l.get("quantity", 0)
+            r["total"] = round(r["total"] + l.get("total", 0), 2)
+            r["times"] += 1
+    return sorted(rows.values(), key=lambda r: -r["total"])
+
+
+class PricesIn(BaseModel):
+    prices: Dict[str, float]   # item_id -> this customer's price; 0 or missing = normal price
+
+
+@api.get("/customers/{cid}/prices")
+async def customer_prices(cid: str, user: Annotated[dict, Depends(current_user)]):
+    f = biz_filter(user)
+    c = await db.customers.find_one({"_id": oid(cid), **f}, {"special_prices": 1})
+    if not c:
+        raise HTTPException(404, "Customer not found")
+    sp = c.get("special_prices") or {}
+    ids = [ObjectId(i) for i in sp if ObjectId.is_valid(i)]
+    items = {str(i["_id"]): i async for i in db.items.find({"_id": {"$in": ids}, **f}, {"name": 1, "selling_price": 1, "unit": 1})}
+    return [{"item_id": k, "name": items[k]["name"], "unit": items[k].get("unit", ""), "normal_price": items[k].get("selling_price", 0), "price": v}
+            for k, v in sp.items() if k in items]
+
+
+@api.put("/customers/{cid}/prices")
+async def set_customer_prices(cid: str, data: PricesIn, user: Annotated[dict, Depends(current_user)]):
+    f = biz_filter(user)
+    clean_prices = {k: round(v, 2) for k, v in data.prices.items() if v and v > 0 and ObjectId.is_valid(k)}
+    r = await db.customers.update_one({"_id": oid(cid), **f}, {"$set": {"special_prices": clean_prices, "updated_by": user.get("name", "")}})
+    if not r.matched_count:
+        raise HTTPException(404, "Customer not found")
+    return await customer_prices(cid, user)
+
+
+def _norm_phone(p: str) -> str:
+    d = re.sub(r"\D", "", p or "")
+    return ("0" + d[3:]) if d.startswith("234") else d
+
+
+@api.get("/customers-duplicates")
+async def customer_duplicates(user: Annotated[dict, Depends(current_user)]):
+    """Groups of customers that look like the same person: same phone number,
+    or the same name written the same way."""
+    f = biz_filter(user)
+    custs = [c async for c in db.customers.find({**f, "merged_into": {"$exists": False}}, {"name": 1, "phone": 1, "email": 1, "created_at": 1})]
+    groups: dict = {}
+    for c in custs:
+        keys = {f"n:{re.sub(r'[^a-z0-9]', '', (c.get('name') or '').lower())}"}
+        ph = _norm_phone(c.get("phone", ""))
+        if len(ph) >= 7:
+            keys.add(f"p:{ph}")
+        for k in keys:
+            if k != "n:":
+                groups.setdefault(k, []).append(c)
+    seen, out = set(), []
+    for k, cs in groups.items():
+        ids = tuple(sorted(str(c["_id"]) for c in cs))
+        if len(ids) < 2 or ids in seen:
+            continue
+        seen.add(ids)
+        out.append({"reason": "Same phone number" if k.startswith("p:") else "Same name",
+                    "customers": [{"id": str(c["_id"]), "name": c.get("name", ""), "phone": c.get("phone", ""), "email": c.get("email", "")} for c in cs]})
+    return out
+
+
+class MergeIn(BaseModel):
+    keep_id: str
+    merge_ids: List[str]
+
+
+@api.post("/customers/merge")
+async def merge_customers(data: MergeIn, user: Annotated[dict, Depends(current_user)]):
+    """Fold duplicates into one customer: their invoices, payments, returns and
+    sales move across, missing details are filled in, and the copies disappear."""
+    f = biz_filter(user)
+    keep = await db.customers.find_one({"_id": oid(data.keep_id), **f})
+    others = [c async for c in db.customers.find({**f, "_id": {"$in": [oid(i) for i in data.merge_ids if i != data.keep_id]}})]
+    if not keep or not others:
+        raise HTTPException(400, "Pick the customer to keep and at least one duplicate")
+    ids = [str(c["_id"]) for c in others]
+    for col in ("invoices", "payments", "returns", "sales", "waybills"):
+        await db[col].update_many({**f, "customer_id": {"$in": ids}}, {"$set": {"customer_id": data.keep_id}})
+    fill = {k: next((c.get(k) for c in others if c.get(k)), "") for k in ("phone", "email", "address") if not keep.get(k)}
+    opening = sum(c.get("opening_balance", 0) * (1 if c.get("opening_type") == "owes_me" else -1) for c in [keep, *others])
+    prices = {**{k: v for c in others for k, v in (c.get("special_prices") or {}).items()}, **(keep.get("special_prices") or {})}
+    await db.customers.update_one({"_id": keep["_id"]}, {"$set": {**{k: v for k, v in fill.items() if v}, "special_prices": prices,
+                                  "opening_balance": abs(round(opening, 2)), "opening_type": "owes_me" if opening >= 0 else "i_owe",
+                                  "updated_by": user.get("name", "")}})
+    await db.customers.delete_many({**f, "_id": {"$in": [c["_id"] for c in others]}})
+    await log_activity(f["business_id"], user, "customer", f"Merged {len(others)} duplicate{'s' if len(others) > 1 else ''} into {keep['name']}", "", 0, data.keep_id)
+    return {"ok": True, "kept": data.keep_id, "merged": len(others)}
+
+
+class EmailDocIn(BaseModel):
+    to: Optional[str] = None
+
+
+@api.post("/invoices/{iid}/email")
+async def email_invoice(iid: str, data: EmailDocIn, user: Annotated[dict, Depends(current_user)]):
+    f = biz_filter(user)
+    inv = await db.invoices.find_one({"_id": oid(iid), **f})
+    if not inv:
+        raise HTTPException(404, "Invoice not found")
+    d = await decorate_invoice(inv)
+    cust = await db.customers.find_one({"_id": ObjectId(inv["customer_id"])}) if ObjectId.is_valid(inv.get("customer_id") or "") else None
+    to = (data.to or (cust or {}).get("email") or "").strip()
+    if not to:
+        raise HTTPException(400, "This customer has no email address — add one or type it in")
+    b = await doc_business(f["business_id"])
+    rows = "".join(f"<tr><td style='padding:4px 0'>{mailer.e(l['name'])} × {l['quantity']:g}</td><td style='text-align:right'>{l['total']:,.2f}</td></tr>"
+                   for l in d["lines"])
+    title = "Quotation" if inv.get("status") == "quote" else "Invoice"
+    ok = await mailer.send(to, f"{title} {inv['number']} from {b.get('name', '')}", mailer.layout(f"{title} {mailer.e(inv['number'])}", [
+        f"Hello {mailer.e(d['customer_name'])},",
+        f"Here is your {title.lower()} from <b>{mailer.e(b.get('name', ''))}</b>.",
+        f"<table style='width:100%;border-collapse:collapse;font-size:13px'>{rows}</table>",
+        f"Total: <b>{mailer.e(b.get('currency', 'NGN'))} {d['totals']['total']:,.2f}</b><br>Amount due: <b>{d['due']:,.2f}</b>"
+        + (f"<br>Due by {mailer.e(inv.get('due_date'))}" if inv.get("due_date") else ""),
+        f"{mailer.e(b.get('phone', ''))} {mailer.e(b.get('email', ''))}",
+    ], footer=f"Sent by {mailer.e(b.get('name', ''))} via TradaBooks"), reply_to=b.get("email", ""))
+    if not ok:
+        raise HTTPException(502, "The email could not be sent right now — try again shortly")
+    await log_activity(f["business_id"], user, "invoice", f"{inv['number']} emailed", to, 0, iid, inv.get("shop", ""))
+    return {"ok": True, "to": to}
+
+
 # ---------------------------------------------------------------- expenses
-@api.get("/expenses")
+@api.get("/expenses", dependencies=[Depends(money_guard)])
 async def list_expenses(user: Annotated[dict, Depends(current_user)], period: str = "month", rep: str = "", category: str = ""):
     f = await scoped(user, "reports")
     if rep:
@@ -1440,6 +1681,9 @@ async def startup():
     await db.payments.create_index([("business_id", 1), ("allocations.invoice_id", 1)])
     await db.movements.create_index([("business_id", 1), ("item_id", 1)])
     await db.expenses.create_index([("business_id", 1), ("purchase_id", 1)])
+    # staff brought over from the old system had no visibility rules: give them the Sales defaults
+    await db.users.update_many({"role": {"$in": ["sales", "stock"]}, "scopes": {"$exists": False}},
+                               {"$set": {"scopes": {"sales": "own", "stock": "shop", "customers": "shop", "reports": "own"}}})
     asyncio.create_task(admin.legacy_sync_loop())
     try:
         await purchases.backfill_upfront_expenses()

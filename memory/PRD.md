@@ -640,3 +640,26 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 ## Legacy VAT + sync no longer overwrites app edits (Oct 2026)
 - The old app stored VAT per line (invoice_items.tax_percent); the invoice tax_percentage was always 0. The import now uses the line rate as vat_rate (mixed rates are summed per line). 2,789 of 2,802 migrated invoice totals now match the live total_amount; the 13 that don't are live rows with a 0 or odd total.
 - Migration.upsert stores `_sync_sig` (an md5 of what it wrote, ignoring cost_at_sale). On re-sync, a record whose fields changed since then (or that has updated_by and no sig) is left as is (tally `kind:kept_app_edit`). That stops the 6-hourly auto-sync from undoing edits such as adding VAT or issuing a draft.
+
+## Nov 2026 batch: emails, staff limits, payments, customers, invoice look
+- Email via Resend (user's key: RESEND_API_KEY, MAIL_FROM in backend env), backend/mailer.py.
+  - Staff invite emails the login details (a password is generated if left blank).
+  - POST /invoices/{id}/email sends the invoice to the customer.
+  - Sign-up now asks for a 6-digit emailed code: POST /auth/signup-code, then /auth/register with `code` (only when mail is configured).
+- Confirming a draft (/invoices/{id}/issue) never records a payment by itself. The app then offers a "Record a payment now?" sheet with Later.
+- PUT /payments/{id} corrects the account, date or note. The customer ledger payment rows open /payments/out?edit=…
+- POST /customers/{id}/payment-out records a refund as a negative payment. The customer "Payment out" shortcut opens /payments/out.
+- GET /customers/{id}/items backs the items-supplied screen. GET/PUT /customers/{id}/prices backs special pricing, which new invoices apply automatically.
+- GET /customers-duplicates and POST /customers/merge back /customers/merge (suggested groups plus manual search).
+- Staff: deps.can_see_money(). /accounts returns no balances for staff. The More tab hides Accounts, Expenses, Reports, All shops, Plan and Users. Staff without scopes get the Sales defaults (own sales).
+- Invoice PDF: business phone and email (falling back to Settings → Addresses & numbers) shown in the header. The default "Goods sold are not returnable" line is removed. The footer is no longer fixed, so it can't overlap the totals.
+- Follow-up fixes:
+  - Money screens are blocked for staff on the backend with the deps.money_guard dependency: the reports router, /accounts/{id}, /expenses and /shops/overview.
+  - Home hides the money cards and Reports shortcuts for staff, and /accounts shows a restricted message.
+  - Team changes (invite, edit, dormant, roles, handover) need owner, manager or manage_users; no one can change their own role (ensure_team_admin).
+  - PUT /payments only changes the account when one is sent, and checks the account belongs to the business.
+- Still open:
+  - Line discount bug (#7): waiting on the user's steps to reproduce it.
+  - Addresses have no email field.
+  - Blocked screens opened by staff spin instead of showing a "restricted" message.
+  - server.py is about 1,900 lines and should be split.

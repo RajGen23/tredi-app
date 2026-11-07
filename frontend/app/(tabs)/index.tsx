@@ -31,7 +31,8 @@ export default function Home() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { business } = useAuth();
+  const { business, user } = useAuth();
+  const money_ok = user?.can_see_money !== false;
   const q = useQuery({ queryKey: ["dashboard"], queryFn: () => api("/dashboard") });
   const shortcuts = useQuery({ queryKey: ["shortcuts"], queryFn: () => api("/shortcuts") });
   const notifications = useQuery({ queryKey: ["notifications"], queryFn: () => api("/notifications") });
@@ -39,7 +40,7 @@ export default function Home() {
   const plan = useQuery({ queryKey: ["subscription"], queryFn: () => api<any>("/subscription") });
   const lowStock = useQuery({ queryKey: ["low-stock"], queryFn: () => api<any>("/low-stock") });
   const d = q.data;
-  const list = shortcuts.data?.on ?? [];
+  const list = (shortcuts.data?.on ?? []).filter((x: any) => money_ok || !/^\/(reports|expenses|accounts)/.test(x.route ?? ""));
   const pct = d && d.total_sales ? (d.received / d.total_sales) * 100 : 0;
   const weekIn = (d?.cashflow ?? []).reduce((a: number, c: any) => a + c.in, 0);
   const weekOut = (d?.cashflow ?? []).reduce((a: number, c: any) => a + c.out, 0);
@@ -59,7 +60,7 @@ export default function Home() {
       </View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => { q.refetch(); lowStock.refetch(); }} tintColor={colors.brandPrimary} />}>
         {!d ? <Card style={s.hero}><Loading /></Card> : (
-          <Pressable testID="home-total-sales-open" onPress={() => router.push("/reports/sales")} style={({ pressed }) => pressed && { opacity: 0.85 }}>
+          <Pressable testID="home-total-sales-open" disabled={!money_ok} onPress={() => router.push("/reports/sales")} style={({ pressed }) => pressed && { opacity: 0.85 }}>
             <Card style={s.hero} testID="home-total-sales-card">
               <Row style={{ gap: 5 }}><Lbl>Total sales</Lbl><Ionicons name="chevron-forward" size={12} color={colors.ink40} /></Row>
               <Text style={s.big} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} testID="home-total-sales">{money(d.total_sales)}</Text>
@@ -132,7 +133,7 @@ export default function Home() {
           ))}
         </View>
 
-        {d ? (
+        {d && money_ok ? (
           <>
             <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
               <View style={{ flex: 1 }}>
@@ -176,11 +177,13 @@ export default function Home() {
         ) : null}
         {d ? (
           <Card style={{ marginTop: 9, paddingVertical: 4 }} testID="home-rails">
-            <Li testID="home-summary" onPress={() => router.push("/reports/summary")}>
-              <Av icon="speedometer-outline" tone="sq" />
-              <View style={{ flex: 1 }}><H4>Summary</H4><Sub>Sales, purchases, expenses and profit</Sub></View>
-              <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
-            </Li>
+            {money_ok ? (
+              <Li testID="home-summary" onPress={() => router.push("/reports/summary")}>
+                <Av icon="speedometer-outline" tone="sq" />
+                <View style={{ flex: 1 }}><H4>Summary</H4><Sub>Sales, purchases, expenses and profit</Sub></View>
+                <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
+              </Li>
+            ) : null}
             <Li last testID="home-activity" onPress={() => router.push("/activity")}>
               <Av icon="pulse-outline" tone="sq" />
               <View style={{ flex: 1 }}><H4>Activity</H4><Sub>Who did what, in which shop</Sub></View>

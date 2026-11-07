@@ -164,7 +164,7 @@ function professionalHtml(inv: any, brand: Brand): string {
   .tgroup{margin-bottom:6px}
   .tbody{font-size:10px;line-height:15px;margin-top:1px;white-space:pre-line}
   .kv{display:flex;justify-content:space-between;font-size:10px;padding:2px 0}
-  .foot{position:fixed;left:22px;right:22px;bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #EDEDED;padding-top:7px;color:#8A8A8A;font-size:9.5px}
+  .foot{margin-top:22px;page-break-inside:avoid;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #EDEDED;padding-top:7px;color:#8A8A8A;font-size:9.5px}
   </style></head><body>
   <div class="top">
     <div>${logoTag(brand)}<div class="val" style="font-size:15px">${esc(b.name)}</div></div>
@@ -271,15 +271,15 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   const meta = `<div class="lbl">${title}</div><div class="num">${esc(inv.number)}</div>
     <div class="mut">${longDate(inv.created_at)}</div>${inv.due_date ? `<div class="mut">Due ${longDate(inv.due_date)}</div>` : ""}`;
   const biz = `<div class="biz">${esc(b.name)}</div><div class="mut">${esc(b.address)}</div>
-    <div class="mut">${b.tin ? `TIN ${esc(b.tin)}` : ""}${b.phone ? ` · ${esc(b.phone)}` : ""}</div>`;
+    <div class="mut">${[b.tin ? `TIN ${esc(b.tin)}` : "", esc(b.phone), esc(b.email)].filter(Boolean).join(" · ")}</div>`;
 
   const headers: Record<string, string> = {
     t1: `<div class="row top">${`<div>${logoTag(brand)}${biz}</div>`}<div class="right">${meta}</div></div><hr/>`,
     t2: `<div class="band"><div>${biz}</div><div class="right">${meta}</div></div>${brand.logo_url ? `<div class="row" style="margin-top:10px">${logoTag(brand)}</div>` : ""}`,
-    t3: `<div class="center">${logoTag(brand)}<div class="biz big">${esc(b.name)}</div><div class="mut">${esc(b.address)}${b.phone ? ` · ${esc(b.phone)}` : ""}</div></div>
+    t3: `<div class="center">${logoTag(brand)}<div class="biz big">${esc(b.name)}</div><div class="mut">${[esc(b.address), esc(b.phone), esc(b.email)].filter(Boolean).join(" · ")}</div></div>
          <div class="row rule">${`<div><div class="lbl">Bill to</div><div class="nm">${esc(inv.customer_name)}</div><div class="mut">${esc(inv.customer_phone)}</div></div>`}<div class="right">${meta}</div></div>`,
     t4: `<div class="accent"></div><div class="row top">${`<div>${logoTag(brand)}${biz}</div>`}<div class="right">${meta}</div></div><hr/>`,
-    t5: `<div class="dark"><div>${logoTag(brand, Math.min(brand.logo_size, 70))}<div class="biz inv">${esc(b.name)}</div><div class="mut inv">${esc(b.address)}</div></div><div class="right">${meta}</div></div>`,
+    t5: `<div class="dark"><div>${logoTag(brand, Math.min(brand.logo_size, 70))}<div class="biz inv">${esc(b.name)}</div><div class="mut inv">${esc(b.address)}</div><div class="mut inv">${[esc(b.phone), esc(b.email)].filter(Boolean).join(" · ")}</div></div><div class="right">${meta}</div></div>`,
     t6: `<div class="row top compact">${`<div>${biz}</div>`}<div class="right">${meta}</div></div><hr/>`,
   };
 
@@ -322,7 +322,8 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   .btitle{font-weight:700;font-size:11.5px;color:${c};margin-bottom:4px}
   .tgroup{margin-bottom:6px}.tbody{font-size:10px;line-height:15px;color:#3B4A47;white-space:pre-line}
   .kv{display:flex;justify-content:space-between;font-size:10px;padding:2px 0}
-  .foot{position:fixed;left:22px;right:22px;bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #E5EEEB;padding-top:7px;color:#93A9A4;font-size:9.5px}
+  .foot{margin-top:22px;display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #E5EEEB;padding-top:7px;color:#93A9A4;font-size:9.5px;page-break-inside:avoid}
+  tr,.tot,.due,.block,.tgroup{page-break-inside:avoid;break-inside:avoid}
   ${perTemplate[brand.template] ?? ""}
   </style></head><body>
   ${headers[brand.template] ?? headers.t1}
@@ -331,7 +332,7 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   <hr/>
   ${totalsRows(inv, c, onC)}
   ${termsBlock(inv)}${bankBlock(inv)}${paymentsBlock(inv)}
-  <p class="mut" style="margin-top:14px">${esc(inv.note || "Goods sold are not returnable after 7 days.")}</p>
+  ${inv.note ? `<p class="mut" style="margin-top:14px">${esc(inv.note)}</p>` : ""}
   <div class="foot"><span>${esc(brand.footer || "Thank you for your business")}</span>${brand.tredi_mark === false ? "" : madeWith("Made with")}</div>
   </body></html>`;
 }
@@ -377,7 +378,7 @@ export function buildWaybillHtml(w: any, brandIn?: Partial<Brand>): string {
       <div>
         ${logoTag(brand, 44)}
         <div class="biz">${esc(b.name)}</div>
-        <div class="meta">${esc(b.address)}${b.phone ? `<br/>${esc(b.phone)}` : ""}${b.tin ? `<br/>TIN ${esc(b.tin)}` : ""}</div>
+        <div class="meta">${esc(b.address)}${b.phone ? `<br/>${esc(b.phone)}` : ""}${b.email ? `<br/>${esc(b.email)}` : ""}${b.tin ? `<br/>TIN ${esc(b.tin)}` : ""}</div>
       </div>
       <div class="doc">
         <span class="tag">WAYBILL</span>
@@ -434,7 +435,7 @@ export function buildReceiptHtml(sale: any, brandIn?: Partial<Brand>): string {
     <div class="head">
       ${logoTag(brand, 46)}
       <div class="biz">${esc(b.name)}</div>
-      <div class="meta">${esc(b.address)}${b.phone ? `<br/>${esc(b.phone)}` : ""}${b.tin ? `<br/>TIN ${esc(b.tin)}` : ""}</div>
+      <div class="meta">${esc(b.address)}${b.phone ? `<br/>${esc(b.phone)}` : ""}${b.email ? `<br/>${esc(b.email)}` : ""}${b.tin ? `<br/>TIN ${esc(b.tin)}` : ""}</div>
       <div class="tag">SALES RECEIPT</div>
     </div>
     <div class="meta" style="margin-top:10px">

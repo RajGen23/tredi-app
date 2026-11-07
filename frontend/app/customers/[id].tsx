@@ -32,7 +32,7 @@ export default function CustomerProfile() {
     { label: "Sale", icon: "flash-outline", green: true, onPress: () => router.push("/quick-sale"), testID: "customer-shortcut-sale" },
     { label: "Invoice", icon: "receipt-outline", onPress: () => router.push({ pathname: "/invoices/new", params: { customer_id: id } }), testID: "customer-shortcut-invoice" },
     { label: "Payment in", icon: "arrow-down", onPress: () => router.push({ pathname: "/payments/new", params: { customer_id: id } }), testID: "customer-shortcut-payment-in" },
-    { label: "Payment out", icon: "arrow-up", onPress: () => {}, testID: "customer-shortcut-payment-out" },
+    { label: "Payment out", icon: "arrow-up", onPress: () => router.push({ pathname: "/payments/out", params: { customer_id: id } }), testID: "customer-shortcut-payment-out" },
   ];
 
   return (
@@ -93,10 +93,10 @@ export default function CustomerProfile() {
             <Li testID="customer-ledger-link" onPress={() => router.push(`/customers/ledger/${id}`)}>
               <Av icon="receipt-outline" tone="sq" /><View style={{ flex: 1 }}><H4>Ledger & statement</H4><Sub>{c.invoices.length} sales on record</Sub></View><Ionicons name="chevron-forward" size={16} color={colors.ink40} />
             </Li>
-            <Li testID="customer-items-link">
+            <Li testID="customer-items-link" onPress={() => router.push(`/customers/items/${id}`)}>
               <Av icon="swap-horizontal-outline" tone="sq" /><View style={{ flex: 1 }}><H4>Items supplied to this customer</H4><Sub>Distribution history</Sub></View><Ionicons name="chevron-forward" size={16} color={colors.ink40} />
             </Li>
-            <Li last testID="customer-pricing-link">
+            <Li last testID="customer-pricing-link" onPress={() => router.push(`/customers/pricing/${id}`)}>
               <Av icon="pricetag-outline" tone="sq" /><View style={{ flex: 1 }}><H4>Special pricing</H4><Sub>Prices below retail for this customer</Sub></View><Ionicons name="chevron-forward" size={16} color={colors.ink40} />
             </Li>
           </Card>

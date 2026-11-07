@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
-import { AppBar, Av, Badge, Card, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
+import { AppBar, Av, Badge, Card, Empty, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub, Tag } from "@/src/components/ui";
 import { AddAccountSheet } from "@/src/components/account-form";
 import { money, shortDate } from "@/src/format";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -30,6 +30,17 @@ export default function Accounts() {
   const [add, setAdd] = useState(false);
   // One sheet does both jobs: a blank form adds, a row's pencil edits.
   const [editing, setEditing] = useState<any>(null);
+
+  if (d?.restricted) {
+    return (
+      <View style={[s.root, { paddingTop: insets.top }]} testID="accounts-restricted">
+        <AppBar title="Accounts" back />
+        <View style={{ padding: 14 }}>
+          <Card><Empty icon="lock-closed-outline" title="Only the owner can see accounts" sub="Ask the owner to switch on Open reports for you." /></Card>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="accounts-screen">

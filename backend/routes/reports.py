@@ -1,13 +1,13 @@
 """Rail 02 (Summary, Cash flow, Product performance) and Rail 07 (Reports, P&L)."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
 from typing import Optional
 
-from deps import (CurrentUser, LIVE_PO, LIVE_QUICK, LIVE_SALE, biz_filter, date_query, db, invoice_paid, invoice_status, line_cost, period_range, rep_clause,
+from deps import (CurrentUser, LIVE_PO, LIVE_QUICK, LIVE_SALE, money_guard, biz_filter, date_query, db, invoice_paid, invoice_status, line_cost, period_range, rep_clause,
                   scoped, shop_qty, shop_scope)
 
-router = APIRouter(prefix="/api/reports")
+router = APIRouter(prefix="/api/reports", dependencies=[Depends(money_guard)])
 
 
 async def item_costs(f: dict) -> dict:
