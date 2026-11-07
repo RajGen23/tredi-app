@@ -20,7 +20,7 @@ export default function Ledger() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { business } = useAuth();
+  const { business, user } = useAuth();
   const toast = useToast();
   const [chip, setChip] = useState<"all" | "sale" | "payment">("all");
   const q = useQuery({ queryKey: ["ledger", id], queryFn: () => api(`/customers/${id}/ledger`) });
@@ -62,9 +62,11 @@ export default function Ledger() {
           <Card style={{ paddingVertical: 4 }}>
             {entries.map((e: any, i: number) => (
               <Li key={e.ref_id + i} testID={`ledger-entry-${i}`}
-                onPress={e.kind === "payment" ? () => router.push({ pathname: "/payments/out", params: { edit: e.ref_id, amount: String(e.amount), account_id: e.account_id ?? "", date: e.date, note: e.note ?? "" } }) : undefined}>
+                onPress={e.kind === "payment" ? () => user?.can_edit_payments
+                  ? router.push({ pathname: "/payments/out", params: { edit: e.ref_id, amount: String(e.amount), account_id: e.account_id ?? "", date: e.date, note: e.note ?? "", amount_editable: e.amount_editable ? "1" : "" } })
+                  : toast.show("Only the owner or an admin can edit payments — ask them to correct it or give you the permission.", undefined, "bad") : undefined}>
                 <View style={{ width: 40 }}><Tag>{shortDate(e.date)}</Tag></View>
-                <View style={{ flex: 1 }}><H4 style={e.kind === "sale" ? { fontFamily: fonts.monoSemibold, fontSize: 12.5 } : undefined}>{e.title}</H4><Sub>{e.sub}</Sub></View>
+                <View style={{ flex: 1 }}><H4 style={e.kind === "sale" ? { fontFamily: fonts.monoSemibold, fontSize: 12.5 } : undefined}>{e.title}</H4><Sub>{e.kind === "payment" && !user?.can_edit_payments ? e.sub.replace(" · tap to correct", "") : e.sub}{e.edited ? " · edited" : ""}</Sub></View>
                 <View style={{ alignItems: "flex-end" }}><Money tone={e.amount > 0 ? "neg" : "pos"}>{e.amount > 0 ? "+ " : "− "}{money(Math.abs(e.amount), { symbol: false })}</Money><Tag>bal {money(e.balance, { symbol: false })}</Tag></View>
               </Li>
             ))}

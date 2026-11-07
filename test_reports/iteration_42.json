@@ -1,0 +1,32 @@
+{
+  "summary": "Line discount fix verified end-to-end at 390x844 as owner@tredi.app. New invoice -> customer Adeola Stores -> 2 inventory items (Adeba Rice 50kg at 62,000 and Alibaba rice at 500). New lines default to the % toggle. Line editor: set % to 7 -> 'Update line — ₦57,660' -> after Update, the inline DISC box shows 7 %, the card shows 62,000 struck through and ₦57,660 (93% of gross), and items-after-discount = ₦58,160 (57,660 + 500). Inline DISC on line 2: typed 10 -> 10 %, line ₦450, After discount ₦58,110. Value kept after blur, and reopening the editor shows 7. Review: gross 62,500, discount -4,390, subtotal 58,110, VAT 4,358, total 62,468. Saved as draft. The detail page shows the line discounts (-4,340 and -50) and total 62,468. Reopening with /invoices/new?edit=<id> shows the DISC boxes at 7 % and 10 % and After discount ₦58,110. The draft was deleted through the UI (invoice-kill -> kill-confirm) and the API then returned 404. setup-business: checked in the source only (demo useState(false) bound to Switch testID biz-demo-data). The screen was not opened because the owner account already has a business.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Invoice detail delete-draft", "issue": "Deleting a draft calls router.back(). If the invoice was opened by deep link (no history), the user stays on the page of the invoice that was just deleted. Use router.replace('/sales') or a similar fallback when router.canGoBack() is false. Reference: /app/frontend/app/invoices/[id].tsx:74", "testID": "kill-confirm", "priority": "LOW"},
+      {"component": "Edit invoice line cards", "issue": "In edit mode (?edit=<id>) the item cards lose the stock tags ('1499 in stock' / 'Only 0 in stock' amber warning) because stock and track are not filled in from the items list when the lines load. Reference: /app/frontend/app/invoices/new.tsx:157", "testID": "invoice-line-*", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Invoice detail (draft)", "issues": ["Two 'Confirm & issue' buttons are visible together: one inside the draft card and one next to 'Record payment'. Remove one."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [".screenshots/after_update.png", ".screenshots/after_inline.png", ".screenshots/review.png", ".screenshots/detail.png", ".screenshots/edit_reopen.png"],
+  "action_items": [
+    "Optional: after deleting a draft, fall back to router.replace when there is no back history",
+    "Optional: restore stock/track on lines when editing an existing invoice",
+    "Optional: remove the duplicate 'Confirm & issue' button on the draft detail page"
+  ],
+  "critical_code_review_comments": [
+    "LineDiscount is now controlled by line.discount_value, uses a draft only while focused, and clears it on blur. This is correct.",
+    "addItem and QuickAdd default discount_type to 'percent'. Loading an existing invoice still falls back to 'amount' when the type is missing (lines 157 and 171). That is fine for old data.",
+    "new.tsx is 784 lines, over the 700-line guideline. Consider moving LineDiscount, LineEditor and QuickAdd into their own component files."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100% (requested discount flow)"},
+  "seed_data_creation": "One draft invoice for Adeola Stores (id 6aeed8cb887bfdf27ae63296) was created and then deleted through the UI. Confirmed 404.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login form uses testIDs sign-in-email, sign-in-password and sign-in-submit (tap onboarding-skip first). API login is form-encoded: POST /api/auth/login with username and password, which returns access_token. Line testIDs: invoice-line-edit-<key>, line-disc-<key>, line-disc-type-<key>. Editor testIDs: line-disc-type (Seg with ₦/%), line-disc-value, line-update. Delete a draft with invoice-kill then kill-confirm."
+}

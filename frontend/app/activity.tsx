@@ -72,7 +72,7 @@ export default function Activity() {
                 <View style={{ flex: 1 }}>
                   <Tag>{(r.shop || "Head office")} · {r.by || "—"}</Tag>
                   <Row between><H4 style={{ flex: 1 }}>{r.title}</H4>{r.amount ? <Money tone={r.amount < 0 ? "neg" : undefined}>{money(r.amount)}</Money> : null}</Row>
-                  <Sub>{dayjs(r.created_at).format("DD/MM/YYYY, HH:mm")}{r.reason ? ` · ${r.reason}` : r.sub ? ` · ${r.sub}` : ""}</Sub>
+                  <Sub>{dayjs(r.created_at).format("DD/MM/YYYY, HH:mm")}{r.sub ? ` · ${r.sub}` : ""}{r.reason ? ` · ${r.reason}` : ""}</Sub>
                 </View>
                 {r.route ? <Ionicons name="chevron-forward" size={15} color={colors.ink40} style={{ marginTop: 10 }} /> : null}
               </Li>

@@ -32,7 +32,7 @@ export default function SetupBusiness() {
   const [shop, setShop] = useState("Main branch");
   const [cur, setCur] = useState("NGN");
   const [track, setTrack] = useState(true);
-  const [demo, setDemo] = useState(true);
+  const [demo, setDemo] = useState(false);
 
   const m = useMutation({
     mutationFn: async () => {
@@ -73,7 +73,7 @@ export default function SetupBusiness() {
             <Switch testID="biz-track-stock" on={track} onChange={setTrack} />
           </Card>
           <Card style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <View style={{ flex: 1 }}><H4>Start with sample data</H4><Sub>A few customers, items and invoices to explore. You can delete them later.</Sub></View>
+            <View style={{ flex: 1 }}><H4>Start with sample data</H4><Sub>Off for real businesses. Turn on only to explore with made-up customers, items and invoices.</Sub></View>
             <Switch testID="biz-demo-data" on={demo} onChange={setDemo} />
           </Card>
         </View>

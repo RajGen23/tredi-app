@@ -200,7 +200,7 @@ export default function NewInvoice() {
     setLines((ls) => {
       const ex = ls.find((l) => l.item_id === it.id);
       if (ex) return ls.map((l) => (l.item_id === it.id ? { ...l, quantity: l.quantity + 1 } : l));
-      return [...ls, { key: `${it.id}-${Date.now()}`, item_id: it.id, name: it.name, quantity: 1, unit_price: price, discount_type: "amount", discount_value: 0, note: "", quick_add: false, unit: it.unit, photo_url: it.photo_url ?? "", stock: it.quantity, track: it.track_stock }];
+      return [...ls, { key: `${it.id}-${Date.now()}`, item_id: it.id, name: it.name, quantity: 1, unit_price: price, discount_type: "percent", discount_value: 0, note: "", quick_add: false, unit: it.unit, photo_url: it.photo_url ?? "", stock: it.quantity, track: it.track_stock }];
     });
     setPick(false);
     setAddOpen(false);
@@ -607,16 +607,20 @@ export default function NewInvoice() {
 /** The small discount box inside an item card: type an amount, or switch to %. */
 function LineDiscount({ line, onChange }: { line: Line; onChange: (patch: Partial<Line>) => void }) {
   const { colors } = useTheme();
-  const [draft, setDraft] = useState(line.discount_value ? String(line.discount_value) : "");
-  const on = parseNum(draft) > 0;
+  // follows the line (so a discount set in the full line editor shows here too);
+  // only while typing does the box hold its own text
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? (line.discount_value ? String(line.discount_value) : "");
+  const on = line.discount_value > 0;
   return (
     <Row style={{ gap: 4 }}>
       <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 8, borderColor: on ? colors.brandPrimary : colors.border, backgroundColor: on ? colors.brandTertiary : colors.surfaceSecondary, paddingLeft: 7 }}>
         <Text style={{ fontFamily: fonts.bold, fontSize: 9, letterSpacing: 0.6, color: colors.ink40 }}>DISC</Text>
         <TextInput
           testID={`line-disc-${line.key}`}
-          value={draft}
+          value={shown}
           onChangeText={(v) => { setDraft(v); onChange({ discount_value: parseNum(v) }); }}
+          onBlur={() => setDraft(null)}
           keyboardType="decimal-pad"
           placeholder="0"
           placeholderTextColor={colors.ink40}
@@ -685,7 +689,7 @@ function QuickAdd({ visible, onClose, onAdd }: { visible: boolean; onClose: () =
       item_id = it.id;
       qc.invalidateQueries({ queryKey: ["items"] });
     }
-    onAdd({ key: `q-${Date.now()}`, item_id, name, quantity: parseNum(qty) || 1, unit_price: parseNum(price), discount_type: "amount", discount_value: 0, note, quick_add: true, unit, track: false });
+    onAdd({ key: `q-${Date.now()}`, item_id, name, quantity: parseNum(qty) || 1, unit_price: parseNum(price), discount_type: "percent", discount_value: 0, note, quick_add: true, unit, track: false });
     setName(""); setPrice(""); setQty("1"); setNote("");
   };
   return (

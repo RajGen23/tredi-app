@@ -13,7 +13,7 @@ import re
 import secrets
 
 import mailer
-from deps import (VAT_RATE, can_see_money, doc_business, money_guard, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
+from deps import (VAT_RATE, can_edit_payments, can_see_money, doc_business, money_guard, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
                   db, decorate_invoice, decorate_invoices, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_cost, line_totals, log_activity, stamp_costs, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, admin_customers, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, support, users_roles
@@ -401,7 +401,8 @@ async def customer_ledger(cid: str, user: Annotated[dict, Depends(current_user)]
         acc = await db.accounts.find_one({"_id": ObjectId(p["account_id"])}) if p.get("account_id") and ObjectId.is_valid(p["account_id"]) else None
         entries.append({"date": p["created_at"], "title": "Payment out" if p["amount"] < 0 else "Payment received",
                         "sub": f"{acc['name'] if acc else 'Cash'} · tap to correct", "amount": -p["amount"], "kind": "payment", "ref_id": str(p["_id"]),
-                        "account_id": p.get("account_id"), "note": p.get("note", "")})
+                        "account_id": p.get("account_id"), "note": p.get("note", ""),
+                        "amount_editable": p.get("method") in EDITABLE_AMOUNT, "edited": bool(p.get("history"))})
     entries.sort(key=lambda e: e["date"])
     bal = opening
     for e in entries:
@@ -1236,33 +1237,83 @@ async def delete_payment(pid: str, reason: str, user: Annotated[dict, Depends(cu
 
 
 class PaymentFixIn(BaseModel):
+    amount: Optional[float] = None
     account_id: Optional[str] = None
     date: Optional[str] = None
     note: Optional[str] = None
+    reason: str = ""
+
+
+EDITABLE_AMOUNT = ("payment_in", "payment_out")
 
 
 @api.put("/payments/{pid}")
 async def fix_payment(pid: str, data: PaymentFixIn, user: Annotated[dict, Depends(current_user)]):
-    """Correct where a payment landed or the day it came in. The amount and the
-    invoices it settles stay as they were."""
+    """Correct a recorded payment: the account it landed in, the day it came in,
+    and (for payments taken on their own) the amount. Owners and managers only,
+    unless the owner ticked "Edit past payments" for someone. Every change keeps
+    the old values on the payment and in Activity."""
+    if not can_edit_payments(user):
+        raise HTTPException(403, "Only the owner or an admin can change a recorded payment")
     f = biz_filter(user)
     p = await db.payments.find_one({"_id": oid(pid), **f, "deleted_at": None})
     if not p:
         raise HTTPException(404, "Payment not found")
     patch = {"updated_by": user.get("name", ""), "updated_at": now()}
-    acc = None
-    if "account_id" in data.model_fields_set:
+    changes, before = [], {}
+    acc_name = lambda a: a["name"] if a else "Cash"
+    old_acc = await db.accounts.find_one({"_id": ObjectId(p["account_id"])}) if p.get("account_id") and ObjectId.is_valid(p["account_id"]) else None
+    if "account_id" in data.model_fields_set and (data.account_id or None) != p.get("account_id"):
+        if p.get("method") == "credit":
+            raise HTTPException(400, "This is the customer's unused credit applied to an invoice — no money came into an account")
+        acc = None
         if data.account_id:
             acc = await db.accounts.find_one({"_id": oid(data.account_id), **f})
             if not acc:
                 raise HTTPException(400, "That account doesn't belong to this business")
         patch["account_id"] = data.account_id or None
+        before["account_id"] = p.get("account_id")
+        changes.append(f"account {acc_name(old_acc)} → {acc_name(acc)}")
     if data.date:
-        patch["created_at"] = _issued_at(data.date)
-    if data.note is not None:
+        try:
+            date.fromisoformat(data.date[:10])
+        except ValueError:
+            raise HTTPException(400, "That date isn't valid — use YYYY-MM-DD")
+        new_dt = _issued_at(data.date)
+        if new_dt.date() != p["created_at"].date():
+            patch["created_at"] = new_dt
+            before["date"] = p["created_at"]
+            changes.append(f"date {p['created_at']:%d %b %Y} → {new_dt:%d %b %Y}")
+    if data.amount is not None:
+        sign = -1 if p["amount"] < 0 else 1
+        new_amt = round(abs(data.amount), 2) * sign
+        if new_amt != p["amount"]:
+            if p.get("method") not in EDITABLE_AMOUNT:
+                raise HTTPException(400, "This payment came with the sale — change the sale itself to change the amount")
+            if abs(new_amt) <= 0:
+                raise HTTPException(400, "Amount must be greater than zero — delete the payment instead")
+            patch["amount"] = new_amt
+            before["amount"] = p["amount"]
+            changes.append(f"amount {abs(p['amount']):,.2f} → {abs(new_amt):,.2f}")
+            # never settle more on invoices than the payment now carries — trim the newest allocations first
+            room, allocs = abs(new_amt), []
+            for a in p.get("allocations") or []:
+                take = round(min(a["amount"], room), 2)
+                if take > 0:
+                    allocs.append({**a, "amount": take})
+                room -= take
+            patch["allocations"] = allocs
+    if data.note is not None and data.note != p.get("note", ""):
         patch["note"] = data.note
-    await db.payments.update_one({"_id": p["_id"]}, {"$set": patch})
-    await log_activity(f["business_id"], user, "payment", "Payment corrected", f"Now in {acc['name']}" if acc else "", p["amount"], pid, p.get("shop", ""))
+        before["note"] = p.get("note", "")
+        changes.append("note")
+    if not changes:
+        return clean(p)
+    entry = {"at": now(), "by": user.get("name", ""), "by_id": str(user["_id"]), "before": before, "changes": changes, "reason": data.reason}
+    await db.payments.update_one({"_id": p["_id"]}, {"$set": patch, "$push": {"history": entry}})
+    cust = await db.customers.find_one({"_id": oid(p["customer_id"])}) if p.get("customer_id") and ObjectId.is_valid(p["customer_id"]) else None
+    title = f"Payment edited — {cust['name']}" if cust else "Payment edited"
+    await log_activity(f["business_id"], user, "payment", title, "; ".join(changes), patch.get("amount", p["amount"]), pid, p.get("shop", ""), data.reason)
     return clean(await db.payments.find_one({"_id": p["_id"]}))
 
 

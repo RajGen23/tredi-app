@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
+import { useAuth } from "@/src/auth";
 import { AppBar, Av, Badge, Btn, Card, Divider, Field, H4, IconBtn, Li, Lbl, Loading, Money, Prog, Row, Sub, Switch, Tag } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
 import { initials, money, shortDate, statusLabel } from "@/src/format";
@@ -30,6 +31,7 @@ export default function InvoiceDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const toast = useToast();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [repeat, setRepeat] = useState(false);
   const [usePrices, setUsePrices] = useState(true);
@@ -71,7 +73,7 @@ export default function InvoiceDetail() {
       setKillOpen(false);
       setReason("");
       toast.show(r.message, r.mode === "deleted" ? "Deleted." : "Cancelled.");
-      if (r.mode === "deleted") router.back();
+      if (r.mode === "deleted") { if (router.canGoBack()) router.back(); else router.replace("/(tabs)/sales"); }
     },
     onError: (e: any) => toast.show(e.message),
   });
@@ -165,14 +167,7 @@ export default function InvoiceDetail() {
             </Card>
           ) : null}
 
-          {cancelled ? null : draft ? (
-            // The till is not open on a draft, but saying so beats hiding the button.
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}>
-              <Btn small variant="ghost" label="Record payment" style={{ flex: 1 }} testID="invoice-record-payment"
-                onPress={() => toast.show("Confirm and issue it first — a draft has not been sold yet", "Still a draft")} />
-              <Btn small variant="deep" label="Confirm & issue" style={{ flex: 1 }} testID="invoice-issue-shortcut" onPress={() => setIssueOpen(true)} />
-            </View>
-          ) : (
+          {cancelled ? null : draft ? null : (
             <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}>
               <Btn small variant="ghost" label={inv.due > 0 ? "Record payment" : "Record another payment"} style={{ flex: 1 }} testID="invoice-record-payment"
                 onPress={() => router.push({ pathname: "/payments/new", params: { customer_id: inv.customer_id, invoice_id: inv.id } })} />
@@ -245,6 +240,27 @@ export default function InvoiceDetail() {
               <Ionicons name="chevron-forward" size={16} color={colors.ink40} />
             </Li>
           </Card>
+
+          {inv.payments.length ? (
+            <>
+              <Lbl style={{ marginTop: 14 }}>Payments on this invoice</Lbl>
+              <Card style={{ paddingVertical: 4 }}>
+                {inv.payments.map((pm: any, i: number) => (
+                  <Li key={pm.id} last={i === inv.payments.length - 1} testID={`invoice-payment-${i}`}
+                    onPress={() => user?.can_edit_payments
+                      ? router.push({ pathname: "/payments/out", params: { edit: pm.id, amount: String(pm.amount), account_id: pm.account_id ?? "", date: pm.created_at, note: pm.note ?? "", amount_editable: ["payment_in", "payment_out"].includes(pm.method) ? "1" : "" } })
+                      : toast.show("Only the owner or an admin can edit payments — ask them to correct it or give you the permission.", undefined, "bad")}>
+                    <Av icon="cash-outline" tone="sq" />
+                    <View style={{ flex: 1 }}>
+                      <H4>{shortDate(pm.created_at)} · {pm.note || "Payment"}</H4>
+                      <Sub>{pm.created_by || "—"}{pm.history?.length ? " · edited" : ""}{user?.can_edit_payments ? " · tap to edit" : ""}</Sub>
+                    </View>
+                    <Money tone="pos">{money(Math.abs(pm.amount))}</Money>
+                  </Li>
+                ))}
+              </Card>
+            </>
+          ) : null}
 
           {!cancelled ? (
             <Btn variant="ghost" small label={draft ? "Delete this draft" : "Cancel this invoice"} style={{ marginTop: 12, borderColor: colors.coral }}

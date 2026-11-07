@@ -663,3 +663,11 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
   - Addresses have no email field.
   - Blocked screens opened by staff spin instead of showing a "restricted" message.
   - server.py is about 1,900 lines and should be split.
+- Discount fix: the inline LineDiscount box is now controlled by line.discount_value, so a discount set in the line editor shows on the card. New and quick-add lines default to %. Tested in iteration 42.
+- The setup-business "Start with sample data" switch is now OFF by default (sample data is not tagged, so there is no one-tap removal yet).
+- The duplicate "Confirm & issue" button on draft invoices is removed. Deleting a draft opened from a link now falls back to the Sales tab.
+
+## Payment editing (June 2026)
+- PUT /api/payments/{id}: owner/manager (or anyone granted the "edit_payments" ability) can change amount (standalone payments in/out only), account, date, note + optional reason.
+- Every edit pushes old values to payment.history and logs "Payment edited — <customer>" in Activity. Invalid dates → 400; credit-applied entries can't be moved to an account.
+- UI: tap a payment in customer ledger or invoice detail "Payments on this invoice" → Correct payment screen. Others see a permission message.

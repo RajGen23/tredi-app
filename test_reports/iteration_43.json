@@ -1,0 +1,42 @@
+{
+  "summary": "Tested payment editing end to end in the owner@tredi.app demo business. Backend: all 11 pytest cases pass. Covered PUT /api/payments/{id} changing account, date, amount and note with a reason; the history[] entry with before values and the changes list; the 'Payment edited — <customer>' activity row; allocations trimmed when the amount drops, and the ledger and invoice due following the new amount; amount edits locked (400) on cash-sale payments while account and date edits still work; payment_out amount edits; 0 amount and foreign account rejected (400); sales user gets 403, then 200 once the owner grants edit_payments (reverted afterwards); /auth/me can_edit_payments flags; the team ability label. Frontend at 375x667: ledger payment row opens 'Correct payment' with editable Amount, account picker, Date, Note and 'Why the change'; Save correction persists and the row shows ' · edited'. The invoice 'Payments on this invoice' card opens the edit screen for the owner. For amina (sales), tapping a payment in the invoice or the ledger shows the 'Only the owner or an admin can edit payments' toast. Found 1 medium backend bug (an invalid date silently moves the payment to today) and 3 minor UI issues.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/payments/{id}", "issue": "An invalid date (e.g. 'not-a-date') does not return 400. _issued_at() falls back to now(), so the payment date is silently moved to today and logged as 'date 10 Jan 2026 → 07 Nov 2026'. Reproduced. Validate the date and return 400 in fix_payment (server.py ~1272)."},
+      {"endpoint": "PUT /api/payments/{id}", "issue": "Account changes are allowed on method='credit' payments ('Unused credit applied', account_id None). Moving one into a real account makes money appear in that account that was never received. Consider blocking account changes for method 'credit'."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Activity list", "issue": "When a reason is given, activity.tsx:75 shows the reason instead of the changes text, so 'account Zenith — 8842 → Mobile money; amount 600.00 → 450.00' never appears in the Activity list. Only note-only edits show what changed. Show both (sub · reason).", "testID": "n/a", "priority": "MEDIUM"},
+      {"component": "Permission-denied toast (ledger + invoice payment rows)", "issue": "toast.show(msg, accent) puts 'Ask them to correct it, or to give you the permission.' as a bold green prefix with a green success checkmark. It reads backwards and looks like success. Use tone 'bad' and a short accent, or no accent.", "testID": "toast", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Customer ledger", "issues": ["Edited payment row reads 'Mobile money · tap to correct · edited'. Put 'edited' before the hint.", "A credit (negative) running balance shows as 'bal 600' with no minus or CR marker. Pre-existing."]},
+      {"screen": "payments/out (Correct payment)", "issues": ["The date is always sent and prefilled with dayjs(p.date) in local time. For users outside UTC, a payment stored near midnight UTC can change date on save even if the user never touches the Date field. Send date only when it was changed."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter43_payment_edit.py", "/app/backend/tests/ui_seed_iter43.py", "/app/test_reports/pytest/pytest_iter43.xml"],
+  "action_items": [
+    "fix_payment: return 400 for an unparseable date instead of silently using today (server.py _issued_at fallback).",
+    "activity.tsx:75: show r.sub (the changes) together with r.reason for 'Payment edited' rows.",
+    "Permission-denied toast in customers/ledger/[id].tsx and invoices/[id].tsx: use tone 'bad'; fix the msg/accent order.",
+    "payments/out.tsx: send date only if the user changed it (avoids timezone date drift).",
+    "Optional: block account changes on method='credit' payments."
+  ],
+  "critical_code_review_comments": [
+    "can_edit_payments: owner always allowed; manager allowed by default; others need can.edit_payments. Matches the requirement.",
+    "Allocation trimming keeps the earliest allocations and trims later ones. The code comment says 'newest first' but the behaviour is oldest-kept. Fine, but the comment is misleading.",
+    "Run the pytest file with -n 0: the module fixture shares state across classes and breaks under xdist."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter43_payment_edit.py (new)", "/app/backend/tests/ui_seed_iter43.py (new)"],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% of requested flows work; 3 minor UX issues"},
+  "seed_data_creation": "Created TEST_ customers, invoices and payments in the owner demo business (some as amina). All deleted by id afterwards. Invoice numbers INV-1309 and INV-1310 were used up. Amina's edit_payments was granted and then reverted to false. The revert stored her full sales 'can' map, which equals the role default. Two 'Permissions updated' activity rows remain from the grant and revert.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Server clock is Nov 2026. Run tests with EXPO_PUBLIC_BACKEND_URL exported, using pytest -n 0. On the ledger, entry-0 may be the invoice: sorting is by date, newest first.",
+  "rca_of_issue": "Invalid date: fix_payment calls _issued_at(data.date), which catches ValueError and returns now(); fix_payment then sees a different date and records it as a change."
+}

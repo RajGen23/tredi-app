@@ -209,6 +209,13 @@ def can_see_money(u: dict) -> bool:
     return bool((u.get("can") or {}).get("reports"))
 
 
+def can_edit_payments(u: dict) -> bool:
+    """Changing a recorded payment (amount, account, date): owners and managers,
+    or anyone the owner ticked "Edit past payments" for."""
+    role = u.get("role", "owner")
+    return role == "owner" or bool((u.get("can") or {}).get("edit_payments", role == "manager"))
+
+
 async def money_guard(user: dict = Depends(current_user)) -> dict:
     """Route dependency: staff without "Open reports" get a 403 on money screens."""
     if not can_see_money(user):
@@ -220,7 +227,7 @@ def public_user(u: dict) -> dict:
     return {"id": str(u["_id"]), "name": u.get("name", ""), "email": u["email"],
             "business_id": str(u["business_id"]) if u.get("business_id") else None,
             "role": u.get("role", "owner"), "scope": u.get("scope", "all"), "shop": u.get("shop", ""),
-            "can_see_money": can_see_money(u)}
+            "can_see_money": can_see_money(u), "can_edit_payments": can_edit_payments(u)}
 
 
 def biz_filter(user: dict) -> dict:

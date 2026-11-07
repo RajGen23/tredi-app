@@ -19,8 +19,9 @@ import { useBottomPad } from "@/src/safe";
 import { useTheme } from "@/src/theme";
 
 export default function PaymentOut() {
-  const p = useLocalSearchParams<{ customer_id?: string; edit?: string; amount?: string; account_id?: string; date?: string; note?: string }>();
+  const p = useLocalSearchParams<{ customer_id?: string; edit?: string; amount?: string; account_id?: string; date?: string; note?: string; amount_editable?: string }>();
   const editing = !!p.edit;
+  const amountEditable = !!p.amount_editable;
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const pad = useBottomPad();
@@ -28,19 +29,21 @@ export default function PaymentOut() {
   const qc = useQueryClient();
   const toast = useToast();
   const accountsQ = useQuery({ queryKey: ["accounts"], queryFn: () => api<any>("/accounts") });
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(p.edit ? String(Math.abs(parseNum(p.amount ?? "0"))) : "");
+  const [reason, setReason] = useState("");
   const [accountId, setAccountId] = useState<string | null>(p.account_id || null);
-  const [date, setDate] = useState(p.date ? dayjs(p.date).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD"));
+  const initialDate = p.date ? dayjs(p.date).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD");
+  const [date, setDate] = useState(initialDate);
   const [note, setNote] = useState(p.note ?? "");
   const accounts = (accountsQ.data?.accounts ?? []).filter((a: any) => !a.dormant || a.id === accountId);
   useEffect(() => { if (!accountId && !editing && accounts[0]) setAccountId(accounts[0].id); }, [accounts, accountId, editing]);
 
   const save = useMutation({
     mutationFn: () => editing
-      ? api(`/payments/${p.edit}`, { method: "PUT", json: { account_id: accountId, date, note } })
+      ? api(`/payments/${p.edit}`, { method: "PUT", json: { account_id: accountId, note, reason, ...(date !== initialDate ? { date } : {}), ...(amountEditable ? { amount: parseNum(amount) } : {}) } })
       : api(`/customers/${p.customer_id}/payment-out`, { method: "POST", json: { amount: parseNum(amount), account_id: accountId, date, note } }),
     onSuccess: () => {
-      ["customers", "customer", "customer-summary", "invoices", "invoice", "accounts", "account", "ledger", "dashboard", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      ["customers", "customer", "customer-summary", "invoices", "invoice", "accounts", "account", "ledger", "dashboard", "activity", "history"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       toast.show(editing ? "Payment corrected" : `${money(parseNum(amount))} paid out`, "Saved.");
       router.back();
     },
@@ -51,17 +54,19 @@ export default function PaymentOut() {
     <View style={{ flex: 1, backgroundColor: colors.surfaceSecondary, paddingTop: insets.top }} testID="payment-out-screen">
       <AppBar title={editing ? "Correct payment" : "Payment out"} close />
       <KeyboardAwareScrollView contentContainerStyle={{ padding: 14, gap: 10, paddingBottom: pad + 80 }} keyboardShouldPersistTaps="handled">
-        {editing ? <Sub>Amount {money(Math.abs(parseNum(p.amount ?? "0")))} stays the same — fix where it landed or the day it came in.</Sub> : (
-          <Field label="Amount paid back" keyboardType="decimal-pad" mono value={amount} onChangeText={setAmount} placeholder="0" testID="payment-out-amount" />
+        {editing && !amountEditable ? <Sub>Amount {money(Math.abs(parseNum(p.amount ?? "0")))} came with the sale — change the sale to change it. You can fix where it landed or the day it came in.</Sub> : (
+          <Field label={editing ? "Amount" : "Amount paid back"} keyboardType="decimal-pad" mono value={amount} onChangeText={setAmount} placeholder="0" testID="payment-out-amount" />
         )}
         <PickerField label={editing ? "Account it was paid into" : "Paid from which account"} value={accountId}
           options={accounts.map((a: any) => ({ key: a.id, label: a.name, sub: a.detail || a.kind }))} onPick={setAccountId}
           title="Which account?" placeholder="Cash till" testID="payment-out-account" />
         <DateField label="Date" value={date} onChange={setDate} testID="payment-out-date" />
         <Field label="Note — optional" value={note} onChangeText={setNote} placeholder={editing ? "" : "Refund of overpayment"} testID="payment-out-note" />
+        {editing ? <Field label="Why the change — optional" value={reason} onChangeText={setReason} placeholder="Paid into the wrong account" testID="payment-edit-reason" /> : null}
+        {editing ? <Sub>The old values are kept and the change shows in Activity.</Sub> : null}
       </KeyboardAwareScrollView>
       <View style={{ position: "absolute", left: 14, right: 14, bottom: pad }}>
-        <Btn label={editing ? "Save correction" : "Record payment out"} disabled={!editing && parseNum(amount) <= 0} loading={save.isPending}
+        <Btn label={editing ? "Save correction" : "Record payment out"} disabled={(!editing || amountEditable) && parseNum(amount) <= 0} loading={save.isPending}
           onPress={() => save.mutate()} testID="payment-out-save" />
       </View>
     </View>
