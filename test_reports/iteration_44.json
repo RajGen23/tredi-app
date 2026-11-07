@@ -1,0 +1,46 @@
+{
+  "summary": "Tested Paystack plan billing end to end: the backend through pytest (18 tests, signed webhooks, real Paystack TEST API) and the frontend /settings/plan through Playwright at 375px. 17 of 18 backend tests pass. Passing: the subscription paystack block, checkout (authorization_url on checkout.paystack.com, TRADA_ reference, 403 for sales, 400 for a bad plan or cadence, unsafe return_url dropped), choose returning 402, verify on an unpaid ref (paid:false) and on another business's ref (404), cancel returning 409, callback (302 to return_url?paystack=ref, or HTML), webhook signature checks (401), amount mismatch not activating, a first charge activating once with replay ignored, a renewal extending renews_at once per reference, a renewal with a wrong plan_code ignored, and subscription.create/disable flipping auto_renew. Frontend: the buttons read 'Pay & activate <Plan>', the bottom note mentions Paystack and Test mode, tapping a plan opens a checkout.paystack.com popup, and /settings/plan?paystack=<unpaid ref> shows the 'Payment not completed' toast. CRITICAL BUG (reproduced in both backend and UI): on web the app calls verify about 1.3s after the popup opens, while the user is still on the Paystack page. Paystack answers 'abandoned', the backend stores that as a final status, and when the user then pays, neither the callback nor the webhook turns the plan on. The card is charged but the plan stays off.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/subscription/verify + POST /api/paystack/webhook + GET /api/paystack/callback (_apply_first, billing.py:233-240, 281)", "issue": "Paystack's 'abandoned' (and often 'failed') status means 'started but not paid yet', not a final state. _apply_first sets txn.status='abandoned' or 'failed', and from then on the claim (find_one_and_update with status 'pending') never matches. A later charge.success webhook or callback returns {paid:true, already:true} without activating the plan. Reproduced: checkout, then verify (abandoned), then a signed charge.success with the correct amount, and the plan stayed unchanged (test_abandoned_then_paid_webhook_activates). Money is taken but no plan is activated, and verify shows a misleading 'Payment received' toast.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/paystack/webhook (renewal branch, billing.py:309-310)", "issue": "If charge.success has no data.plan, the code falls back to biz.paystack_plan_code, so any one-off charge to that customer counts as a renewal. The renewal amount is also never compared with the plan price (only amount>0)."},
+      {"endpoint": "POST /api/paystack/webhook", "issue": "A body with a valid signature but invalid JSON causes json.loads to raise a 500. Wrap it in try/except and return 400."},
+      {"endpoint": "_apply_first / activate_plan(extend=False)", "issue": "Switching plan through Paystack starts the new period today. Days already paid on the old plan are lost and there is no proration. This is a business decision, flagged for awareness."},
+      {"endpoint": "env", "issue": "PAYSTACK_SECRET_KEY is NOT in /app/backend/.env (only in the process env, set somewhere else). The review request says it is in backend/.env. Confirm it will be present after a restart or deploy."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Pay & activate (web) -> WebBrowser.openAuthSessionAsync", "issue": "checkout.paystack.com sends Cross-Origin-Opener-Policy: same-origin, which cuts the link from the popup back to the app. To expo-web-browser the popup then looks closed (popup.closed===true), so it returns DISMISS within about 1s. pay.onSuccess then calls verify while the user is still on the Paystack page, which marks the txn abandoned (see backend critical). Observed: VERIFY at +1.3s with the popup still open. The 'Payment not completed' toast also appears straight away, before the user has had a chance to pay.", "affected_testIDs": ["plan-choose-starter", "plan-choose-premium", "plan-choose-enterprise"]},
+      {"flow": "Popup blocking on mobile Safari / web", "issue": "window.open runs after `await api('/subscription/checkout')`, outside the synchronous user gesture. Mobile Safari will block the popup with ERR_WEB_BROWSER_BLOCKED. Chromium allowed it in testing."}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter44_paystack_billing.py", "/app/test_reports/pytest/pytest_iter44.xml"],
+  "action_items": [
+    "Backend: treat 'abandoned'/'failed'/'ongoing' as non-final. Leave the txn 'pending' (or let the claim accept status in ['pending','abandoned','failed']) so that a later charge.success (webhook, callback or verify) with the matching amount still activates the plan once. Only 'reversed' should be final.",
+    "Backend: in paystack_verify, when the txn is not 'paid' and Paystack says success, it must activate. It must not return already:true without activating.",
+    "Frontend web: do not depend on openAuthSessionAsync's dismiss result. Options: on web, open the checkout with window.location.assign(authorization_url) in the same tab (the callback already redirects back to /settings/plan?paystack=ref, and that triggers verify). Or open a blank window synchronously on tap and set its location after checkout returns. Or poll verify instead of calling it once on dismiss.",
+    "Renewal webhook: require data.plan.plan_code to be present and equal to biz.paystack_plan_code, and check the amount against the expected price.",
+    "Wrap json.loads in the webhook so a malformed body returns 400, not 500.",
+    "Make sure PAYSTACK_SECRET_KEY is persisted (backend/.env or the deployment secrets). It is not in backend/.env right now.",
+    "Update the stale header comment in plan.tsx ('Card payment is not wired yet')."
+  ],
+  "critical_code_review_comments": [
+    "billing.py:234-235 stores Paystack's transient 'abandoned' status, and the claim at 237 only accepts 'pending'. This is the root cause of a lost activation.",
+    "billing.py:309: the `or biz.get('paystack_plan_code')` fallback makes the plan-code check always true when the payload has no plan.",
+    "plan.tsx:91-95: on web, the openAuthSessionAsync result is unreliable against COOP pages, and verify fires too early.",
+    "Good: HMAC compare_digest, the atomic claim via find_one_and_update, renewal idempotency via upsert $setOnInsert, return_url allow-list (same host or app schemes), and verify scoped to the business."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter44_paystack_billing.py"],
+  "success_rate": {"backend": "94% (17/18)", "frontend": "100% of the requested UI checks pass; the web checkout flow has a critical integration bug"},
+  "seed_data_creation": "None kept. The fixture restored the owner demo business (plan=pro, yearly, 12 months, renews_at=2027-10-14; paystack_* fields unset). All TEST/TRADA_ paystack_txns I created were deleted by reference, and the plan_history/activity rows for those refs were deleted. Two Paystack plan codes were cached in paystack_plans by checkout (starter monthly existed before; premium quarterly was created). They are harmless and were left in place. Activity rows from earlier main-agent runs ('Paid by card · TRADA_494ecf...', 'Renewed by card · RENEW_fake1') are still in the demo business. I did not create them and did not delete them.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: cd /app/backend && EXPO_PUBLIC_BACKEND_URL=<url> python -m pytest tests/test_iter44_paystack_billing.py -n 1 (pytest.ini forces xdist; use -n 1 to keep order). The test reads PAYSTACK_SECRET_KEY from os.env, then .env, then /proc/*/environ. Login is form data (username/password). Owner demo business_id is 6aa7ae17267e782a241b7e6e. test_abandoned_then_paid_webhook_activates is the regression test for the critical bug.",
+  "rca_of_issue": "Reproduction: 1) The owner taps 'Pay & activate Starter' on web. 2) The popup opens checkout.paystack.com. 3) Paystack's COOP: same-origin header makes popup.closed read true, so expo-web-browser returns {type:'dismiss'} after about 1s. 4) The frontend calls /subscription/verify. Paystack answers status 'abandoned', and _apply_first saves txn.status='abandoned'. 5) The user finishes paying. The callback skips it (txn not pending), and the charge.success webhook's claim (status:'pending') fails, so the plan is never activated. Fix: keep non-final statuses claimable, and change the web flow so it does not verify on a false dismiss."
+}

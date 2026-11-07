@@ -1,9 +1,12 @@
 // Plan & billing — what this shop is on, what it is using, and switching plan.
-// Card payment is not wired yet, so picking a plan activates it straight away;
-// the ceilings themselves are enforced by the API on every create.
+// Paid plans are bought by card on Paystack (auto-renewing); without a Paystack
+// key a plan switches on straight away. Ceilings are enforced by the API on every create.
 import { useEffect, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Platform, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
@@ -46,6 +49,7 @@ export default function PlanBilling() {
   const insets = useSafeAreaInsets();
   const pad = useBottomPad();
   const toast = useToast();
+  const params = useLocalSearchParams<{ paystack?: string }>();
   const qc = useQueryClient();
   const [cadence, setCadence] = useState("monthly");
   const [picking, setPicking] = useState("");
@@ -64,6 +68,45 @@ export default function PlanBilling() {
     },
     onError: (e: any) => toast.show(e.message, undefined, "bad"),
     onSettled: () => setPicking(""),
+  });
+
+  const card = !!d?.paystack?.enabled;
+  const refresh = () => ["subscription", "plans", "dashboard", "settings-invoice", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+  const verify = useMutation({
+    mutationFn: (reference: string) => api<any>("/subscription/verify", { method: "POST", json: { reference } }),
+    onSuccess: (r: any) => {
+      refresh();
+      if (r.paid) toast.show(r.message || "Your plan is active", "Payment received");
+      else toast.show("Payment not completed — nothing was charged. Tap the plan to try again.", undefined, "bad");
+    },
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
+  });
+  // Coming back from Paystack in the browser (web, or a deep link on the phone)
+  useEffect(() => { if (params.paystack) verify.mutate(params.paystack); }, [params.paystack]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pay = useMutation({
+    mutationFn: async (plan: string) => {
+      const returnUrl = Linking.createURL("settings/plan");
+      const r = await api<any>("/subscription/checkout", { method: "POST", json: { plan, cadence, return_url: returnUrl } });
+      if (Platform.OS === "web") {
+        // same tab: Paystack's page blocks popups from reporting back, and the callback brings us to ?paystack=<ref>
+        window.location.assign(r.authorization_url);
+        return "";
+      }
+      await WebBrowser.openAuthSessionAsync(r.authorization_url, returnUrl);
+      return r.reference as string;
+    },
+    // on the phone: whether they finished or closed the page, ask Paystack what happened
+    onSuccess: (reference: string) => { if (reference) verify.mutate(reference); },
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
+    onSettled: () => setPicking(""),
+  });
+  const busy = choose.isPending || pay.isPending || verify.isPending;
+
+  const stop = useMutation({
+    mutationFn: () => api<any>("/subscription/cancel", { method: "POST" }),
+    onSuccess: (r: any) => { refresh(); toast.show(r.message, "Auto-renew off"); },
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const status = STATUS[d?.status ?? "active"] ?? STATUS.active;
@@ -102,9 +145,14 @@ export default function PlanBilling() {
                 Your books are safe and readable — pick a plan below and saving starts again at once.
               </Sub>
             ) : null}
+            {d.paystack?.auto_renew ? (
+              <Row between style={{ marginTop: 10 }} testID="plan-auto-renew">
+                <Sub style={{ flex: 1 }}>Auto-renews on {d.paystack.card?.brand || "card"} •••• {d.paystack.card?.last4 || "—"}</Sub>
+                <Btn small variant="ghost" label="Stop auto-renew" loading={stop.isPending} disabled={!d.can_manage}
+                  onPress={() => stop.mutate()} testID="plan-stop-renew" />
+              </Row>
+            ) : null}
           </Card>
-
-          <Lbl style={{ marginTop: 14, marginBottom: 6 }}>What you are using</Lbl>
           <Card testID="plan-usage">
             {USAGE.map((u, i) => {
               const used = d.usage[u.key] ?? 0;
@@ -175,9 +223,9 @@ export default function PlanBilling() {
                 {mine && d.status !== "expired" ? (
                   <Btn small variant="ghost" label="You are on this plan" disabled style={{ marginTop: 12 }} testID={`plan-choose-${p.key}`} />
                 ) : trial ? null : (
-                  <Btn small variant="deep" label={mine ? `Renew ${p.name}` : `Activate ${p.name}`}
-                    disabled={!d.can_manage} loading={choose.isPending && picking === p.key} style={{ marginTop: 12 }}
-                    testID={`plan-choose-${p.key}`} onPress={() => { setPicking(p.key); choose.mutate(p.key); }} />
+                  <Btn small variant="deep" label={card ? (mine ? `Pay & renew ${p.name}` : `Pay & activate ${p.name}`) : (mine ? `Renew ${p.name}` : `Activate ${p.name}`)}
+                    disabled={!d.can_manage || busy} loading={busy && picking === p.key} style={{ marginTop: 12 }}
+                    testID={`plan-choose-${p.key}`} onPress={() => { setPicking(p.key); (card ? pay : choose).mutate(p.key); }} />
                 )}
               </Card>
             );
@@ -206,8 +254,10 @@ export default function PlanBilling() {
           </Card>
 
           <Sub style={{ marginTop: 12 }}>
-            Card payment is not switched on yet, so the plan you tap switches on immediately and we invoice you for it.
-            Starter saves photos on items but only Premium and above print them on invoices.
+            {card
+              ? `You pay securely on Paystack. Your card is charged again at the end of each period until you stop auto-renew.${d.paystack.test ? " Test mode — no real money moves." : ""}`
+              : "Card payment is not switched on yet, so the plan you tap switches on immediately and we invoice you for it."}
+            {" "}Starter saves photos on items but only Premium and above print them on invoices.
           </Sub>
         </ScrollView>
       )}

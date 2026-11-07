@@ -671,3 +671,9 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - PUT /api/payments/{id}: owner/manager (or anyone granted the "edit_payments" ability) can change amount (standalone payments in/out only), account, date, note + optional reason.
 - Every edit pushes old values to payment.history and logs "Payment edited — <customer>" in Activity. Invalid dates → 400; credit-applied entries can't be moved to an account.
 - UI: tap a payment in customer ledger or invoice detail "Payments on this invoice" → Correct payment screen. Others see a permission message.
+
+## Paystack plan subscriptions (June 2026)
+- routes/billing.py: POST /api/subscription/checkout (hosted Paystack checkout with auto-created Paystack plan per plan×cadence×price, cached in paystack_plans), POST /api/subscription/verify, GET /api/paystack/callback (redirects to app ?paystack=ref), POST /api/paystack/webhook (x-paystack-signature HMAC-SHA512; charge.success first/renewal, subscription.create/disable/not_renew, invoice.payment_failed), POST /api/subscription/cancel (stop auto-renew).
+- /subscription/choose returns 402 while PAYSTACK_SECRET_KEY is set. Preview = test key, live = live key.
+- Web: same-tab redirect to Paystack; native: expo-web-browser auth session then verify.
+- Webhook URL to set in Paystack dashboard: <app URL>/api/paystack/webhook
