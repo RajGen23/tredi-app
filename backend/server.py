@@ -13,7 +13,7 @@ import re
 import secrets
 
 import mailer
-from deps import (VAT_RATE, can_edit_payments, can_see_money, may, need, doc_business, money_guard, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
+from deps import (VAT_RATE, admin_only, can_edit_payments, can_see_money, may, need, doc_business, money_guard, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
                   db, decorate_invoice, decorate_invoices, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_cost, line_totals, log_activity, stamp_costs, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, admin_customers, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, support, users_roles
@@ -241,7 +241,7 @@ async def get_business(user: Annotated[dict, Depends(current_user)]):
     return clean(b) if b else None
 
 
-@api.put("/business")
+@api.put("/business", dependencies=[Depends(admin_only)])
 async def update_business(data: BusinessIn, user: Annotated[dict, Depends(current_user)]):
     # Merge: a screen that only edits the profile must not reset the rest.
     patch = data.model_dump(exclude={"shop_name"}, exclude_unset=True) or data.model_dump(exclude={"shop_name"})

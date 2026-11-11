@@ -55,6 +55,8 @@ const useStyles = makeStyles((c) => ({
 
 // hidden from staff who are not allowed to see money (see deps.can_see_money)
 const MONEY_ROUTES = ["/expenses", "/accounts", "/reports", "/shops/overview", "/settings/plan", "/team"];
+// business settings: owner and admins only — removed for staff completely
+const ADMIN_ROUTES = ["/settings/business", "/settings/invoice", "/settings/invoice-template", "/settings/terms", "/settings/addresses"];
 // areas the owner switches on per staff member (Users & permissions)
 const PERM_ROUTES: Record<string, "see_suppliers" | "see_expenses" | "see_accounts"> = { "/suppliers": "see_suppliers", "/expenses": "see_expenses", "/accounts": "see_accounts" };
 
@@ -79,6 +81,7 @@ export default function More() {
           <Badge tone="paid">{user?.role && user.role !== "owner" ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : "Owner"}</Badge>
         </Card>
         {GROUPS.map((g) => ({ ...g, items: g.items.filter((it) => (user?.can_see_money !== false || !MONEY_ROUTES.includes(it.route ?? ""))
+          && !(ADMIN_ROUTES.includes(it.route ?? "") && !["owner", "manager"].includes(user?.role ?? "owner"))
           && !(it.route && PERM_ROUTES[it.route] && user?.perms?.[PERM_ROUTES[it.route]] === false)) })).map((g) => (
           <View key={g.title}>
             <Lbl style={{ marginTop: 14, marginBottom: 6 }}>{g.title}</Lbl>

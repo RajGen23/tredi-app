@@ -7,7 +7,7 @@ from bson import ObjectId
 
 from plans import TRIAL_DAYS
 
-from deps import (CurrentUser, LIVE_QUICK, LIVE_SALE, money_guard, apply_stock, biz_filter, clean, db, ensure_feature, ensure_limit, log_activity, next_number,
+from deps import (admin_only, CurrentUser, LIVE_QUICK, LIVE_SALE, money_guard, apply_stock, biz_filter, clean, db, ensure_feature, ensure_limit, log_activity, next_number,
                   now, oid, period_range, date_query, shop_qty, shop_scope, stock_map)
 
 router = APIRouter(prefix="/api")
@@ -278,7 +278,7 @@ async def list_addresses(user: CurrentUser):
     return [clean(a) async for a in db.addresses.find(f).sort("created_at", 1)]
 
 
-@router.post("/business/addresses", status_code=201)
+@router.post("/business/addresses", status_code=201, dependencies=[Depends(admin_only)])
 async def add_address(data: AddressIn, user: CurrentUser):
     f = biz_filter(user)
     if data.is_default:
@@ -287,7 +287,7 @@ async def add_address(data: AddressIn, user: CurrentUser):
     return clean(await db.addresses.find_one({"_id": res.inserted_id}))
 
 
-@router.delete("/business/addresses/{aid}")
+@router.delete("/business/addresses/{aid}", dependencies=[Depends(admin_only)])
 async def delete_address(aid: str, user: CurrentUser):
     f = biz_filter(user)
     await db.addresses.update_one({"_id": oid(aid), **f}, {"$set": {"deleted_at": now()}})

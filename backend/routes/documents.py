@@ -1,10 +1,10 @@
 """Rail 13 — bills & receipts, waybills, business card."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Literal, Optional
 from bson import ObjectId
 
-from deps import CurrentUser, doc_business, biz_filter, clean, db, log_activity, next_number, now, oid, scoped, writing_shop
+from deps import admin_only, CurrentUser, doc_business, biz_filter, clean, db, log_activity, next_number, now, oid, scoped, writing_shop
 
 router = APIRouter(prefix="/api")
 
@@ -149,7 +149,7 @@ async def get_card(user: CurrentUser):
             "include_bank": card.get("include_bank", False), "style": card.get("style", "green"), "bank": bank, "bank_accounts": accounts}
 
 
-@router.put("/business/card")
+@router.put("/business/card", dependencies=[Depends(admin_only)])
 async def put_card(data: CardIn, user: CurrentUser):
     f = biz_filter(user)
     await db.businesses.update_one({"_id": ObjectId(f["business_id"])}, {"$set": {"card": data.model_dump()}})

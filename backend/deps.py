@@ -253,6 +253,13 @@ def may(u: dict, key: str) -> bool:
     return bool(ROLE_AREA_DEFAULTS.get(role, {}).get(key, False))
 
 
+async def admin_only(user: dict = Depends(current_user)) -> dict:
+    """Business settings (profile, invoice settings, templates, terms, addresses): owner or manager only."""
+    if user.get("role", "owner") not in ("owner", "manager"):
+        raise HTTPException(403, "Only the owner or an admin can change business settings")
+    return user
+
+
 def need(key: str):
     """Route dependency: 403 unless the owner switched this area on for the user."""
     async def dep(user: dict = Depends(current_user)) -> dict:

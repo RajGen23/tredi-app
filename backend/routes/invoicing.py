@@ -1,11 +1,11 @@
 """Rail 04 extras — quotations, invoice settings, terms-of-payment sets, reminders."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Literal, Optional
 from bson import ObjectId
 from datetime import timedelta, date
 
-from deps import (CurrentUser, LineIn, apply_stock, biz_filter, clean, db, decorate_invoice, invoice_totals, line_totals,
+from deps import (admin_only, CurrentUser, LineIn, apply_stock, biz_filter, clean, db, decorate_invoice, invoice_totals, line_totals,
                   log_activity, next_number, now, oid, scoped, subscription_of, VAT_RATE)
 
 router = APIRouter(prefix="/api")
@@ -78,7 +78,7 @@ async def get_invoice_settings(user: CurrentUser):
     return merged
 
 
-@router.put("/settings/invoice")
+@router.put("/settings/invoice", dependencies=[Depends(admin_only)])
 async def put_invoice_settings(data: InvoiceSettingsIn, user: CurrentUser):
     f = biz_filter(user)
     biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})
@@ -100,7 +100,7 @@ async def list_terms(user: CurrentUser):
     return rows
 
 
-@router.post("/terms", status_code=201)
+@router.post("/terms", status_code=201, dependencies=[Depends(admin_only)])
 async def create_terms(data: TermsIn, user: CurrentUser):
     f = biz_filter(user)
     if data.is_default:
@@ -109,7 +109,7 @@ async def create_terms(data: TermsIn, user: CurrentUser):
     return clean(await db.terms.find_one({"_id": res.inserted_id}))
 
 
-@router.put("/terms/{tid}")
+@router.put("/terms/{tid}", dependencies=[Depends(admin_only)])
 async def update_terms(tid: str, data: TermsIn, user: CurrentUser):
     f = biz_filter(user)
     if data.is_default:
@@ -120,7 +120,7 @@ async def update_terms(tid: str, data: TermsIn, user: CurrentUser):
     return clean(await db.terms.find_one({"_id": oid(tid)}))
 
 
-@router.delete("/terms/{tid}")
+@router.delete("/terms/{tid}", dependencies=[Depends(admin_only)])
 async def delete_terms(tid: str, user: CurrentUser):
     f = biz_filter(user)
     await db.terms.update_one({"_id": oid(tid), **f}, {"$set": {"deleted_at": now()}})
