@@ -1,10 +1,10 @@
 """Rail 06 — Suppliers, supplier profile, record purchase, and sales returns."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Literal
 from bson import ObjectId
 
-from deps import (CurrentUser, LIVE_PO, LineIn, apply_stock, biz_filter, clean, db, line_totals, log_activity, next_number, now, oid, scoped, writing_shop)
+from deps import (CurrentUser, LIVE_PO, LineIn, need, apply_stock, biz_filter, clean, db, line_totals, log_activity, next_number, now, oid, scoped, writing_shop)
 from datetime import date as _date, datetime, timezone
 
 router = APIRouter(prefix="/api")
@@ -91,7 +91,7 @@ async def _ensure_items(f: dict, lines: list, supplier: str, user: dict, shop: s
                    "barcode": "", "supplier": supplier, "location": shop, "cost_price": l["unit_cost"],
                    "selling_price": l.get("selling_price") or 0, "wholesale_price": None, "track_stock": True, "quantity": 0,
                    "alert_below": 0, "expiry": None, "photo_url": "", "stock": [], "shop": shop,
-                   "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()}
+                   "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "updated_at": now()}
             found = {"_id": (await db.items.insert_one(doc)).inserted_id}
         l["item_id"] = str(found["_id"])
 
@@ -112,7 +112,7 @@ async def record_stock_po(f: dict, user: dict, supplier: str, lines: list, shop:
     res = await db.purchases.insert_one({**f, "supplier_id": str(sup["_id"]), "supplier_name": sup["name"], "number": number,
                                          "lines": lines, "total": total, "paid": total, "paid_upfront": 0, "account_id": None,
                                          "method": "opening", "due_date": None, "shop": shop, "note": "Stock added from the Stock screen",
-                                         "created_by": user.get("name", ""), "created_at": now()})
+                                         "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     await log_activity(f["business_id"], user, "purchase", f"Purchase {number}", sup["name"], total, str(res.inserted_id), shop)
 
 
@@ -136,7 +136,7 @@ async def _sync_upfront_expense(f: dict, po_id, number: str, supplier: str, amou
     await db.expenses.update_one({**f, "purchase_id": pid}, {
         "$set": {"amount": round(amount, 2), "account_id": account_id, "note": f"Paid {supplier} · {number}"},
         "$setOnInsert": {"category": "Purchases", "shop": "", "receipt_url": None,
-                         "created_by": user.get("name", ""), "created_at": when}}, upsert=True)
+                         "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": when}}, upsert=True)
 
 
 async def backfill_upfront_expenses():
@@ -163,7 +163,7 @@ async def supplier_owed(f: dict, sid: str) -> float:
     return round(owed, 2)
 
 
-@router.get("/suppliers")
+@router.get("/suppliers", dependencies=[Depends(need("see_suppliers"))])
 async def list_suppliers(user: CurrentUser):
     f = biz_filter(user)
     out = []
@@ -182,15 +182,15 @@ async def list_suppliers(user: CurrentUser):
     return {"suppliers": out, "owed": total, "count": len(out)}
 
 
-@router.post("/suppliers", status_code=201)
+@router.post("/suppliers", status_code=201, dependencies=[Depends(need("see_suppliers"))])
 async def create_supplier(data: SupplierIn, user: CurrentUser):
     f = biz_filter(user)
-    res = await db.suppliers.insert_one({**data.model_dump(), **f, "created_by": user.get("name", ""), "created_at": now()})
+    res = await db.suppliers.insert_one({**data.model_dump(), **f, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     await log_activity(f["business_id"], user, "supplier", f"Supplier {data.name} added")
     return clean(await db.suppliers.find_one({"_id": res.inserted_id}))
 
 
-@router.put("/suppliers/{sid}")
+@router.put("/suppliers/{sid}", dependencies=[Depends(need("see_suppliers"))])
 async def update_supplier(sid: str, data: SupplierIn, user: CurrentUser):
     """Correct a supplier's details — phone, address, what they supply. The
     opening balance is part of the form, so it stays editable too."""
@@ -204,7 +204,7 @@ async def update_supplier(sid: str, data: SupplierIn, user: CurrentUser):
     return clean(await db.suppliers.find_one({"_id": s["_id"]}))
 
 
-@router.get("/suppliers/{sid}")
+@router.get("/suppliers/{sid}", dependencies=[Depends(need("see_suppliers"))])
 async def get_supplier(sid: str, user: CurrentUser):
     f = biz_filter(user)
     s = await db.suppliers.find_one({"_id": oid(sid), **f})
@@ -227,7 +227,7 @@ async def get_supplier(sid: str, user: CurrentUser):
     return d
 
 
-@router.post("/purchases", status_code=201)
+@router.post("/purchases", status_code=201, dependencies=[Depends(need("see_suppliers"))])
 async def create_purchase(data: PurchaseIn, user: CurrentUser):
     f = biz_filter(user)
     if not data.lines:
@@ -243,7 +243,7 @@ async def create_purchase(data: PurchaseIn, user: CurrentUser):
     created = _on_date(data.date)
     doc = {**f, "supplier_id": data.supplier_id, "supplier_name": sup["name"], "number": number, "lines": lines, "total": total,
            "paid": min(data.paid, total), "account_id": data.account_id, "method": data.method, "due_date": data.due_date,
-           "shop": shop, "note": data.note, "created_by": user.get("name", ""), "created_at": created}
+           "shop": shop, "note": data.note, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": created}
     res = await db.purchases.insert_one(doc)
     await _sync_upfront_expense(f, res.inserted_id, number, sup["name"], doc["paid"] if data.method not in NO_CASH else 0,
                                 data.account_id, created, user)
@@ -255,7 +255,7 @@ async def create_purchase(data: PurchaseIn, user: CurrentUser):
     return clean(await db.purchases.find_one({"_id": res.inserted_id}))
 
 
-@router.put("/purchases/{pid}")
+@router.put("/purchases/{pid}", dependencies=[Depends(need("see_suppliers"))])
 async def update_purchase(pid: str, data: PurchaseIn, user: CurrentUser):
     """Correct a purchase order. The old delivery comes back off the shelf, the
     new one goes on, and what you owe the supplier is restated."""
@@ -294,7 +294,7 @@ async def update_purchase(pid: str, data: PurchaseIn, user: CurrentUser):
     return clean(await db.purchases.find_one({"_id": p["_id"]}))
 
 
-@router.post("/purchases/{pid}/cancel")
+@router.post("/purchases/{pid}/cancel", dependencies=[Depends(need("see_suppliers"))])
 async def cancel_purchase(pid: str, body: dict, user: CurrentUser):
     """Void an order: the goods come off the shelf again and what you owed the
     supplier goes away. The PO number stays in the book."""
@@ -316,7 +316,7 @@ async def cancel_purchase(pid: str, body: dict, user: CurrentUser):
                                    f"{p.get('supplier_name', 'the supplier')} is no longer owed for it."}
 
 
-@router.post("/purchases/{pid}/uncancel")
+@router.post("/purchases/{pid}/uncancel", dependencies=[Depends(need("see_suppliers"))])
 async def uncancel_purchase(pid: str, user: CurrentUser):
     f = biz_filter(user)
     p = await db.purchases.find_one({"_id": oid(pid), **f})
@@ -330,7 +330,7 @@ async def uncancel_purchase(pid: str, user: CurrentUser):
     return clean(await db.purchases.find_one({"_id": p["_id"]}))
 
 
-@router.get("/purchases")
+@router.get("/purchases", dependencies=[Depends(need("see_suppliers"))])
 async def list_purchases(user: CurrentUser):
     f = await scoped(user, "stock")
     out = []
@@ -341,7 +341,7 @@ async def list_purchases(user: CurrentUser):
     return {"purchases": out, "total": round(sum(p.get("total") or 0 for p in out), 2), "owed": round(sum(p["due"] for p in out), 2)}
 
 
-@router.get("/purchases/{pid}")
+@router.get("/purchases/{pid}", dependencies=[Depends(need("see_suppliers"))])
 async def get_purchase(pid: str, user: CurrentUser):
     """A purchase order opened up: what came in, at what cost, paid from where."""
     f = biz_filter(user)
@@ -370,7 +370,7 @@ async def get_purchase(pid: str, user: CurrentUser):
     return d
 
 
-@router.post("/supplier-payments", status_code=201)
+@router.post("/supplier-payments", status_code=201, dependencies=[Depends(need("see_suppliers"))])
 async def pay_supplier(data: SupplierPaymentIn, user: CurrentUser):
     f = biz_filter(user)
     if data.amount <= 0:
@@ -389,10 +389,10 @@ async def pay_supplier(data: SupplierPaymentIn, user: CurrentUser):
     res = await db.supplier_payments.insert_one({**f, "supplier_id": data.supplier_id, "supplier_name": sup["name"], "amount": data.amount,
                                                  "allocated": round(data.amount - remaining, 2),
                                                  "account_id": data.account_id, "note": data.note or "Payment out",
-                                                 "created_by": user.get("name", ""), "created_at": now()})
+                                                 "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     await db.expenses.insert_one({**f, "amount": data.amount, "category": "Purchases", "account_id": data.account_id,
                                   "note": f"Paid {sup['name']}", "shop": "", "receipt_url": None, "supplier_payment_id": str(res.inserted_id),
-                                  "created_by": user.get("name", ""), "created_at": now()})
+                                  "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     await log_activity(f["business_id"], user, "payment_out", f"Paid {sup['name']}", data.note, data.amount, str(res.inserted_id))
     return clean(await db.supplier_payments.find_one({"_id": res.inserted_id}))
 
@@ -413,13 +413,13 @@ async def create_return(data: ReturnIn, user: CurrentUser):
     number = await next_number(f["business_id"], "return", "RT", 100)
     res = await db.returns.insert_one({**f, "number": number, "invoice_id": data.invoice_id, "customer_id": data.customer_id, "lines": lines,
                                        "total": total, "reason": data.reason, "restock": data.restock,
-                                       "created_by": user.get("name", ""), "created_at": now()})
+                                       "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     if data.restock:
         for l in lines:
             await apply_stock(f["business_id"], l.get("item_id"), l["quantity"], "return", number, user, data.reason)
     if data.customer_id:
         await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": total, "account_id": None, "method": "credit_note",
                                       "allocations": [{"invoice_id": data.invoice_id, "amount": total}] if data.invoice_id else [],
-                                      "note": f"Credit note · {number}", "created_by": user.get("name", ""), "created_at": now()})
+                                      "note": f"Credit note · {number}", "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     await log_activity(f["business_id"], user, "return", f"Return {number}", data.reason, total, str(res.inserted_id))
     return clean(await db.returns.find_one({"_id": res.inserted_id}))

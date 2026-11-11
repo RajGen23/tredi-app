@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
 from typing import Optional
 
-from deps import (CurrentUser, LIVE_PO, LIVE_QUICK, LIVE_SALE, money_guard, biz_filter, date_query, db, invoice_paid, invoice_status, line_cost, period_range, rep_clause,
+from deps import (CurrentUser, LIVE_PO, LIVE_QUICK, LIVE_SALE, money_guard, need, biz_filter, date_query, db, invoice_paid, invoice_status, line_cost, period_range, rep_clause,
                   scoped, shop_qty, shop_scope)
 
 router = APIRouter(prefix="/api/reports", dependencies=[Depends(money_guard)])
@@ -280,7 +280,7 @@ async def receivables(user: CurrentUser):
             "count": len(rows), "payables": round(payables, 2)}
 
 
-@router.get("/stock-valuation")
+@router.get("/stock-valuation", dependencies=[Depends(need("see_stock_value"))])
 async def stock_valuation(user: CurrentUser):
     f = await scoped(user, "reports")
     bf = biz_filter(user)

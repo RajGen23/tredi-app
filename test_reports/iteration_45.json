@@ -1,0 +1,45 @@
+{
+  "summary": "Tested the per-staff area switches, own-scope invoice visibility, the legacy creator link and owner regression on the backend (15/15 pytest passing) and in the UI (amina and owner at 390x844). Everything in the review request works: amina's perms are all false; suppliers, purchases, expenses, account detail and stock valuation return 403; accounts come back restricted with no balances; customer list balances are null; dashboard purchases/expenses/owed are null; item create/update/bulk return 403. Turning see_suppliers on gives 200 and turning it off gives 403 again. Amina's own invoice stays in her list after a shop move and she sees no one else's invoices. David Dapdil sees 17 invoices. The owner sees everything. In the UI, the Home card says 'My sales' and tapping it opens /sales; More, the FAB sheet, Customers, Stock and item detail all hide the right things for amina and show them for the owner. However, amina can still see things she shouldn't: item detail shows cost price, profit and supplier purchase history; customer detail and ledger show full balances; and the Home shortcuts still include 'Add stock'.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/items/{id} (and GET /api/items)", "issue": "Staff with see_suppliers=false and see_profit=false still get cost_price, cost_of_sales, profit, margin, supply_history (PO numbers, supplier names, purchase amounts) and suppliers[]. The UI shows all of this to amina on item detail ('Prices & profit' card with COST ₦52,400 / Profit ₦965,600, plus a 'Supply history' list of POs from Ade Foods Ltd). This defeats the 'Suppliers & purchases' switch. Reference: /app/backend/server.py:493 get_item", "priority": "HIGH"},
+      {"endpoint": "see_profit / adjust_stock abilities", "issue": "These two switches are not enforced anywhere in the backend: there is no may()/need() check on see_profit, and POST /api/items/{iid}/adjust (server.py:698) has no adjust_stock guard. The frontend item detail also shows 'Adjust stock' (item-adjust) to a sales rep whose adjust_stock is false. Not run, to avoid changing stock.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/customers/{cid}/summary, /ledger", "issue": "With see_customer_totals=false the list hides balances, but the summary still returns balance/unpaid/purchased/credit_left for the customer across the whole company (e.g. Adeola Stores balance 14,221,282.5 from 198 invoices). The ledger also returns full entries. If the switch is meant to cover customer balances, gate these too."},
+      {"endpoint": "GET /api/low-stock", "issue": "Returns reorder_cost (a cost-based figure, 418,900) to staff without see_stock_value/see_profit."},
+      {"endpoint": "deps.may()", "issue": "may() falls back only to the built-in ROLE_AREA_DEFAULTS. For a user on a custom role whose stored 'can' lacks the new keys, GET /team/{id} shows the custom role's value while may() returns False. The owner could see a switch shown as ON that doesn't actually work."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Home shortcuts", "issue": "'Add stock' shortcut (shortcut-add_stock) still shows for amina (edit_stock=false). The blocked list in (tabs)/index.tsx:37 covers suppliers/expenses/accounts but not /stock/new|/stock/bulk|/stock/photos. Tapping it opens a form whose save returns 403.", "testID": "shortcut-add_stock", "priority": "MEDIUM"},
+      {"component": "Home total sales card", "issue": "For staff the dashboard 'owed' is null, but the card still shows 'OWED ₦0' (money(null)). This is misleading: hide the Owed cell when d.owed === null. Reference: (tabs)/index.tsx:83", "testID": "home-owed", "priority": "LOW"},
+      {"component": "Item detail (stock/[id].tsx)", "issue": "The 'Prices & profit' card and the 'Supply history' list (item-supply-history) are shown to staff without see_profit / see_suppliers. Supply rows link to /purchases/{id}, which returns 403.", "testID": "item-supply-history", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter45_staff_perms_own_scope.py", "/app/test_reports/pytest/pytest_iter45.xml"],
+  "action_items": [
+    "Strip cost_price/cost_of_sales/profit/margin from GET /api/items and /api/items/{id} unless may(user,'see_profit'), and strip supply_history/suppliers unless may(user,'see_suppliers'). Hide the 'Prices & profit' card and 'Supply history' in stock/[id].tsx to match.",
+    "Enforce adjust_stock on POST /api/items/{iid}/adjust and hide item-adjust when it is off. Enforce see_profit wherever cost or profit is returned.",
+    "Add an edit_stock regex (/^\\/stock\\/(new|bulk|photos)/) to the Home shortcut blocked list in (tabs)/index.tsx.",
+    "Hide 'Owed' on the Home card when dashboard.owed is null.",
+    "Decide whether see_customer_totals should also gate the balance/unpaid fields in /customers/{cid}/summary and /ledger.",
+    "Make may() consult the custom role definition (resolve_role) when the user's stored 'can' lacks a key."
+  ],
+  "critical_code_review_comments": [
+    "server.py get_item returns the full cost and supplier analytics with no permission filter.",
+    "The ABILITIES see_profit and adjust_stock are shown as switches in Team, but no route checks them.",
+    "update_member writes {**base.can, **data.can}, so after any save every key is stored explicitly. That is fine, but it means a later change to role defaults won't reach existing members."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter45_staff_perms_own_scope.py"],
+  "success_rate": {"backend": "100% of requested checks (15/15); 2 HIGH data-leak issues found outside the tested endpoints", "frontend": "100% of requested checks; 3 additional UI leaks/bugs"},
+  "seed_data_creation": "Created one TEST_Own customer and one TEST_L credit invoice as amina, then deleted both by id along with their activity rows. Amina's can/shops/scopes/shop/role were snapshotted and restored exactly; verified unchanged afterwards. Created a TEST_Item as owner and deleted it by id. Wichflow data was only read.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run pytest with -n 0: the module fixture mutates amina and xdist can race. Amina's active shop is 'Ikeja branch' but she is assigned to Surulere. Her stored 'can' lacks the new area keys, so may() falls back to the defaults. David Dapdil (daviddapdil4@gmail.com) id 6aa7cf563bb6c70e01f851e9; mint a token with deps.create_access_token.",
+  "rca_of_issue": "The staff data leaks happen because the item detail endpoint builds its analytics (cost, profit, supply_history) with no may() checks, and the see_profit/adjust_stock abilities were never wired into need()."
+}

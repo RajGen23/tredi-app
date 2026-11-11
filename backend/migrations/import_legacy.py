@@ -377,6 +377,28 @@ class Migration:
                 "created_at": utc(e.get("incurred_at") or e.get("created_at")),
             }, "expenses")
 
+    async def creators(self):
+        """Who made each old invoice / expense, linked to their account here, so a
+        rep sees the sales they made on the old app. Kept outside the synced
+        fields (created_by stays "Migrated"), so a re-sync never reads it as an edit."""
+        people = {u["legacy_uuid"]: (str(u["_id"]), u.get("name", "")) async for u in
+                  self.db.users.find({"legacy_uuid": {"$exists": True}}, {"legacy_uuid": 1, "name": 1})}
+        for table, col, key in (("invoices", self.db.invoices, "created_by_uuid"), ("expenses", self.db.expenses, "user_uuid")):
+            for r in rows(self.cur, f"select uuid, {key} from {self.source}.{table} where {key} is not null"):
+                who = people.get(r[key])
+                if not who:
+                    continue
+                self.tally(f"{table}:creator_linked")
+                if not self.commit:
+                    continue
+                doc = await col.find_one_and_update({"legacy_uuid": r["uuid"]}, {"$set": {"created_by_id": who[0], "made_by": who[1]}},
+                                                    projection={"_id": 1, "rep": 1})
+                if doc and not doc.get("rep"):
+                    await col.update_one({"_id": doc["_id"]}, {"$set": {"rep": who[1]}})
+                if doc and table == "invoices":
+                    await self.db.payments.update_many({"allocations.invoice_id": str(doc["_id"]), "created_by": "Migrated"},
+                                                       {"$set": {"created_by_id": who[0]}})
+
     async def run(self):
         await self.businesses()
         await self.users()
@@ -386,6 +408,7 @@ class Migration:
         await self.items()
         await self.invoices()
         await self.expenses()
+        await self.creators()
         if self.commit:
             for col, n in (await freeze_line_costs(self.db)).items():
                 self.tally(f"{col}:cost_stamped", n)

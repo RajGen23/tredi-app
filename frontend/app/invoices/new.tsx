@@ -288,7 +288,7 @@ export default function NewInvoice() {
               {filteredCustomers.map((c, i) => (
                 <Li key={c.id} testID={`invoice-pick-customer-${c.id}`} last={i === filteredCustomers.length - 1} onPress={() => { setCustomerId(c.id); setSearch(""); setStep(1); }}>
                   <Av text={initials(c.name)} tone={customerId === c.id ? "green" : "mint"} />
-                  <View style={{ flex: 1 }}><H4>{c.name}</H4><Sub>{c.price_list} · {c.balance > 0 ? `owes ${money(c.balance)}` : c.balance < 0 ? `${money(-c.balance)} credit` : "settled"}</Sub></View>
+                  <View style={{ flex: 1 }}><H4>{c.name}</H4><Sub>{c.price_list}{c.balance == null ? "" : c.balance > 0 ? ` · owes ${money(c.balance)}` : c.balance < 0 ? ` · ${money(-c.balance)} credit` : " · settled"}</Sub></View>
                   {customerId === c.id ? <Ionicons name="checkmark-circle" size={18} color={colors.brandPrimary} /> : null}
                 </Li>
               ))}
@@ -730,7 +730,7 @@ function CustomerStrip({ summary, name, sub, onChange, testID }: {
         </Row>
         <Chip label="Change" onPress={onChange} testID={testID} />
       </Row>
-      {summary ? (
+      {summary && summary.unpaid != null ? (
         <Row between style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }}>
           <View><Lbl>Owes now</Lbl><Money size={12.5} tone={summary.unpaid > 0 ? "neg" : "pos"} testID="strip-owes">{money(summary.unpaid)}</Money></View>
           <View><Lbl>Bought so far</Lbl><Money size={12.5}>{money(summary.purchased)}</Money></View>

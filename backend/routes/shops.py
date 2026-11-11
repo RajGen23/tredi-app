@@ -329,7 +329,7 @@ async def create_transfer(data: TransferIn, user: CurrentUser):
     res = await db.transfers.insert_one({**f, "number": number, "from_shop": data.from_shop, "to_shop": data.to_shop, "lines": lines,
                                          "value": round(value, 2), "units": round(sum(l.quantity for l in data.lines), 2), "state": state,
                                          "note": data.note, "sent_by": user.get("name", ""), "received_by": "", "received_at": None,
-                                         "created_by": user.get("name", ""), "created_at": now()})
+                                         "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     await log_activity(f["business_id"], user, "transfer", f"Transfer {number}", f"{data.from_shop} → {data.to_shop}", round(value, 2), str(res.inserted_id))
     return clean(await db.transfers.find_one({"_id": res.inserted_id}))
 

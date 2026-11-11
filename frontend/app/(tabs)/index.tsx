@@ -33,6 +33,10 @@ export default function Home() {
   const router = useRouter();
   const { business, user } = useAuth();
   const money_ok = user?.can_see_money !== false;
+  const perm = (k: "see_suppliers" | "see_expenses" | "see_accounts") => user?.perms?.[k] !== false;
+  const blocked = [!perm("see_suppliers") && /^\/(suppliers|purchases)/, !perm("see_expenses") && /^\/expenses/, !perm("see_accounts") && /^\/accounts/,
+    user?.perms?.edit_stock === false && /^\/stock\/(new|bulk|photos)/]
+    .filter(Boolean) as RegExp[];
   const q = useQuery({ queryKey: ["dashboard"], queryFn: () => api("/dashboard") });
   const shortcuts = useQuery({ queryKey: ["shortcuts"], queryFn: () => api("/shortcuts") });
   const notifications = useQuery({ queryKey: ["notifications"], queryFn: () => api("/notifications") });
@@ -40,7 +44,7 @@ export default function Home() {
   const plan = useQuery({ queryKey: ["subscription"], queryFn: () => api<any>("/subscription") });
   const lowStock = useQuery({ queryKey: ["low-stock"], queryFn: () => api<any>("/low-stock") });
   const d = q.data;
-  const list = (shortcuts.data?.on ?? []).filter((x: any) => money_ok || !/^\/(reports|expenses|accounts)/.test(x.route ?? ""));
+  const list = (shortcuts.data?.on ?? []).filter((x: any) => (money_ok || !/^\/(reports|expenses|accounts)/.test(x.route ?? "")) && !blocked.some((r) => r.test(x.route ?? "")));
   const pct = d && d.total_sales ? (d.received / d.total_sales) * 100 : 0;
   const weekIn = (d?.cashflow ?? []).reduce((a: number, c: any) => a + c.in, 0);
   const weekOut = (d?.cashflow ?? []).reduce((a: number, c: any) => a + c.out, 0);
@@ -60,9 +64,9 @@ export default function Home() {
       </View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => { q.refetch(); lowStock.refetch(); }} tintColor={colors.brandPrimary} />}>
         {!d ? <Card style={s.hero}><Loading /></Card> : (
-          <Pressable testID="home-total-sales-open" disabled={!money_ok} onPress={() => router.push("/reports/sales")} style={({ pressed }) => pressed && { opacity: 0.85 }}>
+          <Pressable testID="home-total-sales-open" onPress={() => router.push(money_ok ? "/reports/sales" : "/(tabs)/sales")} style={({ pressed }) => pressed && { opacity: 0.85 }}>
             <Card style={s.hero} testID="home-total-sales-card">
-              <Row style={{ gap: 5 }}><Lbl>Total sales</Lbl><Ionicons name="chevron-forward" size={12} color={colors.ink40} /></Row>
+              <Row style={{ gap: 5 }}><Lbl>{money_ok ? "Total sales" : "My sales"}</Lbl><Ionicons name="chevron-forward" size={12} color={colors.ink40} /></Row>
               <Text style={s.big} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} testID="home-total-sales">{money(d.total_sales)}</Text>
               <Sub style={{ marginTop: 1 }}>
                 {d.month}{d.change_pct !== null ? <> · <Text style={{ color: d.change_pct >= 0 ? colors.green700 : colors.coral, fontFamily: fonts.bold }}>{d.change_pct >= 0 ? "▲" : "▼"} {Math.abs(d.change_pct)}%</Text> vs last month</> : null}
@@ -74,11 +78,13 @@ export default function Home() {
                   <Lbl numberOfLines={1}>Received</Lbl>
                   <Money tone="pos" size={14} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="home-received">{money(d.received)}</Money>
                 </View>
+              {d.owed == null ? null : <>
                 <View style={s.splitLine} />
                 <View style={{ flex: 1, paddingLeft: 10 }}>
                   <Lbl numberOfLines={1}>Owed</Lbl>
                   <Money tone="neg" size={14} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} testID="home-owed">{money(d.owed)}</Money>
                 </View>
+              </>}
               </View>
               <View style={{ marginTop: 10 }}><Prog pct={pct} /></View>
               <Sub style={{ marginTop: 7, fontSize: 10.5 }}>Tap to see this month&rsquo;s sales, by day, customer or product</Sub>
@@ -136,14 +142,18 @@ export default function Home() {
         {d && money_ok ? (
           <>
             <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Kpi label="Stock at cost" value={money(d.purchases)} small={`${d.low_stock} low on stock`}
-                  testID="home-kpi-stock" onPress={() => router.push("/reports/stock")} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Kpi label="Expenses" value={money(d.expenses)} small={`${d.expense_count} entries`} tone="neg"
-                  testID="home-kpi-expenses" onPress={() => router.push("/expenses")} />
-              </View>
+              {d.purchases != null ? (
+                <View style={{ flex: 1 }}>
+                  <Kpi label="Stock at cost" value={money(d.purchases)} small={`${d.low_stock} low on stock`}
+                    testID="home-kpi-stock" onPress={() => router.push("/reports/stock")} />
+                </View>
+              ) : null}
+              {d.expenses != null ? (
+                <View style={{ flex: 1 }}>
+                  <Kpi label="Expenses" value={money(d.expenses)} small={`${d.expense_count} entries`} tone="neg"
+                    testID="home-kpi-expenses" onPress={() => router.push("/expenses")} />
+                </View>
+              ) : null}
             </View>
             <Card style={{ marginTop: 9 }} testID="home-cashflow-card">
               <Row between><Lbl>Money in / money out</Lbl><Tag>Last 7 days</Tag></Row>

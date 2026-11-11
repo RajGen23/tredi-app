@@ -119,7 +119,7 @@ export default function ItemDetail() {
     <View style={s.root} testID="item-detail-screen">
       <View style={[s.teal, { height: insets.top + 132 }]} />
       <View style={{ paddingTop: insets.top }}>
-        <AppBar teal back title="Item" right={<>
+        <AppBar teal back title="Item" right={user?.perms?.edit_stock === false ? undefined : <>
           <IconBtn teal name="create-outline" testID="item-edit" onPress={() => router.push(`/stock/new?edit=${id}`)} />
           <IconBtn teal name="trash-outline" testID="item-more" onPress={() => setKillOpen(true)} />
         </>} />
@@ -147,13 +147,13 @@ export default function ItemDetail() {
             <View style={{ flexDirection: "row" }}>
               <View style={s.cell}><Lbl>In stock</Lbl><Money size={16} style={low ? { color: colors.amber } : undefined} testID="item-qty">{it.track_stock ? it.quantity : "—"}</Money></View>
               <View style={[s.cell, s.cellMid]}><Lbl>Selling</Lbl><Money size={16}>{money(it.selling_price, { symbol: false })}</Money></View>
-              <View style={s.cell}><Lbl>Value</Lbl><Money size={16}>{compact(it.quantity * it.cost_price)}</Money></View>
+              {user?.perms?.see_stock_value === false ? null : <View style={s.cell}><Lbl>Value</Lbl><Money size={16}>{compact(it.quantity * it.cost_price)}</Money></View>}
             </View>
             {low && !it.archived ? <Card style={s.amber}><Sub><Text style={s.bold}>Below your alert level of {it.alert_below}.</Text>{it.supplier ? ` Last supplier: ${it.supplier}.` : " Reorder soon."}</Sub></Card> : null}
             {it.track_stock && !it.archived ? (
               <View style={{ flexDirection: "row", gap: 8, marginTop: 9 }}>
-                <Btn small variant="ghost" label="Adjust stock" style={{ flex: 1 }} onPress={() => setOpen(true)} testID="item-adjust" />
-                <Btn small variant="deep" label="Reorder" style={{ flex: 1 }} onPress={() => router.push(`/purchases/new?item=${id}`)} testID="item-reorder" />
+                {user?.perms?.adjust_stock === false ? null : <Btn small variant="ghost" label="Adjust stock" style={{ flex: 1 }} onPress={() => setOpen(true)} testID="item-adjust" />}
+                {user?.perms?.see_suppliers === false ? null : <Btn small variant="deep" label="Reorder" style={{ flex: 1 }} onPress={() => router.push(`/purchases/new?item=${id}`)} testID="item-reorder" />}
               </View>
             ) : null}
           </Card>
@@ -170,7 +170,7 @@ export default function ItemDetail() {
           ) : null}
 
           {/* Cost, sell, and what this item has actually earned since it was first stocked */}
-          <Card style={{ marginTop: 9 }} testID="item-money-card">
+          {it.profit === null ? null : <Card style={{ marginTop: 9 }} testID="item-money-card">
             <Row between><Lbl>Prices &amp; profit</Lbl><Tag>since inception</Tag></Row>
             <Row between style={{ marginTop: 8 }}>
               <View><Lbl>Cost</Lbl><Money size={14}>{money(unitCost)}</Money></View>
@@ -190,7 +190,7 @@ export default function ItemDetail() {
               <H4>Profit so far</H4>
               <Money size={16} tone={it.profit >= 0 ? "pos" : "neg"} testID="item-profit">{money(it.profit)}{it.revenue ? ` · ${it.margin}%` : ""}</Money>
             </Row>
-          </Card>
+          </Card>}
 
           {/* How long it has been sitting — the reorder and dead-stock question */}
           {it.track_stock ? (
@@ -201,7 +201,7 @@ export default function ItemDetail() {
                 <View style={{ alignItems: "flex-end" }}><Lbl>Last received</Lbl><Sub>{it.last_received_at ? shortDate(it.last_received_at) : "—"}</Sub></View>
               </Row>
               {(it.idle_days ?? 0) > 60 ? (
-                <Card style={s.amber}><Sub><Text style={s.bold}>Sitting {it.idle_days} days.</Text> {money(it.quantity * it.cost_price)} of your money is tied up here.</Sub></Card>
+                <Card style={s.amber}><Sub><Text style={s.bold}>Sitting {it.idle_days} days.</Text>{it.cost_price == null ? " Money is tied up here." : ` ${money(it.quantity * it.cost_price)} of your money is tied up here.`}</Sub></Card>
               ) : null}
               {it.stock_by_shop?.length ? (
                 <View style={{ marginTop: 9 }}>

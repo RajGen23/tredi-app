@@ -1,0 +1,44 @@
+{
+  "summary": "Retested the 7 staff-permission leaks from iteration 45, plus owner regression. Backend: 30/31 pass on iter45+iter46 and 29/29 on iter43+iter44 (all run with -n 0). I found and fixed 2 blockers. (1) A missing <Row> tag in invoices/new.tsx CustomerStrip broke the web bundle (500), so the app showed a blank page. (2) /customers/{cid}/summary returned 500 for amina because of round(None). After the fixes, everything works for amina at 390x844. Home has no Add stock shortcut and no Owed. Item detail hides the money card, Adjust stock, Reorder and supply history. Customer detail hides the figures, ledger link and more button. The invoice strip hides Owes now. Owner regression works: Owed, profit card, adjust sheet, supply history, customer figures and the ledger all show. New leaks found: customer detail returns every invoice with its per-invoice due (ignoring own scope), credit-check returns the balance, /customers/{cid}/items shows purchase totals, and the invoice customer picker shows 'settled' for every customer.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/customers/{cid}/summary", "issue": "FIXED BY T1: returned 500 (TypeError round(None)) for staff without see_customer_totals, because unpaid and purchased were set to None and then rounded. This broke the invoice customer strip for amina.", "priority": "CRITICAL"},
+      {"endpoint": "GET /api/customers/{cid}", "issue": "Totals are nulled, but 'invoices' still lists all 224 of the customer's invoices, including the owner's (amina's own scope /invoices shows only 7 for this customer). Each invoice carries total and due, so summing due gives back the hidden unpaid figure (about 16.2M). Own-scope and see_customer_totals leak. server.py:324", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/customers/{cid}/credit-check", "issue": "Returns balance, after, over_by and a message with the full balance to staff without see_customer_totals (e.g. balance 14221282.5). Not called by the frontend today, but reachable through the API. server.py:379-397"},
+      {"endpoint": "GET /api/customers/{cid}/items", "issue": "Shows the lifetime sales value per item for the customer (e.g. 12,148,000) across all creators. This reveals customer totals to sales staff."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "invoices/new.tsx CustomerStrip", "issue": "FIXED BY T1: a <Row between ...> opening tag was missing at line 734. Babel failed ('Adjacent JSX elements') and the whole web bundle returned 500, so the app was blank.", "testID": "invoice-customer-strip", "priority": "CRITICAL"},
+      {"component": "invoices/new.tsx customer picker", "issue": "For staff, c.balance is null, so every customer shows 'settled' (Adeola Stores owes 14M). This is misleading. Show only the price list when balance == null. invoices/new.tsx:291", "testID": "invoice-pick-customer-{id}", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "customers/[id] (staff)", "issues": ["The invoice list still shows 'Due ₦133,300' badges for invoices amina did not create. These should follow own scope."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter46_staff_money_leaks.py", "/app/test_reports/pytest/pytest_iter46.xml"],
+  "action_items": [
+    "Scope GET /customers/{cid} 'invoices' (and overdue_count / max_days_overdue) by the user's sales scope (own = created_by_id). Consider dropping per-invoice 'due' when see_customer_totals is off.",
+    "Gate POST /customers/{cid}/credit-check: when see_customer_totals is off, return only warn with no balance, after, over_by or money in the message.",
+    "Gate GET /customers/{cid}/items totals (or scope them to own sales) for staff without see_customer_totals.",
+    "invoices/new.tsx:291: when c.balance == null, show only the price list instead of 'settled'.",
+    "Review the T1 fixes in server.py customer_summary and invoices/new.tsx CustomerStrip."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1778 lines and should be split into routers (customers, items, dashboard).",
+    "may() still falls back to ROLE_AREA_DEFAULTS rather than custom role definitions (iter45 item not addressed). /team/{uid} hides this by computing can via may(), so a custom role with see_profit:true in its definition shows false in both places.",
+    "Edits to JSX should be checked with a bundle build. The broken tag reached the preview and blanked the entire app."
+  ],
+  "updated_files": ["/app/backend/server.py (customer_summary round(None) guard)", "/app/frontend/app/invoices/new.tsx (restored the missing <Row> in CustomerStrip)", "/app/backend/tests/test_iter46_staff_money_leaks.py (new)"],
+  "success_rate": {"backend": "94% (15/16 iter46 after fix; 1 failing = credit-check leak); iter43/44/45 all pass", "frontend": "100% of requested checks after the bundle fix"},
+  "seed_data_creation": "None. Amina's permissions were not changed (iter45 fixture restores its own changes). No stock adjustment was saved.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -n 0. Item with supply history: 6aa7ae17267e782a241b7e72 (Adeba Rice 50kg). Customer: 6aa7ae17267e782a241b7e7b (Adeola Stores). Env var for tests: EXPO_PUBLIC_BACKEND_URL. Sign in directly at /sign-in.",
+  "rca_of_issue": "Blank app: E1's edit of the CustomerStrip conditional (summary && summary.unpaid != null) deleted the <Row between> line, so the JSX was invalid and Metro returned 500 for entry.bundle. Summary 500: the see_customer_totals branch set unpaid and purchased to None, but the return dict still called round() on them."
+}

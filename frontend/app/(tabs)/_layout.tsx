@@ -9,6 +9,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import { Av, H4, IonName, Li, Sub } from "@/src/components/ui";
 import { Sheet } from "@/src/components/sheet";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
+import { useAuth } from "@/src/auth";
 
 const TABS: { name: string; label: string; icon: IonName; iconOn: IonName }[] = [
   { name: "index", label: "Home", icon: "home-outline", iconOn: "home" },
@@ -41,6 +42,7 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const { user } = useAuth();
   const render = (t: (typeof TABS)[number]) => {
     const idx = state.routes.findIndex((r: { name: string }) => r.name === t.name);
     const on = state.index === idx;
@@ -60,7 +62,8 @@ function TabBar({ state, navigation }: BottomTabBarProps) {
       {TABS.slice(2).map(render)}
       <Sheet visible={open} onClose={() => setOpen(false)} testID="fab-sheet">
         <H4 style={{ marginBottom: 6 }}>What are you recording?</H4>
-        {ACTIONS.map((a) => (
+        {ACTIONS.filter((a) => !(a.route.startsWith("/expenses") && user?.perms?.see_expenses === false)
+          && !(a.route.startsWith("/stock") && user?.perms?.edit_stock === false)).map((a) => (
           <Li key={a.route} testID={a.testID} onPress={() => { setOpen(false); setTimeout(() => router.push(a.route as any), 150); }}>
             <Av icon={a.icon} tone={a.green ? "green" : "mint"} />
             <View style={{ flex: 1 }}><H4>{a.label}</H4><Sub>{a.sub}</Sub></View>

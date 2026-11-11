@@ -56,23 +56,23 @@ async def sync(data: SyncIn, user: CurrentUser):
                 await db.customers.insert_one({**f, "name": p["name"], "phone": p.get("phone", ""), "email": p.get("email", ""),
                                                "address": p.get("address", ""), "opening_balance": p.get("opening_balance", 0),
                                                "opening_type": p.get("opening_type", "owes_me"), "price_list": p.get("price_list", "Retail"),
-                                               "credit_limit": p.get("credit_limit"), "created_by": user.get("name", ""), "created_at": now()})
+                                               "credit_limit": p.get("credit_limit"), "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
             elif op.kind == "sale":
                 lines = [line_totals(LineIn(**l)) for l in p.get("lines", [])]
                 totals = invoice_totals(lines, "amount", 0, 0)
                 number = await next_number(f["business_id"], "sale", "SL", 536000)
                 await db.sales.insert_one({**f, "number": number, "lines": lines, "totals": totals, "method": p.get("method", "cash"),
                                            "tendered": p.get("tendered", 0), "change": p.get("change", 0), "customer_id": p.get("customer_id"),
-                                           "account_id": p.get("account_id"), "shop": p.get("shop", ""), "created_by": user.get("name", ""),
+                                           "account_id": p.get("account_id"), "shop": p.get("shop", ""), "created_by": user.get("name", ""), "created_by_id": str(user["_id"]),
                                            "created_at": now(), "synced": True, "offline": True})
             elif op.kind == "expense":
                 await db.expenses.insert_one({**f, "amount": p["amount"], "category": p.get("category", "Other"), "account_id": p.get("account_id"),
                                               "note": p.get("note", ""), "shop": p.get("shop", ""), "receipt_url": p.get("receipt_url"),
-                                              "created_by": user.get("name", ""), "created_at": now()})
+                                              "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
             elif op.kind == "payment":
                 await db.payments.insert_one({**f, "customer_id": p.get("customer_id"), "amount": p["amount"], "account_id": p.get("account_id"),
                                               "method": "payment_in", "allocations": p.get("allocations", []), "note": p.get("note", "Payment in"),
-                                              "created_by": user.get("name", ""), "created_at": now()})
+                                              "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
             elif op.kind == "adjustment":
                 from deps import apply_stock
                 await apply_stock(f["business_id"], p.get("item_id"), p.get("delta", 0), "adjustment", p.get("reason", "Offline adjustment"), user, p.get("note", ""))
@@ -225,7 +225,7 @@ async def import_commit(data: ImportCommitIn, user: CurrentUser):
     if data.target == "customers":
         await db.customers.insert_many([{**f, "name": r["name"], "phone": r["phone"], "email": r["email"], "address": r["address"],
                                          "opening_balance": r["opening_balance"], "opening_type": "owes_me", "price_list": "Retail",
-                                         "credit_limit": None, "created_by": user.get("name", ""), "created_at": now()} for r in rows])
+                                         "credit_limit": None, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()} for r in rows])
         await log_activity(f["business_id"], user, "import", f"Imported {len(rows)} customers", data.filename)
         return {"imported": len(rows), "target": data.target}
 
@@ -239,7 +239,7 @@ async def import_commit(data: ImportCommitIn, user: CurrentUser):
              "supplier": r.get("supplier", ""), "location": "", "cost_price": r["cost_price"], "selling_price": r["selling_price"],
              "wholesale_price": None, "track_stock": True, "quantity": 0, "alert_below": 0, "expiry": None,
              "photo_url": r.get("photo_url") or pick_dummy_photo(r["name"], r["category"]),
-             "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()} for r in rows]
+             "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "updated_at": now()} for r in rows]
     inserted = await db.items.insert_many(docs)
     for r, _id in zip(rows, inserted.inserted_ids):
         ids[r["row"]] = str(_id)
@@ -260,14 +260,14 @@ async def import_commit(data: ImportCommitIn, user: CurrentUser):
         if not sup:
             sid = (await db.suppliers.insert_one({**f, "name": g["supplier"], "phone": "", "email": "", "address": "",
                                                   "category": "General", "opening_balance": 0, "note": "Added by stock import",
-                                                  "created_by": user.get("name", ""), "created_at": now()})).inserted_id
+                                                  "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})).inserted_id
             sup = await db.suppliers.find_one({"_id": sid})
         total = round(sum(l["total"] for l in lines), 2)
         number = await next_number(f["business_id"], "purchase", "PO", 400)
         po = await db.purchases.insert_one({**f, "supplier_id": str(sup["_id"]), "supplier_name": sup["name"], "number": number,
                                             "lines": lines, "total": total, "paid": 0, "account_id": None, "method": "credit",
                                             "due_date": None, "shop": shop, "note": f"Batch stock upload · {data.filename or 'import'}",
-                                            "source": "import", "created_by": user.get("name", ""), "created_at": now()})
+                                            "source": "import", "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
         for l in lines:
             await apply_stock(f["business_id"], l["item_id"], l["quantity"], "purchase", number, user, sup["name"], shop)
         await log_activity(f["business_id"], user, "purchase", f"Purchase {number}", sup["name"], total, str(po.inserted_id), shop)

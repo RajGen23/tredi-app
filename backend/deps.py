@@ -227,7 +227,39 @@ def public_user(u: dict) -> dict:
     return {"id": str(u["_id"]), "name": u.get("name", ""), "email": u["email"],
             "business_id": str(u["business_id"]) if u.get("business_id") else None,
             "role": u.get("role", "owner"), "scope": u.get("scope", "all"), "shop": u.get("shop", ""),
-            "can_see_money": can_see_money(u), "can_edit_payments": can_edit_payments(u)}
+            "can_see_money": can_see_money(u), "can_edit_payments": can_edit_payments(u),
+            "perms": {k: may(u, k) for k in AREA_PERMS}}
+
+
+# Areas the owner switches on per staff member. Owners always have them;
+# managers by default; everyone else only when ticked.
+AREA_PERMS = ("see_suppliers", "see_customer_totals", "see_stock_value", "see_expenses", "see_accounts", "edit_stock",
+              "see_profit", "adjust_stock")
+ROLE_AREA_DEFAULTS = {
+    "manager": {k: True for k in AREA_PERMS},
+    "accountant": {"see_suppliers": True, "see_customer_totals": True, "see_stock_value": True,
+                   "see_expenses": True, "see_accounts": True, "edit_stock": False, "see_profit": True},
+    "stock": {"edit_stock": True, "adjust_stock": True},
+}
+
+
+def may(u: dict, key: str) -> bool:
+    role = u.get("role", "owner")
+    if role == "owner":
+        return True
+    can = u.get("can") or {}
+    if key in can:
+        return bool(can[key])
+    return bool(ROLE_AREA_DEFAULTS.get(role, {}).get(key, False))
+
+
+def need(key: str):
+    """Route dependency: 403 unless the owner switched this area on for the user."""
+    async def dep(user: dict = Depends(current_user)) -> dict:
+        if not may(user, key):
+            raise HTTPException(403, "The owner hasn't given your account access to this — ask them to switch it on")
+        return user
+    return dep
 
 
 def biz_filter(user: dict) -> dict:
@@ -278,14 +310,23 @@ async def shop_scope(user: dict, area: str = "sales") -> dict:
 
 
 def scope_clause(sc: dict, user: Optional[dict] = None, own_field: str = "created_by") -> dict:
+    # "own" means the records this person made — matched by their account first
+    # (so a rename can't hide them), and wherever they were made (a rep who moves
+    # shop still sees their history). Shop limits only apply to shop-wide views.
+    if sc["own"] and user is not None:
+        name, uid = user.get("name", ""), str(user["_id"])
+        alts = [{f"{own_field}_id": uid}]
+        if name:
+            alts.append({own_field: name})
+            if own_field == "created_by":
+                alts.append({"rep": name})
+        return {"$and": [{"$or": alts}]}
     ands = []
     if sc["shops"] is not None:
         alts: List[dict] = [{"shop": {"$in": sc["shops"]}}]
         if sc["main"] in sc["shops"]:
             alts += [{"shop": {"$in": ["", None]}}, {"shop": {"$exists": False}}]
         ands.append({"$or": alts})
-    if sc["own"] and user is not None:
-        ands.append({own_field: user.get("name", "")})
     return {"$and": ands} if ands else {}
 
 

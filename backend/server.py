@@ -13,7 +13,7 @@ import re
 import secrets
 
 import mailer
-from deps import (VAT_RATE, can_edit_payments, can_see_money, doc_business, money_guard, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
+from deps import (VAT_RATE, can_edit_payments, can_see_money, may, need, doc_business, money_guard, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
                   db, decorate_invoice, decorate_invoices, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_cost, line_totals, log_activity, stamp_costs, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, admin_customers, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, support, users_roles
@@ -276,10 +276,13 @@ async def list_customers(user: Annotated[dict, Depends(current_user)]):
             open_count[cid] = open_count.get(cid, 0) + 1
             overdue_days[cid] = max(overdue_days.get(cid, 0), st["days_overdue"])
     out = []
+    totals_ok = may(user, "see_customer_totals")
     async for c in db.customers.find(f).sort("name", 1):
         d = clean(c)
         opening = c.get("opening_balance", 0) * (1 if c.get("opening_type") == "owes_me" else -1)
-        d["balance"] = round(opening + billed.get(d["id"], 0) - paid_in.get(d["id"], 0), 2)
+        d["balance"] = round(opening + billed.get(d["id"], 0) - paid_in.get(d["id"], 0), 2) if totals_ok else None
+        if not totals_ok:
+            d.pop("opening_balance", None)
         d["open_invoices"] = open_count.get(d["id"], 0)
         d["days_overdue"] = overdue_days.get(d["id"], 0)
         out.append(d)
@@ -289,7 +292,7 @@ async def list_customers(user: Annotated[dict, Depends(current_user)]):
 @api.post("/customers", status_code=201)
 async def create_customer(data: CustomerIn, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
-    doc = {**data.model_dump(), **f, "created_by": user.get("name", ""), "created_at": now()}
+    doc = {**data.model_dump(), **f, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()}
     res = await db.customers.insert_one(doc)
     d = clean(await db.customers.find_one({"_id": res.inserted_id}))
     d["balance"] = await customer_balance(f["business_id"], d["id"])
@@ -318,7 +321,7 @@ async def get_customer(cid: str, user: Annotated[dict, Depends(current_user)]):
         raise HTTPException(404, "Customer not found")
     d = clean(c)
     d["balance"] = await customer_balance(f["business_id"], cid)
-    invoices = await decorate_invoices([inv async for inv in db.invoices.find({**f, "customer_id": cid}).sort("created_at", -1)])
+    invoices = await decorate_invoices([inv async for inv in db.invoices.find({**(await scoped(user, "sales")), "customer_id": cid}).sort("created_at", -1)])
     d["invoices"] = invoices
     d["total_purchases"] = round(sum(i["totals"]["total"] for i in invoices if i["status"] != "draft"), 2)
     d["total_received"] = round(sum([p["amount"] async for p in db.payments.find({**f, "customer_id": cid})]), 2)
@@ -331,6 +334,10 @@ async def get_customer(cid: str, user: Annotated[dict, Depends(current_user)]):
     d["credit_limit"] = limit
     d["credit_left"] = round(limit - d["balance"], 2) if limit else None
     d["over_limit"] = bool(limit and d["balance"] > limit)
+    if not may(user, "see_customer_totals"):
+        for k in ("balance", "total_purchases", "total_received", "unpaid", "returns_total", "credit_left"):
+            d[k] = None
+        d.pop("opening_balance", None)
     return d
 
 
@@ -357,11 +364,15 @@ async def customer_summary(cid: str, user: Annotated[dict, Depends(current_user)
         count += 1
     last = await db.invoices.find_one({**f, "customer_id": cid, "status": LIVE_SALE}, sort=[("created_at", -1)])
     returns = round(sum([r.get("total") or 0 async for r in db.returns.find({**f, "customer_id": cid})]), 2)
+    if not may(user, "see_customer_totals"):
+        bal = unpaid = purchased = returns = None
     return {"id": cid, "name": c.get("name", ""), "phone": c.get("phone", ""), "email": c.get("email", ""),
             "address": c.get("address", ""), "price_list": c.get("price_list", "Retail"),
-            "balance": bal, "unpaid": round(unpaid, 2), "purchased": round(purchased, 2), "invoices": count,
-            "returns_total": returns, "credit_limit": limit,
-            "credit_left": round(limit - bal, 2) if limit else None, "over_limit": bool(limit and bal > limit),
+            "balance": bal, "unpaid": round(unpaid, 2) if unpaid is not None else None,
+            "purchased": round(purchased, 2) if purchased is not None else None, "invoices": count,
+            "returns_total": returns, "credit_limit": limit if bal is not None else None,
+            "credit_left": round(limit - bal, 2) if limit and bal is not None else None,
+            "over_limit": bool(limit and bal is not None and bal > limit),
             "last_invoice": {"id": str(last["_id"]), "number": last.get("number", ""), "total": last["totals"]["total"],
                              "date": last["created_at"].isoformat()} if last else None}
 
@@ -376,6 +387,8 @@ async def credit_check(cid: str, body: dict, user: Annotated[dict, Depends(curre
         raise HTTPException(404, "Customer not found")
     amount = float(body.get("amount") or 0)
     limit = c.get("credit_limit")
+    if not may(user, "see_customer_totals"):
+        return {"warn": False, "balance": None, "after": None, "limit": None, "message": ""}
     bal = await customer_balance(f["business_id"], cid)
     after = round(bal + amount, 2)
     if not limit:
@@ -387,7 +400,7 @@ async def credit_check(cid: str, body: dict, user: Annotated[dict, Depends(curre
                         if after > limit else f"{money_words(round(limit - after, 2))} of credit left after this sale.")}
 
 
-@api.get("/customers/{cid}/ledger")
+@api.get("/customers/{cid}/ledger", dependencies=[Depends(need("see_customer_totals"))])
 async def customer_ledger(cid: str, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     c = await db.customers.find_one({"_id": oid(cid), **f})
@@ -421,21 +434,24 @@ async def list_items(user: Annotated[dict, Depends(current_user)], include_archi
     if not include_archived:
         f = {**f, "archived": {"$ne": True}}
     sc = await shop_scope(user, "stock")
+    cost_ok = may(user, "see_profit") or may(user, "see_stock_value")
     out = []
     async for i in db.items.find(f).sort("name", 1):
         d = clean(i)
         d["quantity_all"] = round(i.get("quantity", 0) or 0, 3)
         d["quantity"] = shop_qty(i, sc["shops"], sc["main"])
         d["stock_by_shop"] = stock_rows(stock_map(i, sc["main"]))
+        if not cost_ok:
+            d.pop("cost_price", None)
         out.append(d)
     return out
 
 
-@api.post("/items", status_code=201)
+@api.post("/items", status_code=201, dependencies=[Depends(need("edit_stock"))])
 async def create_item(data: ItemIn, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     shop = await writing_shop(user)
-    doc = {**data.model_dump(), **f, "shop": shop, "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()}
+    doc = {**data.model_dump(), **f, "shop": shop, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "updated_at": now()}
     if doc["kind"] == "service":
         doc["track_stock"] = False
     if not doc.get("photo_url"):
@@ -460,7 +476,7 @@ class BulkItemsIn(BaseModel):
     items: List[ItemIn]
 
 
-@api.post("/items/bulk", status_code=201)
+@api.post("/items/bulk", status_code=201, dependencies=[Depends(need("edit_stock"))])
 async def create_items_bulk(data: BulkItemsIn, user: Annotated[dict, Depends(current_user)]):
     """Several new items in one go; whatever stock they bring is one purchase order."""
     f = biz_filter(user)
@@ -472,7 +488,7 @@ async def create_items_bulk(data: BulkItemsIn, user: Annotated[dict, Depends(cur
     for r in rows:
         doc = {**r.model_dump(), **f, "name": r.name.strip(), "supplier": r.supplier or data.supplier,
                "category": r.category if r.category != "General" else data.category, "unit": r.unit if r.unit != "Piece" else data.unit,
-               "shop": shop, "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()}
+               "shop": shop, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "updated_at": now()}
         if not doc.get("photo_url"):
             doc["photo_url"] = pick_dummy_photo(doc["name"], doc["category"])
         doc["stock"] = stock_rows({shop: doc["quantity"]}) if doc["track_stock"] else []
@@ -549,6 +565,13 @@ async def get_item(iid: str, user: Annotated[dict, Depends(current_user)]):
     since = last_sale or last_in
     d["idle_days"] = (now() - since["created_at"].replace(tzinfo=timezone.utc)).days if since else None
     d["archived"] = bool(i.get("archived"))
+    if not may(user, "see_profit"):
+        for k in ("cost_of_sales", "profit", "margin"):
+            d[k] = None
+        if not may(user, "see_stock_value"):
+            d.pop("cost_price", None)
+    if not may(user, "see_suppliers"):
+        d["supply_history"], d["suppliers"] = [], []
     return d
 
 
@@ -632,22 +655,26 @@ async def low_stock(user: Annotated[dict, Depends(current_user)], days: int = 30
                      "suggest": suggest, "reorder_cost": round(suggest * cost, 2),
                      "status": "out" if qty <= 0 else "low"})
 
+    if not may(user, "see_profit"):
+        for r in rows:
+            r["reorder_cost"] = None
+            r.pop("cost_price", None)
     rows.sort(key=lambda r: (0 if r["status"] == "out" else 1,
                              r["days_left"] if r["days_left"] is not None else 9999, r["name"]))
     out = len([r for r in rows if r["status"] == "out"])
     return {"as_of": now().isoformat(), "days": span, "count": len(rows), "out": out, "low": len(rows) - out,
-            "reorder_cost": round(sum(r["reorder_cost"] for r in rows), 2),
+            "reorder_cost": round(sum(r["reorder_cost"] or 0 for r in rows), 2) if may(user, "see_profit") else None,
             "shop": sc["shops"][0] if sc["shops"] and len(sc["shops"]) == 1 else "", "items": rows}
 
 
-@api.put("/items/{iid}")
+@api.put("/items/{iid}", dependencies=[Depends(need("edit_stock"))])
 async def update_item(iid: str, data: ItemIn, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     await db.items.update_one({"_id": oid(iid), **f}, {"$set": {**data.model_dump(exclude={"quantity"}), "updated_at": now()}})
     return clean(await db.items.find_one({"_id": oid(iid)}))
 
 
-@api.delete("/items/{iid}")
+@api.delete("/items/{iid}", dependencies=[Depends(need("edit_stock"))])
 async def delete_item(iid: str, user: Annotated[dict, Depends(current_user)], reason: str = ""):
     """An item nobody ever sold is deleted. One with history is **archived**, so
     old invoices and reports keep telling the truth."""
@@ -671,7 +698,7 @@ async def delete_item(iid: str, user: Annotated[dict, Depends(current_user)], re
     return {"ok": True, "mode": "deleted", "message": f"{i['name']} is gone. It had never been sold or supplied."}
 
 
-@api.post("/items/{iid}/restore")
+@api.post("/items/{iid}/restore", dependencies=[Depends(need("edit_stock"))])
 async def restore_item(iid: str, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     r = await db.items.update_one({"_id": oid(iid), "business_id": f["business_id"]},
@@ -682,7 +709,7 @@ async def restore_item(iid: str, user: Annotated[dict, Depends(current_user)]):
     return clean(await db.items.find_one({"_id": oid(iid)}))
 
 
-@api.patch("/items/{iid}/photo")
+@api.patch("/items/{iid}/photo", dependencies=[Depends(need("edit_stock"))])
 async def set_item_photo(iid: str, data: PhotoIn, user: Annotated[dict, Depends(current_user)]):
     """Photo only — the bulk photo screen should not have to send a whole item."""
     f = biz_filter(user)
@@ -692,7 +719,7 @@ async def set_item_photo(iid: str, data: PhotoIn, user: Annotated[dict, Depends(
     return clean(await db.items.find_one({"_id": oid(iid)}))
 
 
-@api.post("/items/{iid}/adjust")
+@api.post("/items/{iid}/adjust", dependencies=[Depends(need("adjust_stock"))])
 async def adjust_item(iid: str, data: AdjustIn, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     i = await db.items.find_one({"_id": oid(iid), **f})
@@ -748,7 +775,7 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
     shop = await writing_shop(user, data.shop)
     doc = {**data.model_dump(exclude={"lines", "shop", "issue_date"}), "shop": shop, "rep": writing_rep(user, data.rep),
            "lines": lines, "totals": totals, "number": number, **f,
-           "created_by": user.get("name", ""), "created_at": _issued_at(data.issue_date)}
+           "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": _issued_at(data.issue_date)}
     res = await db.invoices.insert_one(doc)
     inv_id = str(res.inserted_id)
     if data.status == "issued":
@@ -756,14 +783,14 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
             await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", number, user, "", shop)
         if data.payment_mode != "credit":
             await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": totals["total"], "account_id": data.account_id, "method": data.payment_mode, "shop": shop,
-                                          "allocations": [{"invoice_id": inv_id, "amount": totals["total"]}], "note": f"Paid at sale · {number}", "created_by": user.get("name", ""), "created_at": now()})
+                                          "allocations": [{"invoice_id": inv_id, "amount": totals["total"]}], "note": f"Paid at sale · {number}", "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
         # Unused credit the customer already paid in: applied as a payment so the
         # balance due drops and the ledger still balances.
         credit = round(min(data.credit_applied, totals["total"]), 2)
         if credit > 0 and data.customer_id:
             await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": credit, "account_id": None, "method": "credit", "shop": shop,
                                           "allocations": [{"invoice_id": inv_id, "amount": credit}], "note": f"Unused credit applied · {number}",
-                                          "created_by": user.get("name", ""), "created_at": now(), "deleted_at": None})
+                                          "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "deleted_at": None})
     if data.status == "issued":
         await log_activity(f["business_id"], user, "invoice", f"{number} created", "", totals["total"], inv_id, shop)
         if totals["invoice_discount"]:
@@ -961,14 +988,14 @@ async def create_sale(data: SaleIn, user: Annotated[dict, Depends(current_user)]
     change = round(max(0.0, data.tendered - totals["total"]), 2) if data.method == "cash" and data.tendered else 0
     doc = {**f, "number": number, "lines": lines, "totals": totals, "method": data.method, "tendered": data.tendered, "change": change, "customer_id": data.customer_id,
            "account_id": data.account_id, "shop": shop, "rep": writing_rep(user, data.rep),
-           "created_by": user.get("name", ""), "created_at": now(), "synced": True}
+           "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "synced": True}
     res = await db.sales.insert_one(doc)
     await log_activity(f["business_id"], user, "sale", f"{number} · quick sale", data.method, totals["total"], str(res.inserted_id), shop)
     for l in lines:
         await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", number, user, "", shop)
     if data.method != "credit":
         await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": totals["total"], "account_id": data.account_id, "method": data.method, "allocations": [],
-                                      "sale_id": str(res.inserted_id), "shop": shop, "note": f"Quick sale · {number}", "created_by": user.get("name", ""), "created_at": now()})
+                                      "sale_id": str(res.inserted_id), "shop": shop, "note": f"Quick sale · {number}", "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     return clean(await db.sales.find_one({"_id": res.inserted_id}))
 
 
@@ -1041,7 +1068,7 @@ async def update_sale(sid: str, data: SaleIn, user: Annotated[dict, Depends(curr
     if data.method != "credit":
         await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": totals["total"], "account_id": data.account_id,
                                       "method": data.method, "allocations": [], "sale_id": sid, "shop": shop,
-                                      "note": f"Quick sale · {s['number']}", "created_by": user.get("name", ""), "created_at": s["created_at"]})
+                                      "note": f"Quick sale · {s['number']}", "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": s["created_at"]})
     await log_activity(f["business_id"], user, "sale", f"{s['number']} edited", data.method, totals["total"], sid, shop)
     return await get_sale(sid, user)
 
@@ -1084,7 +1111,7 @@ async def uncancel_sale(sid: str, user: Annotated[dict, Depends(current_user)]):
         await db.payments.insert_one({**f, "customer_id": s.get("customer_id"), "amount": s["totals"]["total"],
                                       "account_id": s.get("account_id"), "method": s.get("method"), "allocations": [],
                                       "sale_id": sid, "shop": shop, "note": f"Quick sale · {s['number']}",
-                                      "created_by": user.get("name", ""), "created_at": s["created_at"]})
+                                      "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": s["created_at"]})
     await db.sales.update_one({"_id": s["_id"]}, {"$unset": {"cancelled_at": "", "cancelled_by": "", "cancelled_reason": ""}})
     await log_activity(f["business_id"], user, "sale", f"{s['number']} restored", "Cancellation reversed", s["totals"]["total"], sid, shop)
     return await get_sale(sid, user)
@@ -1095,7 +1122,7 @@ async def uncancel_sale(sid: str, user: Annotated[dict, Depends(current_user)]):
 async def list_accounts(user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     accs = [clean(a) async for a in db.accounts.find(f)]
-    if not can_see_money(user):
+    if not may(user, "see_accounts"):
         # staff can still pick where a payment landed, but never see balances or movements
         return {"accounts": [{"id": a["id"], "name": a.get("name", ""), "kind": a.get("kind", ""), "detail": a.get("detail", ""),
                               "dormant": a.get("dormant", False)} for a in accs], "recent": [], "restricted": True}
@@ -1128,7 +1155,7 @@ async def list_accounts(user: Annotated[dict, Depends(current_user)]):
     return {"accounts": accs, "total": round(sum(a["balance"] for a in accs), 2), "in": round(total_in, 2), "out": round(total_out, 2), "recent": recent[:8]}
 
 
-@api.get("/accounts/{aid}", dependencies=[Depends(money_guard)])
+@api.get("/accounts/{aid}", dependencies=[Depends(need("see_accounts"))])
 async def account_statement(aid: str, user: Annotated[dict, Depends(current_user)], period: str = "all"):
     """Money in and money out of one account, line by line, with a running
     balance — and anything raised from an invoice links back to it."""
@@ -1219,7 +1246,7 @@ async def create_payment(data: PaymentIn, user: Annotated[dict, Depends(current_
             remaining -= take
     doc = {**f, "customer_id": data.customer_id, "amount": data.amount, "account_id": data.account_id, "method": "payment_in",
            "pay_method": data.method, "allocations": allocations, "note": data.note or "Payment in",
-           "shop": await writing_shop(user), "created_by": user.get("name", ""), "created_at": _issued_at(data.date)}
+           "shop": await writing_shop(user), "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": _issued_at(data.date)}
     res = await db.payments.insert_one(doc)
     cust = await db.customers.find_one({"_id": oid(data.customer_id)})
     await log_activity(f["business_id"], user, "payment", f"Payment received — {(cust or {}).get('name', '')}", data.note, data.amount, str(res.inserted_id), doc["shop"])
@@ -1338,13 +1365,13 @@ async def customer_payment_out(cid: str, data: PaymentOutIn, user: Annotated[dic
         raise HTTPException(400, "That account doesn't belong to this business")
     doc = {**f, "customer_id": cid, "amount": -round(data.amount, 2), "account_id": data.account_id, "method": "payment_out",
            "allocations": [], "note": data.note or "Payment out · refund", "shop": await writing_shop(user),
-           "created_by": user.get("name", ""), "created_at": _issued_at(data.date), "deleted_at": None}
+           "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": _issued_at(data.date), "deleted_at": None}
     res = await db.payments.insert_one(doc)
     await log_activity(f["business_id"], user, "payment", f"Paid out to {c['name']}", doc["note"], -data.amount, str(res.inserted_id), doc["shop"])
     return clean(await db.payments.find_one({"_id": res.inserted_id}))
 
 
-@api.get("/customers/{cid}/items")
+@api.get("/customers/{cid}/items", dependencies=[Depends(need("see_customer_totals"))])
 async def customer_items(cid: str, user: Annotated[dict, Depends(current_user)]):
     """Everything this customer has been sold, item by item."""
     f = biz_filter(user)
@@ -1480,7 +1507,7 @@ async def email_invoice(iid: str, data: EmailDocIn, user: Annotated[dict, Depend
 
 
 # ---------------------------------------------------------------- expenses
-@api.get("/expenses", dependencies=[Depends(money_guard)])
+@api.get("/expenses", dependencies=[Depends(need("see_expenses"))])
 async def list_expenses(user: Annotated[dict, Depends(current_user)], period: str = "month", rep: str = "", category: str = ""):
     f = await scoped(user, "reports")
     if rep:
@@ -1517,16 +1544,16 @@ async def list_expenses(user: Annotated[dict, Depends(current_user)], period: st
     return {"total": round(sum(by_cat.values()), 2), "count": len(items), "by_category": [{"category": k, "amount": v} for k, v in cats], "items": items}
 
 
-@api.post("/expenses", status_code=201)
+@api.post("/expenses", status_code=201, dependencies=[Depends(need("see_expenses"))])
 async def create_expense(data: ExpenseIn, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     doc = {**data.model_dump(exclude={"date", "shop"}), "shop": await writing_shop(user, data.shop), "rep": writing_rep(user, data.rep), **f,
-           "created_by": user.get("name", ""), "created_at": _issued_at(data.date) if data.date else now()}
+           "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": _issued_at(data.date) if data.date else now()}
     res = await db.expenses.insert_one(doc)
     return clean(await db.expenses.find_one({"_id": res.inserted_id}))
 
 
-@api.get("/expenses/{eid}")
+@api.get("/expenses/{eid}", dependencies=[Depends(need("see_expenses"))])
 async def get_expense(eid: str, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
     e = await db.expenses.find_one({"_id": oid(eid), **f})
@@ -1542,7 +1569,7 @@ async def get_expense(eid: str, user: Annotated[dict, Depends(current_user)]):
     return d
 
 
-@api.put("/expenses/{eid}")
+@api.put("/expenses/{eid}", dependencies=[Depends(need("see_expenses"))])
 async def update_expense(eid: str, data: ExpenseIn, user: Annotated[dict, Depends(current_user)]):
     """Fix an expense that was typed wrong — including which shop it belongs to,
     which moves the figure between branches."""
@@ -1573,7 +1600,7 @@ async def update_expense(eid: str, data: ExpenseIn, user: Annotated[dict, Depend
     return await get_expense(eid, user)
 
 
-@api.delete("/expenses/{eid}")
+@api.delete("/expenses/{eid}", dependencies=[Depends(need("see_expenses"))])
 async def delete_expense(eid: str, user: Annotated[dict, Depends(current_user)], reason: str = ""):
     f = biz_filter(user)
     e = await db.expenses.find_one({"_id": oid(eid), **f})
@@ -1635,8 +1662,10 @@ async def dashboard(user: Annotated[dict, Depends(current_user)]):
             if qty <= it.get("alert_below", 0):
                 low += 1
     change_pct = round((total_sales - prev_sales) / prev_sales * 100) if prev_sales else None
-    return {"month": today.strftime("%B %Y"), "total_sales": total_sales, "change_pct": change_pct, "received": received, "refunded": refunded, "owed": round(owed, 2),
-            "expenses": round(sum(e["amount"] for e in expenses), 2), "expense_count": len(expenses), "purchases": round(stock_value, 2), "low_stock": low,
+    return {"month": today.strftime("%B %Y"), "total_sales": total_sales, "change_pct": change_pct, "received": received, "refunded": refunded, "owed": round(owed, 2) if may(user, "see_customer_totals") else None,
+            "expenses": round(sum(e["amount"] for e in expenses), 2) if may(user, "see_expenses") else None,
+            "expense_count": len(expenses) if may(user, "see_expenses") else None,
+            "purchases": round(stock_value, 2) if may(user, "see_stock_value") else None, "low_stock": low,
             "cashflow": days, "net_week": round(sum(d["in"] - d["out"] for d in days), 2), "user_name": user.get("name", ""),
             "shop": sc["shops"][0] if sc["shops"] and len(sc["shops"]) == 1 else "", "shops_in_view": sc["shops"] or sc["all"]}
 
@@ -1658,17 +1687,17 @@ async def seed_demo(user: Annotated[dict, Depends(current_user)]):
     for n, cat, unit, cost, sell, whole, qty, alert, loc, bc in items_src:
         r = await db.items.insert_one({**f, "name": n, "kind": "product", "category": cat, "unit": unit, "barcode": bc, "supplier": "Ade Foods Ltd", "location": loc, "cost_price": cost,
                                        "selling_price": sell, "wholesale_price": whole, "track_stock": True, "quantity": qty, "alert_below": alert, "expiry": None, "photo_url": pick_dummy_photo(n, cat),
-                                       "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()})
+                                       "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "updated_at": now()})
         item_ids[n] = str(r.inserted_id)
     await db.items.insert_one({**f, "name": "Delivery within Lagos", "kind": "service", "category": "Services", "unit": "Service", "barcode": "", "supplier": "", "location": "", "cost_price": 0,
                                "selling_price": 5000, "wholesale_price": None, "track_stock": False, "quantity": 0, "alert_below": 0, "expiry": None, "photo_url": pick_dummy_photo("Delivery within Lagos", "Services"),
-                               "created_by": user.get("name", ""), "created_at": now(), "updated_at": now()})
+                               "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "updated_at": now()})
     custs = [("Blessing Adeyemi", "+234 803 442 1180", "Retail"), ("Kunle Stores", "+234 706 118 9002", "Wholesale"), ("Adeola Stores", "+234 812 555 0192", "Wholesale"),
              ("Grace Mwangi", "+234 815 220 7741", "Retail"), ("Ibrahim Okonkwo", "+234 909 331 4410", "Retail")]
     cids = {}
     for n, ph, pl in custs:
         r = await db.customers.insert_one({**f, "name": n, "phone": ph, "email": "", "address": "", "opening_balance": 0, "opening_type": "owes_me", "price_list": pl, "credit_limit": 150000,
-                                           "created_by": user.get("name", ""), "created_at": now()})
+                                           "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
         cids[n] = str(r.inserted_id)
 
     async def mk_inv(cust, lines, days_ago, due_in, pay=None, disc=(0, "amount")):
@@ -1678,10 +1707,10 @@ async def seed_demo(user: Annotated[dict, Depends(current_user)]):
         created = now() - timedelta(days=days_ago)
         r = await db.invoices.insert_one({**f, "customer_id": cids[cust], "lines": ls, "totals": tot, "number": number, "invoice_discount_type": disc[1], "invoice_discount_value": disc[0], "vat_rate": 0,
                                           "due_date": (created + timedelta(days=due_in)).date().isoformat(), "payment_mode": "credit", "account_id": None, "status": "issued", "note": "",
-                                          "created_by": user.get("name", ""), "created_at": created})
+                                          "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": created})
         if pay:
             await db.payments.insert_one({**f, "customer_id": cids[cust], "amount": pay, "account_id": str(gtb.inserted_id), "method": "transfer", "allocations": [{"invoice_id": str(r.inserted_id), "amount": pay}],
-                                          "note": f"Bank transfer · {number}", "created_by": user.get("name", ""), "created_at": created + timedelta(days=2)})
+                                          "note": f"Bank transfer · {number}", "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": created + timedelta(days=2)})
 
     await mk_inv("Adeola Stores", [("Adeba Rice 50kg", 1, 62000), ("Cooking Oil 5L", 2, 9800), ("Detergent 1kg", 8, 1800)], 20, 7, pay=96000)
     await mk_inv("Ibrahim Okonkwo", [("Sugar 50kg", 1, 44000), ("Cooking Oil 5L", 2, 9800)], 14, 8, pay=40000)
@@ -1690,14 +1719,14 @@ async def seed_demo(user: Annotated[dict, Depends(current_user)]):
     await mk_inv("Grace Mwangi", [("Semovita 10kg", 2, 7400), ("Detergent 1kg", 2, 1850)], 6, 10, pay=18200)
     for amt, cat, note, days in [(18000, "Transport & fuel", "Generator diesel", 1), (45000, "Rent", "Shop rent — this month", 5), (6000, "Salaries", "Loader wages", 2), (13000, "Utilities", "PHCN bill", 9)]:
         await db.expenses.insert_one({**f, "amount": amt, "category": cat, "account_id": str(acc_cash["_id"]) if acc_cash else None, "note": note, "shop": "Ikeja", "receipt_url": None,
-                                      "created_by": user.get("name", ""), "created_at": now() - timedelta(days=days)})
+                                      "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now() - timedelta(days=days)})
     for amt, days in [(81600, 0), (19600, 1), (62000, 3)]:
         number = await next_number(bid, "sale", "SL", 536000)
         await db.sales.insert_one({**f, "number": number, "lines": [], "totals": {"gross": amt, "line_discount": 0, "invoice_discount": 0, "taxable": amt, "vat": 0, "total": amt}, "method": "cash",
-                                   "tendered": amt, "change": 0, "customer_id": None, "account_id": str(acc_cash["_id"]) if acc_cash else None, "created_by": user.get("name", ""),
+                                   "tendered": amt, "change": 0, "customer_id": None, "account_id": str(acc_cash["_id"]) if acc_cash else None, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]),
                                    "created_at": now() - timedelta(days=days), "synced": True})
         await db.payments.insert_one({**f, "customer_id": None, "amount": amt, "account_id": str(acc_cash["_id"]) if acc_cash else None, "method": "cash", "allocations": [], "note": f"Quick sale · {number}",
-                                      "created_by": user.get("name", ""), "created_at": now() - timedelta(days=days)})
+                                      "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now() - timedelta(days=days)})
     return {"seeded": True}
 
 

@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import dayjs from "dayjs";
 
 import { api } from "@/src/api";
+import { useAuth } from "@/src/auth";
 import { AppBar, Av, Badge, Btn, Card, Chip, Empty, H4, IconBtn, Li, Lbl, Loading, Money, Prog, Radio, Row, Seg, Sub, Tag } from "@/src/components/ui";
 import { Photo } from "@/src/components/photo";
 import { Sheet } from "@/src/components/sheet";
@@ -46,6 +47,9 @@ export default function Stock() {
   const statsQ = useQuery({ queryKey: ["items-stats"], queryFn: () => api<{ stats: Record<string, any> }>("/items-stats") });
   const stats = statsQ.data?.stats ?? {};
   const items = q.data ?? [];
+  const { user } = useAuth();
+  const valueOk = user?.perms?.see_stock_value !== false;
+  const editOk = user?.perms?.edit_stock !== false;
   const value = items.reduce((a, i) => a + (i.track_stock ? i.quantity * i.cost_price : 0), 0);
   const low = items.filter((i) => i.track_stock && i.quantity > 0 && i.quantity <= i.alert_below).length;
   const out = items.filter((i) => i.track_stock && i.quantity <= 0).length;
@@ -87,8 +91,8 @@ export default function Stock() {
         <IconBtn name="search-outline" testID="stock-search" onPress={() => router.push("/search")} />
         <IconBtn name="pricetag-outline" testID="stock-price-check" onPress={() => router.push("/stock/price-check")} />
         <IconBtn name="options-outline" dot={extraFilters > 0} testID="stock-filter" onPress={() => setSheet(true)} />
-        <IconBtn name="layers-outline" testID="stock-bulk-add" onPress={() => router.push("/stock/bulk")} />
-        <IconBtn name="images-outline" testID="stock-photos" onPress={() => router.push("/stock/photos")} />
+        {editOk ? <IconBtn name="layers-outline" testID="stock-bulk-add" onPress={() => router.push("/stock/bulk")} /> : null}
+        {editOk ? <IconBtn name="images-outline" testID="stock-photos" onPress={() => router.push("/stock/photos")} /> : null}
         <IconBtn dark name={grid ? "list-outline" : "grid-outline"} testID="stock-grid-view" onPress={() => setGrid(!grid)} />
       </>} />
       <View style={{ paddingHorizontal: 14 }}>
@@ -98,7 +102,7 @@ export default function Stock() {
         <SyncStamp at={q.dataUpdatedAt} busy={q.isFetching} onRefresh={() => { q.refetch(); statsQ.refetch(); }} testID="stock-sync" />
         <Card style={s.deepCard} testID="stock-value-card">
           <Row between>
-            <View><Lbl style={{ color: colors.onDeepMuted }}>Stock value at cost</Lbl><Money tone="white" size={17}>{money(value)}</Money></View>
+            <View><Lbl style={{ color: colors.onDeepMuted }}>{valueOk ? "Stock value at cost" : "Stock in view"}</Lbl>{valueOk ? <Money tone="white" size={17}>{money(value)}</Money> : <Money tone="white" size={17}>{`${low + out} need reordering`}</Money>}</View>
             <View style={{ alignItems: "flex-end" }}><Lbl style={{ color: colors.onDeepMuted }}>Items</Lbl><Money tone="green">{items.length}</Money></View>
           </Row>
         </Card>
@@ -114,7 +118,7 @@ export default function Stock() {
                 <Btn small label="Reorder list" testID="stock-low-cta" onPress={() => router.push("/stock/low")} />
               </Card>
             ) : null}
-            {noPhoto ? (
+            {noPhoto && editOk ? (
               <Card style={{ marginTop: 9, flexDirection: "row", alignItems: "center", gap: 10 }} testID="stock-photos-nudge">
                 <Av icon="images-outline" tone="mint" />
                 <View style={{ flex: 1 }}><H4>{noPhoto} items have no photo</H4><Sub>Add them in one go — photos print on invoices.</Sub></View>
@@ -149,7 +153,7 @@ export default function Stock() {
             ) : list.length === 0 ? (
               <Card><Empty icon="cube-outline" title={chip === "all" ? "Nothing in stock yet" : "Nothing matches this filter"}
                 sub={chip === "all" ? "Add your first item to start tracking." : "Try another chip above."}
-                action={chip === "all" ? <Btn label="Add item" testID="stock-empty-add" onPress={() => router.push("/stock/new")} /> : undefined} /></Card>
+                action={chip === "all" && editOk ? <Btn label="Add item" testID="stock-empty-add" onPress={() => router.push("/stock/new")} /> : undefined} /></Card>
             ) : grid ? (
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }} testID="stock-grid">
                 {list.map((it) => (

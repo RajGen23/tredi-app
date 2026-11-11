@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api } from "@/src/api";
+import { useAuth } from "@/src/auth";
 import { AppBar, Av, Badge, Card, Divider, H4, IconBtn, IonName, Kpi, Li, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { initials, money } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
@@ -27,6 +28,8 @@ export default function CustomerProfile() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useQuery({ queryKey: ["customer", id], queryFn: () => api(`/customers/${id}`) });
   const c = q.data;
+  const { user } = useAuth();
+  const totalsOk = user?.perms?.see_customer_totals !== false;
 
   const shortcuts: { label: string; icon: IonName; green?: boolean; onPress: () => void; testID: string }[] = [
     { label: "Sale", icon: "flash-outline", green: true, onPress: () => router.push("/quick-sale"), testID: "customer-shortcut-sale" },
@@ -42,7 +45,7 @@ export default function CustomerProfile() {
         <AppBar teal back title="Customer" right={<>
           {c?.phone ? <IconBtn teal name="call-outline" testID="customer-call" onPress={() => Linking.openURL(`tel:${String(c.phone).replace(/\s/g, "")}`)} /> : null}
           <IconBtn teal name="create-outline" testID="customer-edit" onPress={() => router.push({ pathname: "/customers/new", params: { edit: id } })} />
-          <IconBtn teal name="ellipsis-horizontal" testID="customer-more" onPress={() => router.push(`/customers/ledger/${id}`)} />
+          {totalsOk ? <IconBtn teal name="ellipsis-horizontal" testID="customer-more" onPress={() => router.push(`/customers/ledger/${id}`)} /> : null}
         </>} />
       </View>
       {!c ? <Card style={{ marginHorizontal: 14 }}><Loading /></Card> : (
@@ -51,8 +54,9 @@ export default function CustomerProfile() {
             <Row>
               <Av text={initials(c.name)} tone="green" size={40} />
               <View style={{ flex: 1 }}><H4 style={{ fontSize: 15 }} testID="customer-name">{c.name}</H4><Text style={s.phone}>{c.phone || "No phone"}</Text></View>
-              {c.overdue_count > 0 ? <Badge tone="over">Overdue</Badge> : c.balance > 0 ? <Badge tone="due">Owing</Badge> : <Badge tone="paid">Clear</Badge>}
+              {!totalsOk ? null : c.overdue_count > 0 ? <Badge tone="over">Overdue</Badge> : c.balance > 0 ? <Badge tone="due">Owing</Badge> : <Badge tone="paid">Clear</Badge>}
             </Row>
+            {totalsOk ? <>
             <Divider />
             {/* The three figures the old app put on one card: what they have
                 bought, what is still unpaid, and what came back as returns. */}
@@ -74,6 +78,7 @@ export default function CustomerProfile() {
               <Sub>{c.returns_count ? `${c.returns_count} return${c.returns_count === 1 ? "" : "s"} on record` : "No returns on record"}</Sub>
               <Sub>{Math.max(0, -c.balance) > 0 ? `${money(Math.max(0, -c.balance))} unused credit` : c.credit_limit ? `Limit ${money(c.credit_limit)}` : "No credit limit"}</Sub>
             </Row>
+            </> : null}
             <View style={{ flexDirection: "row", marginTop: 11, gap: 6 }}>
               {shortcuts.map((sc) => (
                 <Pressable key={sc.label} testID={sc.testID} onPress={sc.onPress} style={{ flex: 1, alignItems: "center" }}>
@@ -83,19 +88,19 @@ export default function CustomerProfile() {
               ))}
             </View>
           </Card>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 9 }}>
+          {totalsOk ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 9 }}>
             <View style={{ width: "48.5%" }}><Kpi label="Total received" value={money(c.total_received)} tone="pos" /></View>
             <View style={{ width: "48.5%" }}><Kpi label="Total purchases" value={money(c.total_purchases)} small={`${c.invoices.length} invoices`} /></View>
             <View style={{ width: "48.5%" }}><Kpi label="Overdue invoices" value={String(c.overdue_count)} small={c.max_days_overdue ? `${c.max_days_overdue} days late` : "none"} tone={c.overdue_count ? "neg" : undefined} /></View>
             <View style={{ width: "48.5%" }}><Kpi label="Price list" value={c.price_list} small={c.credit_limit ? `Limit ${money(c.credit_limit)}` : "No limit"} onPress={() => router.push({ pathname: "/customers/new", params: { edit: id } })} testID="customer-edit-price-list" /></View>
-          </View>
+          </View> : null}
           <Card style={{ marginTop: 9, paddingVertical: 4 }}>
-            <Li testID="customer-ledger-link" onPress={() => router.push(`/customers/ledger/${id}`)}>
+            {totalsOk ? <Li testID="customer-ledger-link" onPress={() => router.push(`/customers/ledger/${id}`)}>
               <Av icon="receipt-outline" tone="sq" /><View style={{ flex: 1 }}><H4>Ledger & statement</H4><Sub>{c.invoices.length} sales on record</Sub></View><Ionicons name="chevron-forward" size={16} color={colors.ink40} />
-            </Li>
-            <Li testID="customer-items-link" onPress={() => router.push(`/customers/items/${id}`)}>
+            </Li> : null}
+            {totalsOk ? <Li testID="customer-items-link" onPress={() => router.push(`/customers/items/${id}`)}>
               <Av icon="swap-horizontal-outline" tone="sq" /><View style={{ flex: 1 }}><H4>Items supplied to this customer</H4><Sub>Distribution history</Sub></View><Ionicons name="chevron-forward" size={16} color={colors.ink40} />
-            </Li>
+            </Li> : null}
             <Li last testID="customer-pricing-link" onPress={() => router.push(`/customers/pricing/${id}`)}>
               <Av icon="pricetag-outline" tone="sq" /><View style={{ flex: 1 }}><H4>Special pricing</H4><Sub>Prices below retail for this customer</Sub></View><Ionicons name="chevron-forward" size={16} color={colors.ink40} />
             </Li>

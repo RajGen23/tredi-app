@@ -7,7 +7,7 @@ import secrets
 
 import mailer
 
-from deps import (CurrentUser, LIVE_QUICK, LIVE_SALE, biz_filter, clean, db, ensure_feature, ensure_limit, hash_password, invoice_paid,
+from deps import (AREA_PERMS, CurrentUser, LIVE_QUICK, LIVE_SALE, biz_filter, clean, db, ensure_feature, ensure_limit, hash_password, invoice_paid, may,
                   invoice_status, log_activity, now, oid, period_range, date_query, public_user, rep_clause, scoped)
 
 router = APIRouter(prefix="/api")
@@ -22,6 +22,12 @@ ABILITIES = [
     ("edit_payments", "Edit past payments — amount, account, date"),
     ("delete_payments", "Delete payments"),
     ("reports", "Open reports"),
+    ("edit_stock", "Add and edit stock items"),
+    ("see_stock_value", "See total stock value"),
+    ("see_suppliers", "See suppliers & purchases"),
+    ("see_customer_totals", "See customer balances & totals"),
+    ("see_expenses", "See and record expenses"),
+    ("see_accounts", "See bank & cash account balances"),
     ("manage_users", "Manage users"),
 ]
 SCOPE_KEYS = [("sales", "Invoices & sales"), ("stock", "Stock"), ("customers", "Customers"), ("reports", "Reports & totals")]
@@ -33,15 +39,18 @@ BUILTIN_ROLES = {
                 "can": {k: k != "manage_users" for k, _ in ABILITIES}, "scopes": {k: "shop" for k, _ in SCOPE_KEYS}},
     "sales": {"label": "Sales", "note": "Sell and take payment only",
               "can": {"invoices": True, "sell_credit": True, "big_discount": False, "see_profit": False, "adjust_stock": False,
-                      "approve_transfers": False, "edit_payments": False, "delete_payments": False, "reports": False, "manage_users": False},
+                      "approve_transfers": False, "edit_payments": False, "delete_payments": False, "reports": False, "manage_users": False,
+                      "edit_stock": False, "see_stock_value": False, "see_suppliers": False, "see_customer_totals": False, "see_expenses": False, "see_accounts": False},
               "scopes": {"sales": "own", "stock": "shop", "customers": "shop", "reports": "own"}},
     "stock": {"label": "Stock", "note": "Receive, count and transfer stock",
               "can": {"invoices": False, "sell_credit": False, "big_discount": False, "see_profit": False, "adjust_stock": True,
-                      "approve_transfers": True, "edit_payments": False, "delete_payments": False, "reports": False, "manage_users": False},
+                      "approve_transfers": True, "edit_payments": False, "delete_payments": False, "reports": False, "manage_users": False,
+                      "edit_stock": True, "see_stock_value": False, "see_suppliers": False, "see_customer_totals": False, "see_expenses": False, "see_accounts": False},
               "scopes": {"sales": "own", "stock": "shop", "customers": "shop", "reports": "own"}},
     "accountant": {"label": "Accountant", "note": "Read everything, edit nothing but payments",
                    "can": {"invoices": False, "sell_credit": False, "big_discount": False, "see_profit": True, "adjust_stock": False,
-                           "approve_transfers": False, "edit_payments": False, "delete_payments": True, "reports": True, "manage_users": False},
+                           "approve_transfers": False, "edit_payments": False, "delete_payments": True, "reports": True, "manage_users": False,
+                           "edit_stock": False, "see_stock_value": True, "see_suppliers": True, "see_customer_totals": True, "see_expenses": True, "see_accounts": True},
                    "scopes": {k: "all" for k, _ in SCOPE_KEYS}},
 }
 
@@ -174,7 +183,8 @@ async def get_member(uid: str, user: CurrentUser):
     biz = await db.businesses.find_one({"_id": ObjectId(f["business_id"])})
     return {"id": uid, "name": u.get("name", ""), "email": u["email"], "phone": u.get("phone", ""),
             "role": u.get("role", "owner"), "role_label": base["label"],
-            "shops": u.get("shops", []), "can": {**base["can"], **(u.get("can") or {})}, "scopes": {**base["scopes"], **(u.get("scopes") or {})},
+            "shops": u.get("shops", []), "can": {**base["can"], **(u.get("can") or {}), **{k: may(u, k) for k in AREA_PERMS if k not in (u.get("can") or {})}},
+            "scopes": {**base["scopes"], **(u.get("scopes") or {})},
             "active": u.get("active", True), "all_shops": [s["name"] for s in (biz.get("shops") or [])],
             "abilities": [{"key": k, "label": l} for k, l in ABILITIES], "scope_keys": [{"key": k, "label": l} for k, l in SCOPE_KEYS],
             "roles": await role_catalogue(f["business_id"])}
@@ -246,7 +256,7 @@ async def create_role(data: RoleIn, user: CurrentUser):
     can = {**base["can"], **data.can}
     scopes = {**base["scopes"], **data.scopes}
     res = await db.roles.insert_one({**f, "label": data.label, "note": data.note or f"Based on {base['label']}",
-                                     "can": can, "scopes": scopes, "created_by": user.get("name", ""), "created_at": now()})
+                                     "can": can, "scopes": scopes, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     rid = str(res.inserted_id)
     for uid in data.assign_to:
         if ObjectId.is_valid(uid):

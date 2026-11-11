@@ -105,7 +105,7 @@ async def create_terms(data: TermsIn, user: CurrentUser):
     f = biz_filter(user)
     if data.is_default:
         await db.terms.update_many(f, {"$set": {"is_default": False}})
-    res = await db.terms.insert_one({**data.model_dump(), **f, "created_by": user.get("name", ""), "created_at": now()})
+    res = await db.terms.insert_one({**data.model_dump(), **f, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     return clean(await db.terms.find_one({"_id": res.inserted_id}))
 
 
@@ -157,7 +157,7 @@ async def send_reminder(iid: str, data: ReminderIn, user: CurrentUser):
     if not inv:
         raise HTTPException(404, "Invoice not found")
     res = await db.reminders.insert_one({**f, "invoice_id": iid, "channel": data.channel, "message": data.message,
-                                         "repeat_days": data.repeat_days, "created_by": user.get("name", ""), "created_at": now()})
+                                         "repeat_days": data.repeat_days, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     await db.invoices.update_one({"_id": inv["_id"]}, {"$set": {"reminder_repeat_days": data.repeat_days, "last_reminder_at": now()}})
     await log_activity(f["business_id"], user, "reminder", f"Reminder sent · {inv['number']}", data.channel, 0, iid)
     return clean(await db.reminders.find_one({"_id": res.inserted_id}))
@@ -226,7 +226,7 @@ async def duplicate_invoice(iid: str, data: DuplicateIn, user: CurrentUser):
            "vat_rate": src.get("vat_rate", VAT_RATE), "due_date": (date.today() + timedelta(days=settings["due_days"])).isoformat(),
            "payment_mode": "credit", "account_id": None, "status": status, "note": src.get("note", ""), "terms_id": src.get("terms_id"),
            "shop": src.get("shop", ""), "duplicated_from": iid, "duplicated_from_number": src["number"],
-           "created_by": user.get("name", ""), "created_at": now()}
+           "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()}
     res = await db.invoices.insert_one(doc)
     new_id = str(res.inserted_id)
     if data.issue:

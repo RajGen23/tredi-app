@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/src/api";
+import { useAuth } from "@/src/auth";
 import { AppBar, Av, Badge, Btn, Card, Empty, H4, IconBtn, Li, Lbl, Loading, Money, Row, Seg, Sub } from "@/src/components/ui";
 import { initials, money } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
@@ -28,6 +29,8 @@ export default function Customers() {
   const [searching, setSearching] = useState(false);
   const [term, setTerm] = useState("");
   const q = useQuery({ queryKey: ["customers"], queryFn: () => api<any[]>("/customers") });
+  const { user } = useAuth();
+  const totalsOk = user?.perms?.see_customer_totals !== false;
   const all = useMemo(() => q.data ?? [], [q.data]);
   const owed = all.reduce((a, c) => a + Math.max(0, c.balance), 0);
   const credit = all.reduce((a, c) => a + Math.max(0, -c.balance), 0);
@@ -57,7 +60,7 @@ export default function Customers() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 9, paddingBottom: pad }}
         refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}
-        ListHeaderComponent={
+        ListHeaderComponent={!totalsOk ? null :
           <Card style={[s.deepCard, { marginBottom: 9 }]} testID="customers-owed-card">
             <Row between>
               <View><Lbl style={{ color: colors.onDeepMuted }}>You are owed</Lbl><Money tone="white" size={17}>{money(owed)}</Money></View>
@@ -80,10 +83,11 @@ export default function Customers() {
             <Li testID={`customer-row-${c.id}`} last={i === list.length - 1} onPress={() => router.push(`/customers/${c.id}`)}>
               <Av text={initials(c.name)} />
               <View style={{ flex: 1 }}>
-                <Row between><H4>{c.name}</H4><Money tone={tone}>{money(c.balance)}</Money></Row>
+                <Row between><H4>{c.name}</H4>{totalsOk ? <Money tone={tone}>{money(c.balance)}</Money> : null}</Row>
                 <Row between>
-                  <Sub>{c.balance < 0 ? "Unused credit on account" : c.open_invoices ? `${c.open_invoices} invoice${c.open_invoices > 1 ? "s" : ""}${over ? ` · ${c.days_overdue} days late` : ""}` : `${c.price_list} · settled`}</Sub>
-                  {c.balance < 0 ? <Badge tone="paid">Credit</Badge> : over ? <Badge tone="over">Overdue</Badge> : c.balance > 0 ? <Badge tone="due">Due</Badge> : <Badge tone="paid">Clear</Badge>}
+                  {totalsOk ? <Sub>{c.balance < 0 ? "Unused credit on account" : c.open_invoices ? `${c.open_invoices} invoice${c.open_invoices > 1 ? "s" : ""}${over ? ` · ${c.days_overdue} days late` : ""}` : `${c.price_list} · settled`}</Sub>
+                    : <Sub>{c.phone || c.price_list}</Sub>}
+                  {!totalsOk ? null : c.balance < 0 ? <Badge tone="paid">Credit</Badge> : over ? <Badge tone="over">Overdue</Badge> : c.balance > 0 ? <Badge tone="due">Due</Badge> : <Badge tone="paid">Clear</Badge>}
                 </Row>
               </View>
             </Li>

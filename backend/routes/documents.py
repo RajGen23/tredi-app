@@ -63,7 +63,7 @@ async def list_receipts(user: CurrentUser, kind: str = "all"):
 async def add_receipt(data: ReceiptIn, user: CurrentUser):
     f = biz_filter(user)
     res = await db.receipts.insert_one({**data.model_dump(), **f, "shop": await writing_shop(user),
-                                        "created_by": user.get("name", ""), "created_at": now()})
+                                        "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     return clean(await db.receipts.find_one({"_id": res.inserted_id}))
 
 
@@ -112,7 +112,7 @@ async def create_waybill(data: WaybillIn, user: CurrentUser):
                       "unit_price": l.get("unit_price") or 0} for l in inv.get("lines", [])]
     number = await next_number(f["business_id"], "waybill", "WB", 230)
     doc = {**data.model_dump(exclude={"lines"}), "lines": lines, "number": number, "packages": round(sum(l["quantity"] for l in lines), 2),
-           **f, "shop": await writing_shop(user), "created_by": user.get("name", ""), "created_at": now()}
+           **f, "shop": await writing_shop(user), "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()}
     res = await db.waybills.insert_one(doc)
     await log_activity(f["business_id"], user, "waybill", f"Waybill {number}", data.customer_name, 0, str(res.inserted_id))
     return clean(await db.waybills.find_one({"_id": res.inserted_id}))

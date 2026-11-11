@@ -677,3 +677,9 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - /subscription/choose returns 402 while PAYSTACK_SECRET_KEY is set. Preview = test key, live = live key.
 - Web: same-tab redirect to Paystack; native: expo-web-browser auth session then verify.
 - Webhook URL to set in Paystack dashboard: <app URL>/api/paystack/webhook
+
+## Staff permissions & own-invoice scope (June 2026)
+- New per-staff switches (deps.AREA_PERMS, may()/need()): see_suppliers, see_customer_totals, see_stock_value, see_expenses, see_accounts, edit_stock (+ existing see_profit, adjust_stock now enforced). Owner always; manager default on; others off unless ticked. Exposed as user.perms.
+- Own scope matches created_by_id → created_by name → rep, and ignores shop (reps keep their history after moving shops).
+- Legacy sync step `creators()` links old-app invoices/expenses to the creator (created_by_id, rep, made_by) without touching synced fields.
+- Home "My sales" card for staff is tappable (→ Sales tab). Hidden for staff: suppliers, expenses, accounts, customer balances/ledger/items, stock value, cost/profit, supply history, add/edit/adjust stock.

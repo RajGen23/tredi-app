@@ -8,7 +8,8 @@ import { storage } from "@/src/utils/storage";
 
 const ME_KEY = "tradabooks_me";
 
-export type User = { id: string; name: string; email: string; business_id: string | null; role?: string; can_see_money?: boolean; can_edit_payments?: boolean };
+export type User = { id: string; name: string; email: string; business_id: string | null; role?: string; can_see_money?: boolean; can_edit_payments?: boolean;
+  perms?: Partial<Record<"see_suppliers" | "see_customer_totals" | "see_stock_value" | "see_expenses" | "see_accounts" | "edit_stock" | "see_profit" | "adjust_stock", boolean>> };
 export type Business = { id: string; name: string; type: string; currency: string; tin: string; address: string; phone: string; track_stock: boolean; shops: { name: string; address: string }[] };
 
 type Ctx = {

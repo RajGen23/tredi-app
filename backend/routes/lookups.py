@@ -64,5 +64,5 @@ async def add_lookup(kind: str, data: LookupIn, user: CurrentUser):
     existing = await get_lookup(kind, user)
     if value.lower() in {v.lower() for v in existing["values"]}:
         return existing
-    await db.lookups.insert_one({**f, "kind": kind, "value": value, "created_by": user.get("name", ""), "created_at": now()})
+    await db.lookups.insert_one({**f, "kind": kind, "value": value, "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
     return await get_lookup(kind, user)
