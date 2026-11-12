@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from starlette.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
@@ -10,6 +10,8 @@ import hashlib
 import logging
 import os
 import re
+import httpx
+from urllib.parse import urlparse
 import secrets
 
 import mailer
@@ -164,6 +166,31 @@ async def health():
     return {"ok": True}
 
 
+PROXY_HOSTS = ("upload.wikimedia.org", "thumb.wikimedia.org")
+_photo_cache: dict = {}
+
+
+@api.get("/photo-proxy")
+async def photo_proxy(url: str):
+    """Placeholder stock photos come from Wikimedia, which refuses phones and PDF
+    engines that don't send a proper User-Agent — so they printed blank. Fetch
+    them here instead. Only Wikimedia hosts, so this is never an open proxy."""
+    p = urlparse(url)
+    if p.scheme != "https" or p.hostname not in PROXY_HOSTS:
+        raise HTTPException(400, "Not an allowed image host")
+    hit = _photo_cache.get(url)
+    if not hit:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
+            r = await c.get(url, headers={"User-Agent": "TradaBooks/1.0 (https://tradabooks.app; support@tradabooks.app)"})
+        if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image/") or len(r.content) > 3_000_000:
+            raise HTTPException(404, "Image not available")
+        hit = (r.content, r.headers["content-type"])
+        if len(_photo_cache) > 150:
+            _photo_cache.clear()
+        _photo_cache[url] = hit
+    return Response(content=hit[0], media_type=hit[1], headers={"Cache-Control": "public, max-age=604800"})
+
+
 @api.post("/auth/signup-code")
 async def signup_code(data: SignupCodeIn):
     """Step one of creating an account: email a 6-digit code that proves the
@@ -201,6 +228,63 @@ async def register(data: RegisterIn):
         await db.signup_codes.delete_one({"_id": rec["_id"]})
     res = await db.users.insert_one({"name": data.name, "email": email, "password_hash": hash_password(data.password), "business_id": None, "created_at": now()})
     return {"access_token": create_access_token(str(res.inserted_id)), "token_type": "bearer", "user": public_user(await db.users.find_one({"_id": res.inserted_id}))}
+
+
+class ForgotIn(BaseModel):
+    email: str
+
+
+class ResetIn(BaseModel):
+    email: str
+    code: str
+    password: str
+
+
+@api.post("/auth/forgot")
+async def forgot_password(data: ForgotIn):
+    """Email a 6-digit reset code. Same answer whether or not the email exists,
+    so this can't be used to find out who has an account."""
+    email = data.email.strip().lower()
+    reply = {"ok": True, "message": f"If {email} has a TradaBooks account, a code is on its way."}
+    if await db.reset_codes.find_one({"email": email, "sent_at": {"$gt": now() - timedelta(seconds=45)}}):
+        raise HTTPException(429, "A code was just sent — wait a moment before asking again")
+    user = await db.users.find_one({"email": email})
+    if not user:
+        # remember the ask too, so the 45-second limit looks the same for every email
+        await db.reset_codes.update_one({"email": email}, {"$set": {"sent_at": now(), "hash": "", "expires_at": now(), "tries": 5}}, upsert=True)
+        return reply
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    await db.reset_codes.update_one({"email": email}, {"$set": {"hash": _code_hash("reset:" + email, code), "sent_at": now(),
+                                    "expires_at": now() + timedelta(minutes=15), "tries": 0}}, upsert=True)
+    ok = await mailer.send(email, f"Your TradaBooks reset code: {code}", mailer.layout("Reset your password", [
+        f"Hi {mailer.e(user.get('name') or 'there')}, use this code in the app to choose a new password:",
+        f"<span style='font-size:28px;font-weight:700;letter-spacing:6px'>{code}</span>",
+        "It expires in 15 minutes. If you didn't ask for it, ignore this email — your password stays the same."]),
+        text=f"Your TradaBooks reset code is {code}")
+    if not ok:
+        logger.error("reset code email to %s failed", email)
+    return reply
+
+
+@api.post("/auth/reset")
+async def reset_password(data: ResetIn):
+    email = data.email.strip().lower()
+    if len(data.password) < 6:
+        raise HTTPException(400, "Use at least 6 characters for the new password")
+    rec = await db.reset_codes.find_one({"email": email})
+    if not rec or rec["expires_at"].replace(tzinfo=timezone.utc) < now() or rec.get("tries", 0) >= 5:
+        raise HTTPException(400, "Ask for a new code — that one has expired")
+    if rec["hash"] != _code_hash("reset:" + email, data.code.strip()):
+        await db.reset_codes.update_one({"_id": rec["_id"]}, {"$inc": {"tries": 1}})
+        raise HTTPException(400, "That code is not right — check the email and try again")
+    user = await db.users.find_one({"email": email})
+    if not user:
+        raise HTTPException(400, "Ask for a new code — that one has expired")
+    await db.reset_codes.delete_one({"_id": rec["_id"]})
+    await db.users.update_one({"_id": user["_id"]}, {"$set": {"password_hash": hash_password(data.password), "password_changed_at": now()}})
+    if not user.get("active", True):
+        raise HTTPException(403, "Password changed, but this account is dormant. Ask the owner to reinstate it.")
+    return {"access_token": create_access_token(str(user["_id"])), "token_type": "bearer", "user": public_user(user)}
 
 
 @api.post("/auth/login")
@@ -1025,12 +1109,11 @@ async def get_sale(sid: str, user: Annotated[dict, Depends(current_user)]):
     d["customer_name"] = cust["name"] if cust else "Cash sale"
     d["customer_phone"] = (cust or {}).get("phone", "")
     d["business"] = await doc_business(f["business_id"])
-    missing = [ObjectId(l["item_id"]) for l in d.get("lines", []) if not l.get("photo_url") and ObjectId.is_valid(l.get("item_id") or "")]
+    missing = [ObjectId(l["item_id"]) for l in d.get("lines", []) if ObjectId.is_valid(l.get("item_id") or "")]
     if missing:
-        photos = {str(i["_id"]): i.get("photo_url", "") async for i in db.items.find({"_id": {"$in": missing}})}
+        photos = {str(i["_id"]): i.get("photo_url", "") async for i in db.items.find({"_id": {"$in": missing}}, {"photo_url": 1})}
         for l in d["lines"]:
-            if not l.get("photo_url"):
-                l["photo_url"] = photos.get(l.get("item_id") or "", "")
+            l["photo_url"] = photos.get(l.get("item_id") or "") or l.get("photo_url") or ""
     return d
 
 

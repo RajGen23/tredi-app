@@ -146,6 +146,12 @@ export async function photoSource(url: string) {
 
 /** Printable URL: generated HTML cannot send a header, so the token rides along. */export async function photoUrl(url: string) {
   if (!url) return "";
+  // only our own files need the token — outside placeholder photos go through our proxy
+  // (Wikimedia refuses phones/PDF engines without a proper User-Agent, so they printed blank)
+  if (url.startsWith("http") && !url.startsWith(`${process.env.EXPO_PUBLIC_BACKEND_URL}`)) {
+    return /^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(url)
+      ? `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/photo-proxy?url=${encodeURIComponent(url)}` : url;
+  }
   const token = await storage.secureGet<string | null>(TOKEN_KEY, null);
   const absolute = url.startsWith("http") ? url : `${process.env.EXPO_PUBLIC_BACKEND_URL}${url}`;
   return `${absolute}${absolute.includes("?") ? "&" : "?"}token=${token ?? ""}`;

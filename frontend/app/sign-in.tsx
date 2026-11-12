@@ -91,6 +91,12 @@ export default function SignIn() {
             } />
         </View>
         {err ? <Text style={s.err} testID="sign-in-error">{err}</Text> : null}
+        {mode === "in" ? (
+          <Pressable hitSlop={12} style={{ alignSelf: "flex-start", paddingVertical: 12 }} testID="sign-in-forgot"
+            onPress={() => router.push({ pathname: "/forgot-password", params: { email: email.trim() } })}>
+            <Text style={s.link}>Forgot password?</Text>
+          </Pressable>
+        ) : null}
         <Card style={s.restore}>
           <View style={{ flexDirection: "row", gap: 9, alignItems: "flex-start" }}>
             <Av icon="refresh" tone="green" size={26} />

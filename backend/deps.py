@@ -94,6 +94,9 @@ async def current_user(request: Request, token: Annotated[str, Depends(oauth2_sc
     user = await db.users.find_one({"_id": ObjectId(uid)})
     if not user:
         raise unauthorized
+    changed = aware(user.get("password_changed_at"))
+    if changed and int(payload.get("iat") or 0) < int(changed.timestamp()):
+        raise unauthorized   # signed in before the password was reset
     await touch_last_seen(user)
     await guard_writes(request, user)
     return user
@@ -571,8 +574,7 @@ async def decorate_invoices(invs: list) -> list:
     accounts = {str(a["_id"]): bank_lines(a) async for a in db.accounts.find({"_id": {"$in": [ObjectId(i) for i in acc_ids]}})} if acc_ids else {}
     term_ids = {inv["terms_id"] for inv in invs if ObjectId.is_valid(inv.get("terms_id") or "")}
     terms = {str(t["_id"]): t async for t in db.terms.find({"_id": {"$in": [ObjectId(i) for i in term_ids]}})} if term_ids else {}
-    missing = {l["item_id"] for inv in invs for l in inv.get("lines", [])
-               if not l.get("photo_url") and ObjectId.is_valid(l.get("item_id") or "")}
+    missing = {l["item_id"] for inv in invs for l in inv.get("lines", []) if ObjectId.is_valid(l.get("item_id") or "")}
     photos = {str(i["_id"]): i.get("photo_url", "") async for i in db.items.find({"_id": {"$in": [ObjectId(i) for i in missing]}}, {"photo_url": 1})} if missing else {}
     cust_ids = {inv["customer_id"] for inv in invs if ObjectId.is_valid(inv.get("customer_id") or "")}
     custs = {str(c["_id"]): c async for c in db.customers.find({"_id": {"$in": [ObjectId(i) for i in cust_ids]}}, {"name": 1, "phone": 1, "address": 1})} if cust_ids else {}
@@ -589,10 +591,10 @@ async def decorate_invoices(invs: list) -> list:
         d["terms"] = {"name": t.get("name", ""), "payment_structure": t.get("payment_structure", ""),
                       "delivery_condition": t.get("delivery_condition", ""), "additional_notes": t.get("additional_notes", ""),
                       "shop": t.get("shop", "")} if t else None
-        # Item photos: from the line snapshot, or the item if the line predates photos.
+        # Item photos: the item's current photo wins (a photo added or replaced
+        # later must show on old invoices too); the line snapshot is the fallback.
         for l in d.get("lines", []):
-            if not l.get("photo_url"):
-                l["photo_url"] = photos.get(l.get("item_id") or "", "")
+            l["photo_url"] = photos.get(l.get("item_id") or "") or l.get("photo_url") or ""
         d["payments"] = mine
         c = custs.get(inv.get("customer_id") or "")
         d["customer_name"] = c["name"] if c else "Cash sale"

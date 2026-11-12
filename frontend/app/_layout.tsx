@@ -20,7 +20,7 @@ import { CropHost } from "@/src/components/cropper";
 // and agent works as expected.
 LogBox.ignoreAllLogs(true);
 
-const PUBLIC = new Set(["", "index", "onboarding", "sign-in", "admin", "legal", "lock", "+html"]);
+const PUBLIC = new Set(["", "index", "onboarding", "sign-in", "forgot-password", "admin", "legal", "lock", "+html"]);
 
 /** Whatever screen is open, losing the session (expired token found late on a
  *  slow line) lands on sign-in instead of leaving the last person's data up. */

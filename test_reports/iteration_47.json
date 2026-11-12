@@ -1,0 +1,41 @@
+{
+  "summary": "Tested forgot/reset password (backend and UI), the Wikimedia photo proxy, invoice and sale line photos that now use the item's current photo, and the PDF thumbnails. Backend: 14/14 pytest tests pass. Reset rejects a password under 6 characters (400) and a wrong code (400, tries go up by one each time). After 5 wrong tries even the correct code gets 'Ask for a new code', and an expired code gets the same. A correct code (email/code trimmed, case-insensitive) returns 200 with an access_token, the new password logs in, the old one fails, and the code works only once. The owner password was restored to tredi1234 and both owner and amina log in. photo-proxy returns 200 image/jpeg for thumb/upload.wikimedia.org and 400 for other hosts, http, look-alike domains (upload.wikimedia.org.evil.com) and file://. The 6 seeded Wikimedia item photos all proxy OK. After PATCH /items/{id}/photo, both GET /invoices/{id} and GET /sales/{id} line photo_url show the new photo; the original photo was restored. Forgot: an unknown email gets a generic 200, and amina's first call gets 200 (Resend sent a real email to the amina test inbox) with 429 on the second call. One gap against the spec: a second call for an UNKNOWN email returns 200, not 429. Frontend: everything requested works. 'Forgot password?' shows in sign-in mode and is hidden in sign-up mode. It opens /forgot-password prefilled with the typed email, 'Email me a code' shows the code and new-password fields with the generic message, client-side checks work (6-digit code, password of 6+ characters), the server error shows, the back arrow returns to sign-in, and the screen opens directly while signed out. PDF preview of INV-1291 (Professional, owner on Pro, which allows photos) shows the Wikimedia cement thumbnail through /api/photo-proxy (200) as an embedded data URI (500x378). The Simple format shows no images, which is by design.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/forgot", "issue": "The 45s 429 rate limit only applies to existing accounts: the reset_codes record is written only when the user exists. So for an unknown email the second call returns 200 (spec expects 429), and comparing 200 vs 429 tells someone whether an account exists. Also a Resend failure returns 502 only for real accounts (unknown emails always get 200), which leaks the same thing. Fix: upsert a sent_at-only record (no hash) for unknown emails too, or rate-limit per email before the user lookup. Also consider returning the generic reply instead of 502."},
+      {"endpoint": "POST /api/auth/reset", "issue": "password_changed_at is saved but never checked in deps.current_user, so JWTs issued before the reset keep working after a recovery. Consider rejecting tokens whose iat is before password_changed_at."},
+      {"endpoint": "GET /api/photo-proxy", "issue": "No cap on response size, and the in-memory cache holds up to 500 full image bodies per worker. Consider rejecting content-length over ~2MB."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "forgot-password back arrow", "issue": "forgot-back calls router.replace('/sign-in') after a push, so the stack ends up with two sign-in screens (the DOM has 2 [data-testid=sign-in-screen], one hidden), and the email typed earlier is lost on the new sign-in. router.back() (with replace as fallback when there is no history) would keep it.", "testID": "forgot-back", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "sign-in", "issues": ["The 'Forgot password?' link is 343x19 with no hitSlop, under the 44pt touch target (the back arrow is 24x23 but has hitSlop 10, so it's OK)."]},
+      {"screen": "invoice PDF Simple receipt", "issues": ["The owner's invoice footer shows 'TEST_footer_b65cf', leftover test data from an earlier iteration (not created this run). Main agent should restore the owner's real footer text."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter47_reset_password_photos.py", "/app/test_reports/pytest/pytest_iter47.xml"],
+  "action_items": [
+    "Make /api/auth/forgot give the same answer for unknown emails: also rate-limit them (429 on a repeat within 45s) so 200 vs 429 doesn't reveal accounts; consider a generic reply instead of 502 on mail failure.",
+    "Optional: invalidate older JWTs after a password reset using password_changed_at.",
+    "Optional: forgot-back should use router.back() so the typed email survives and no duplicate sign-in screen is stacked; add hitSlop to the sign-in-forgot link.",
+    "Restore the owner's invoice footer (currently 'TEST_footer_b65cf' from an earlier test run)."
+  ],
+  "critical_code_review_comments": [
+    "The photo-proxy allowlist uses urlparse hostname plus an https-only check: look-alike domains and file:// are blocked correctly; follow_redirects=True is acceptable since the first host is Wikimedia.",
+    "decorate_invoices and get_sale both prefer the item's current photo_url over the line snapshot; if the item's photo is removed, they fall back to the snapshot (so a removed photo can still print), which may or may not be intended.",
+    "server.py is 1860+ lines; it should be split into routers."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter47_reset_password_photos.py"],
+  "success_rate": {"backend": "100% of the requested checks except the unknown-email 429 (14/14 pytest tests; the unknown-email case was recorded, not asserted)", "frontend": "100%"},
+  "seed_data_creation": "None kept. The reset_codes rows written for owner/amina were deleted, the owner password was restored to tredi1234, and the item photo was restored to its original value.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "To get a valid reset code, upsert into reset_codes {email, hash=sha256(f'reset:{email}:{code}:{JWT_SECRET}'), sent_at=now-2min, expires_at=now+10min, tries:0}. Pro and Premium both allow invoice photos (plans.py _FULL); INV-1291 (id 6ab5542f658c97b2d63a3df9) has show_photos=true and a Wikimedia line photo. pytest.ini adds -n auto; use -n0 to see print output.",
+  "rca_of_issue": "Unknown-email 429 missing: forgot_password checks reset_codes.sent_at, but it only upserts that record after confirming the user exists, so unknown emails never leave a record to rate-limit against."
+}
