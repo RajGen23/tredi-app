@@ -1,5 +1,6 @@
 // 00.3 Sign in — email + password (matches the old user records), with create account.
-import { useState } from "react";
+// Where the server can send SMS, a confirmed Nigerian number + code also signs in.
+import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,7 +9,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { useAuth } from "@/src/auth";
 import { api } from "@/src/api";
-import { Av, Btn, Card, Field, H4, Sub } from "@/src/components/ui";
+import { Av, Btn, Card, Chip, Field, H4, Row, Sub } from "@/src/components/ui";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -24,7 +25,7 @@ export default function SignIn() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithPhone } = useAuth();
   const [mode, setMode] = useState<"in" | "up">("in");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -34,6 +35,43 @@ export default function SignIn() {
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
+  // Phone sign-in: offered only when the server says it can text codes.
+  const [phoneOk, setPhoneOk] = useState(false);
+  const [via, setVia] = useState<"email" | "phone">("email");
+  const [phone, setPhone] = useState("");
+  const [smsSent, setSmsSent] = useState(false);
+  const [smsCode, setSmsCode] = useState("");
+  useEffect(() => { api<{ enabled: boolean }>("/auth/phone/config").then((c) => setPhoneOk(!!c?.enabled)).catch(() => {}); }, []);
+  const byPhone = mode === "in" && via === "phone" && phoneOk;
+
+  const sendSms = async () => {
+    setErr("");
+    if (phone.replace(/\D/g, "").length < 10) return setErr("Enter your Nigerian mobile number, like 0803 123 4567.");
+    setBusy(true);
+    try {
+      await api("/auth/phone/start", { method: "POST", json: { phone } });
+      setSmsSent(true);
+    } catch (e: any) {
+      setErr(e.message || "Could not send the code");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitPhone = async () => {
+    if (!smsSent) return sendSms();
+    setErr("");
+    if (smsCode.trim().length < 4) return setErr("Enter the code from the text message.");
+    setBusy(true);
+    try {
+      await signInWithPhone(phone, smsCode.trim());
+      router.replace("/");
+    } catch (e: any) {
+      setErr(e.message || "Could not sign in");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const sendCode = async () => {
     setErr("");
@@ -50,6 +88,7 @@ export default function SignIn() {
   };
 
   const submit = async () => {
+    if (byPhone) return submitPhone();
     setErr("");
     if (!email || !password || (mode === "up" && !name)) return setErr("Fill in every field to continue.");
     if (mode === "up" && !codeSent) return sendCode();
@@ -74,11 +113,30 @@ export default function SignIn() {
         </Pressable>
         <Text style={s.title}>{mode === "in" ? "Sign in to your book" : "Create your account"}</Text>
         <Sub style={{ marginTop: 6 }}>
-          {mode === "in" ? "Use the email and password from your TradaBooks account. " : "It takes a minute. "}
+          {byPhone ? "We text a code to the number you confirmed under More → Phone sign-in. " : mode === "in" ? "Use the email and password from your TradaBooks account. " : "It takes a minute. "}
           <Text style={s.link} onPress={() => { setMode(mode === "in" ? "up" : "in"); setErr(""); }} testID="sign-in-toggle-mode">
             {mode === "in" ? "New here? Create account" : "Already have one? Sign in"}
           </Text>
         </Sub>
+        {mode === "in" && phoneOk ? (
+          <Row style={{ gap: 6, marginTop: 14 }}>
+            <Chip label="Email" on={via === "email"} onPress={() => { setVia("email"); setErr(""); }} testID="sign-in-via-email" />
+            <Chip label="Phone number" on={via === "phone"} onPress={() => { setVia("phone"); setErr(""); }} testID="sign-in-via-phone" />
+          </Row>
+        ) : null}
+        {byPhone ? (
+          <View style={{ gap: 10, marginTop: 18 }}>
+            <Field testID="sign-in-phone" label="Phone number (Nigeria +234)" value={phone} onChangeText={(v) => { setPhone(v); setSmsSent(false); setSmsCode(""); }}
+              placeholder="0803 123 4567" keyboardType="phone-pad" nogroup onSubmitEditing={submit} returnKeyType="go" />
+            {smsSent ? (
+              <View style={{ gap: 6 }}>
+                <Field testID="sign-in-sms-code" label="Code from the text message" value={smsCode} onChangeText={setSmsCode} placeholder="6-digit code"
+                  keyboardType="number-pad" maxLength={8} mono onSubmitEditing={submit} returnKeyType="go" />
+                <Text style={s.link} onPress={sendSms} testID="sign-in-sms-resend">Didn&apos;t get it? Send again</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : (
         <View style={{ gap: 10, marginTop: 18 }}>
           {mode === "up" ? <Field testID="sign-up-name" label="Your name" value={name} onChangeText={setName} placeholder="Adaeze Okafor" autoCapitalize="words" /> : null}
           <Field testID="sign-in-email" label="Email" value={email} onChangeText={(v) => { setEmail(v); setCodeSent(false); setCode(""); }} placeholder="you@shop.ng" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
@@ -90,8 +148,9 @@ export default function SignIn() {
               </Pressable>
             } />
         </View>
+        )}
         {err ? <Text style={s.err} testID="sign-in-error">{err}</Text> : null}
-        {mode === "in" ? (
+        {mode === "in" && !byPhone ? (
           <Pressable hitSlop={12} style={{ alignSelf: "flex-start", paddingVertical: 12 }} testID="sign-in-forgot"
             onPress={() => router.push({ pathname: "/forgot-password", params: { email: email.trim() } })}>
             <Text style={s.link}>Forgot password?</Text>
@@ -113,7 +172,7 @@ export default function SignIn() {
             <Text style={s.link} onPress={sendCode} testID="sign-up-resend">Didn&apos;t get it? Send again</Text>
           </View>
         ) : null}
-        <Btn testID="sign-in-submit" label={mode === "in" ? "Sign in and continue" : codeSent ? "Create account" : "Email me a code"} onPress={submit} loading={busy} style={{ marginTop: 16 }} />
+        <Btn testID="sign-in-submit" label={byPhone ? (smsSent ? "Sign in and continue" : "Text me a code") : mode === "in" ? "Sign in and continue" : codeSent ? "Create account" : "Email me a code"} onPress={submit} loading={busy} style={{ marginTop: 16 }} />
       </KeyboardAwareScrollView>
     </View>
   );
