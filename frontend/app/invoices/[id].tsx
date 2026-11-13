@@ -118,7 +118,9 @@ export default function InvoiceDetail() {
               <View style={{ alignItems: "flex-end" }}>
                 <Lbl>Invoice total</Lbl>
                 <Money>{money(inv.totals.total)}</Money>
-                <Tag style={inv.paid ? { color: colors.green700 } : { color: colors.coral }}>{inv.paid ? `Paid ${money(inv.paid)}` : "Nothing paid yet"}</Tag>
+                <Tag style={inv.paid ? { color: colors.green700 } : { color: colors.coral }} testID="invoice-paid-tag">
+                  {inv.credit_pending ? `${money(inv.credit_pending)} credit applies on issue` : inv.paid ? `Paid ${money(inv.paid)}` : "Nothing paid yet"}
+                </Tag>
               </View>
             </Row>
             {!draft && !cancelled ? <View style={{ marginTop: 9 }}><Prog pct={Math.max(3, paidPct)} tone={over ? "bad" : undefined} /></View> : null}

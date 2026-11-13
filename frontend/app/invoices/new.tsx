@@ -152,6 +152,7 @@ export default function NewInvoice() {
     setTermsId(inv.terms_id ?? null);
     setTermsOn(!!inv.terms_id);
     setShowPhotos(!!inv.show_photos);
+    setUseCredit((inv.credit_applied ?? 0) > 0);
     setLines((inv.lines ?? []).map((l: any, i: number) => ({
       key: `${l.item_id ?? l.name}-${i}`, item_id: l.item_id ?? undefined, name: l.name, quantity: l.quantity, unit_price: l.unit_price,
       discount_type: l.discount_type ?? "amount", discount_value: l.discount_value ?? 0, note: l.note ?? "", quick_add: !!l.quick_add,
@@ -178,7 +179,11 @@ export default function NewInvoice() {
   const wholesale = customer?.price_list === "Wholesale";
   const ship = parseNum(shipping);
   const totals = useMemo(() => calcTotals(lines, discMode, discValue, vatOn, ship), [lines, discMode, discValue, vatOn, ship]);
-  const credit = Math.max(0, -(summary?.balance ?? customer?.balance ?? 0));
+  // An issued invoice being corrected already counts in the customer's balance;
+  // add its total back so it doesn't swallow the credit meant for it.
+  const editInv: any = editQ.data;
+  const ownTotal = editInv && editInv.customer_id === customerId && !["draft", "quote", "cancelled"].includes(editInv.status) ? editInv.totals?.total ?? 0 : 0;
+  const credit = Math.max(0, -((summary?.balance ?? customer?.balance ?? 0) - ownTotal));
   const creditUsed = useCredit ? Math.min(credit, totals.total) : 0;
   // A credit limit warns, it never blocks — the person at the counter decides.
   const limit: number | null = summary?.credit_limit ?? null;

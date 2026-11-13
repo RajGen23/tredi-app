@@ -176,6 +176,31 @@ class TestCreditApplied:
         assert d["due"] == 0
         assert d["status"] == "paid"
 
+    def test_credit_on_draft_applies_when_issued(self, session, base_url, owner_headers):
+        """Credit chosen on a draft (or while editing it) used to be dropped on
+        Confirm & issue — the invoice came out with nothing paid."""
+        cid = _mk_customer_with_credit(session, base_url, owner_headers)["id"]
+        payload = {"customer_id": cid, "lines": [{"name": "TEST", "quantity": 1, "unit_price": 30000}],
+                   "vat_rate": 0, "payment_mode": "credit", "status": "draft", "credit_applied": 20000}
+        iid = session.post(f"{base_url}/api/invoices", json=payload, headers=owner_headers).json()["id"]
+        d = session.get(f"{base_url}/api/invoices/{iid}", headers=owner_headers).json()
+        assert d["status"] == "draft" and d["credit_pending"] == 20000 and d["due"] == 10000
+        r = session.put(f"{base_url}/api/invoices/{iid}", json=payload, headers=owner_headers)
+        assert r.status_code == 200 and r.json()["credit_applied"] == 20000
+        assert session.post(f"{base_url}/api/invoices/{iid}/issue", headers=owner_headers).status_code == 200
+        d = session.get(f"{base_url}/api/invoices/{iid}", headers=owner_headers).json()
+        assert d["paid"] == 20000 and d["due"] == 10000
+
+    def test_applied_credit_not_counted_twice_on_balance(self, session, base_url, owner_headers):
+        """50,000 credit, 30,000 invoice using 20,000 of it: the customer is left
+        with 20,000 net credit, not 40,000."""
+        cid = _mk_customer_with_credit(session, base_url, owner_headers)["id"]
+        payload = {"customer_id": cid, "lines": [{"name": "TEST", "quantity": 1, "unit_price": 30000}],
+                   "vat_rate": 0, "payment_mode": "credit", "status": "issued", "credit_applied": 20000}
+        assert session.post(f"{base_url}/api/invoices", json=payload, headers=owner_headers).status_code == 201
+        c = session.get(f"{base_url}/api/customers/{cid}", headers=owner_headers).json()
+        assert c["balance"] == -20000
+
 
 # ---------- terms with shop field round trip ----------
 class TestTermsShopRoundtrip:
