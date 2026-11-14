@@ -197,13 +197,13 @@ export default function NewItem() {
             <View style={{ gap: 10, marginTop: 10 }}>
               <Field testID="item-name" label="Item name" value={name} onChangeText={setName} placeholder="Adeba Rice 50kg" autoFocus={!editId} />
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <PickerField label="Brand" value={brand} options={brands.options} onPick={setBrand} onAdd={(v) => { brands.add(v); setBrand(v); }}
+                <PickerField label="Brand" value={brand} options={brands.options} onPick={setBrand} manage={brands.manage} onAdd={(v) => { brands.add(v); setBrand(v); }}
                   addLabel="Add a brand" searchable placeholder="Optional" style={{ flex: 1 }} testID="item-brand" />
-                <PickerField label="Category" value={category} options={cats.options} onPick={setCategory} onAdd={(v) => { cats.add(v); setCategory(v); }}
+                <PickerField label="Category" value={category} options={cats.options} onPick={setCategory} manage={cats.manage} onAdd={(v) => { cats.add(v); setCategory(v); }}
                   addLabel="Add a category" searchable style={{ flex: 1 }} testID="item-category" />
               </View>
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <PickerField label="Unit" value={unit} options={units.options} onPick={setUnit} onAdd={(v) => { units.add(v); setUnit(v); }}
+                <PickerField label="Unit" value={unit} options={units.options} onPick={setUnit} manage={units.manage} onAdd={(v) => { units.add(v); setUnit(v); }}
                   addLabel="Add a unit" style={{ flex: 1 }} testID="item-unit" />
                 <Field testID="item-barcode" label="Barcode" value={barcode} onChangeText={setBarcode} placeholder="Scan" mono style={{ flex: 1 }}
                   right={<Pressable onPress={() => setScan(true)} hitSlop={8} testID="item-barcode-scan"><Ionicons name="barcode-outline" size={18} color={colors.green700} /></Pressable>} />
@@ -211,7 +211,7 @@ export default function NewItem() {
               {kind === "product" ? (
                 <>
                   <View style={{ flexDirection: "row", gap: 8 }}>
-                    <PickerField label="Store in" value={location} options={locations.options} onPick={setLocation} onAdd={(v) => { locations.add(v); setLocation(v); }}
+                    <PickerField label="Store in" value={location} options={locations.options} onPick={setLocation} manage={locations.manage} onAdd={(v) => { locations.add(v); setLocation(v); }}
                       addLabel="Add a location" style={{ flex: 1 }} testID="item-location" />
                     {expiryOn
                       ? <DateField label="Expiry" value={expiry} onChange={setExpiry} allowClear style={{ flex: 1 }} testID="item-expiry" />
