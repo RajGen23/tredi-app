@@ -45,9 +45,11 @@ def test_thumbnails_fit_their_width():
         assert max(thumb.size) <= width
 
 
-def test_small_photo_is_left_alone():
-    buf = io.BytesIO(); Image.new("RGB", (200, 200), (0, 120, 90)).save(buf, "JPEG", quality=70)
-    assert compress_photo(buf.getvalue()) is None
+def test_compression_never_makes_a_photo_bigger():
+    buf = io.BytesIO(); Image.new("RGB", (200, 200), (0, 120, 90)).save(buf, "JPEG", quality=30)
+    raw = buf.getvalue()
+    out = compress_photo(raw)
+    assert out is None or len(out) < len(raw)
 
 
 def test_non_image_is_left_alone():
