@@ -160,7 +160,7 @@ export default function ExpenseDetail() {
         {edit ? (
           <>
             <Field label="Amount" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" mono style={{ marginTop: 10 }} testID="expense-edit-amount" />
-            <PickerField label="Category" value={category} options={cats.options} onPick={setCategory}
+            <PickerField label="Category" value={category} options={cats.options} onPick={setCategory} manage={cats.manage}
               onAdd={(v) => { cats.add(v); setCategory(v); }} addLabel="Add a category" searchable
               title="What was it spent on?" style={{ marginTop: 10 }} testID="expense-edit-category" />
             <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>

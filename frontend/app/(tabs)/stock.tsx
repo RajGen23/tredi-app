@@ -41,6 +41,7 @@ export default function Stock() {
   const [sheet, setSheet] = useState(false);
   const [category, setCategory] = useState("");
   const [brand, setBrand] = useState("");
+  const [place, setPlace] = useState("");
   const [sort, setSort] = useState<Sort>("name");
   const q = useQuery({ queryKey: ["items"], queryFn: () => api<any[]>("/items") });
   const archivedQ = useQuery({ queryKey: ["items-archived"], queryFn: () => api<any[]>("/items?include_archived=true"), enabled: chip === "archived" });
@@ -65,18 +66,19 @@ export default function Stock() {
       : chip === "out" ? i.track_stock && i.quantity <= 0
       : chip === "expiring" ? !!i.expiry && dayjs(i.expiry).isBefore(soon)
       : i.kind === "service");
-    const filtered = base.filter((i) => (!category || i.category === category) && (!brand || i.brand === brand));
+    const filtered = base.filter((i) => (!category || i.category === category) && (!brand || i.brand === brand) && (!place || (i.location || "") === place));
     const idleOf = (it: any) => stats[it.id]?.idle_days ?? -1;
     return [...filtered].sort((a, b) =>
       sort === "value" ? (b.quantity * b.cost_price) - (a.quantity * a.cost_price)
       : sort === "quantity" ? b.quantity - a.quantity
       : sort === "idle" ? idleOf(b) - idleOf(a)
       : String(a.name).localeCompare(String(b.name)));
-  }, [items, chip, archived, soon, category, brand, sort, stats]);
+  }, [items, chip, archived, soon, category, brand, place, sort, stats]);
 
   const categories = useMemo(() => Array.from(new Set(items.map((i) => i.category).filter(Boolean))).sort(), [items]);
   const brands = useMemo(() => Array.from(new Set(items.map((i) => i.brand).filter(Boolean))).sort(), [items]);
-  const extraFilters = (category ? 1 : 0) + (brand ? 1 : 0) + (sort !== "name" ? 1 : 0);
+  const places = useMemo(() => Array.from(new Set(items.map((i) => i.location).filter(Boolean))).sort(), [items]);
+  const extraFilters = (category ? 1 : 0) + (brand ? 1 : 0) + (place ? 1 : 0) + (sort !== "name" ? 1 : 0);
 
   const sub = (it: any) => {
     const idle = stats[it.id]?.idle_days;
@@ -144,6 +146,7 @@ export default function Stock() {
               <Row style={{ gap: 6, flexWrap: "wrap", marginBottom: 9 }}>
                 {category ? <Chip label={category} on onPress={() => setCategory("")} testID="stock-clear-category" /> : null}
                 {brand ? <Chip label={brand} on onPress={() => setBrand("")} testID="stock-clear-brand" /> : null}
+                {place ? <Chip label={place} on onPress={() => setPlace("")} testID="stock-clear-location" /> : null}
                 {sort !== "name" ? <Chip label={SORTS.find(([k]) => k === sort)?.[1] ?? ""} on onPress={() => setSort("name")} testID="stock-clear-sort" /> : null}
               </Row>
             ) : null}
@@ -211,7 +214,7 @@ export default function Stock() {
       <Sheet visible={sheet} onClose={() => setSheet(false)} testID="stock-filter-sheet">
         <Row between>
           <H4>Filter stock</H4>
-          <Sub style={{ color: colors.green700 }} onPress={() => { setCategory(""); setBrand(""); setSort("name"); setChip("all"); }}>Reset</Sub>
+          <Sub style={{ color: colors.green700 }} onPress={() => { setCategory(""); setBrand(""); setPlace(""); setSort("name"); setChip("all"); }}>Reset</Sub>
         </Row>
         <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Status</Lbl>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
@@ -222,6 +225,8 @@ export default function Stock() {
           onPick={setCategory} searchable title="Which category?" style={{ marginTop: 12 }} testID="stock-filter-category" />
         <PickerField label="Brand" value={brand} options={[{ key: "", label: "Every brand" }].concat(brands.map((b) => ({ key: b, label: b })))}
           onPick={setBrand} searchable title="Which brand?" style={{ marginTop: 10 }} testID="stock-filter-brand" />
+        <PickerField label="Location" value={place} options={[{ key: "", label: "Every location" }].concat(places.map((p) => ({ key: p, label: p })))}
+          onPick={setPlace} searchable title="Where is it kept?" style={{ marginTop: 10 }} testID="stock-filter-location" />
         <Lbl style={{ marginTop: 12, marginBottom: 6 }}>Sort by</Lbl>
         {SORTS.map(([k, label], i) => (
           <Li key={k} testID={`stock-sort-${k}`} onPress={() => setSort(k)} last={i === SORTS.length - 1}>
