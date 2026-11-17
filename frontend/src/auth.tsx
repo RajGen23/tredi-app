@@ -17,6 +17,7 @@ type Ctx = {
   user: User | null;
   business: Business | null;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithPhone: (phone: string, code: string) => Promise<void>;
   signUp: (name: string, email: string, password: string, code?: string) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -100,6 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     business,
     signIn: async (email, password) => finish(await loginRequest(email, password)),
+    signInWithPhone: async (phone, code) => finish(await api("/auth/phone/verify", { method: "POST", json: { phone, code } })),
     signUp: async (name, email, password, code) => finish(await registerRequest(name, email, password, code)),
     signOut: async () => {
       await storage.secureRemove(TOKEN_KEY);
