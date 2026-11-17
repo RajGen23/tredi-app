@@ -8,10 +8,11 @@ import { ApiError, TOKEN_KEY } from "@/src/api";
 const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
 /** A phone photo is 4–9 MB straight off the camera, which is slow on shop data
- *  and can be refused outright. Shrink it on the device first — the screens all
- *  promise "compressed for slow data". A second, harder pass runs if the first
- *  result is still over ~900 KB. Falls back to the original if the manipulator
- *  cannot read the file. */
+ *  and slows every screen that shows it. Shrink it on the device first to a
+ *  1080px JPEG — usually 150–300 KB, still sharp on an invoice. A second, harder
+ *  pass runs if that is still over 350 KB. The server compresses anything that
+ *  arrives bigger anyway. Falls back to the original if the manipulator cannot
+ *  read the file. */
 async function shrink(uri: string, name: string, type: string) {
   const jpgName = name.replace(/\.[^.]+$/, "") + ".jpg";
   try {
@@ -22,8 +23,8 @@ async function shrink(uri: string, name: string, type: string) {
       const ref = probe.width > width ? await ctx.resize({ width }).renderAsync() : probe;
       return ref.saveAsync({ compress, format: SaveFormat.JPEG });
     };
-    let out = await render(1280, 0.6);
-    if ((await sizeOf(out.uri)) > 900_000) out = await render(1000, 0.5);
+    let out = await render(1080, 0.55);
+    if ((await sizeOf(out.uri)) > 350_000) out = await render(800, 0.5);
     return { uri: out.uri, name: jpgName, type: "image/jpeg" };
   } catch {
     return { uri, name, type };
@@ -139,22 +140,40 @@ export async function uploadPhoto(uri: string, name = `photo-${Date.now()}.jpg`,
 /** Source for <Image>. The token rides in the query on every platform: several
  *  screens keep only `src.uri`, which silently dropped the Authorization header
  *  on the phone and the freshly uploaded photo came back 401 — the upload had
- *  worked, but the box showed nothing, which read as "upload failed". */
-export async function photoSource(url: string) {
-  return { uri: await photoUrl(url) };
+ *  worked, but the box showed nothing, which read as "upload failed".
+ *  `width` asks the server for a small copy (lists and grids). */
+export async function photoSource(url: string, width?: number) {
+  return { uri: await photoUrl(url, width) };
 }
 
-/** Printable URL: generated HTML cannot send a header, so the token rides along. */export async function photoUrl(url: string) {
-  if (!url) return "";
+// The last token read, so a list can build photo URLs without waiting a tick
+// per photo. Refreshed on every async read; a sign-in or sign-out replaces it.
+let knownToken: string | null | undefined;
+
+/** Photo URL right away when the token is already known, else "" (the async
+ *  photoUrl then fills it in). */
+export function photoUrlNow(url: string, width?: number): string {
+  if (!url || knownToken === undefined) return "";
+  return build(url, knownToken, width);
+}
+
+function build(url: string, token: string | null, width?: number) {
   // only our own files need the token — outside placeholder photos go through our proxy
   // (Wikimedia refuses phones/PDF engines without a proper User-Agent, so they printed blank)
   if (url.startsWith("http") && !url.startsWith(`${process.env.EXPO_PUBLIC_BACKEND_URL}`)) {
     return /^https:\/\/(upload|thumb)\.wikimedia\.org\//.test(url)
       ? `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/photo-proxy?url=${encodeURIComponent(url)}` : url;
   }
-  const token = await storage.secureGet<string | null>(TOKEN_KEY, null);
   const absolute = url.startsWith("http") ? url : `${process.env.EXPO_PUBLIC_BACKEND_URL}${url}`;
-  return `${absolute}${absolute.includes("?") ? "&" : "?"}token=${token ?? ""}`;
+  return `${absolute}${absolute.includes("?") ? "&" : "?"}token=${token ?? ""}${width ? `&w=${width}` : ""}`;
+}
+
+/** Printable URL: generated HTML cannot send a header, so the token rides along. */
+export async function photoUrl(url: string, width?: number) {
+  if (!url) return "";
+  if (url.startsWith("http") && !url.startsWith(`${process.env.EXPO_PUBLIC_BACKEND_URL}`)) return build(url, null);
+  knownToken = await storage.secureGet<string | null>(TOKEN_KEY, null);
+  return build(url, knownToken, width);
 }
 
 /** Data URI for printing: the PDF engine can rasterise the page before a

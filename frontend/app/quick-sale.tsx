@@ -1,6 +1,6 @@
 // 04.17 Quick sale + 04.18 Sale saved.
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,6 +43,9 @@ const useStyles = makeStyles((c) => ({
 
 /** The item's own photo fills the tile; a shop that has not added one yet keeps
  *  the pastel block so the grid never looks broken. */
+// the "New item" tile sits at the end of the grid
+const ADD_TILE = { id: "__new_item__" } as any;
+
 export default function QuickSale() {
   const s = useStyles();
   const { colors } = useTheme();
@@ -164,21 +167,31 @@ export default function QuickSale() {
           {cats.map((c) => <Chip key={c} label={c} on={cat === c} onPress={() => setCat(c)} testID={`quick-sale-cat-${c}`} />)}
         </ScrollView>
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }} keyboardShouldPersistTaps="handled">
-        {itemsQ.isLoading ? <Loading /> : (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {grid.map((it, i) => (
-              <Pressable key={it.id} testID={`quick-sale-tile-${it.id}`} onPress={() => addToCart(it.id)} style={({ pressed }) => [s.tile, cart[it.id] ? s.tileOn : null, pressed && { opacity: 0.8 }]}>
-                {it.photo_url
-                  ? <Photo url={it.photo_url} style={s.tileImg} testID={`quick-sale-photo-${it.id}`} />
-                  : <View style={[s.tileImg, { backgroundColor: TILE_COLORS[i % TILE_COLORS.length] }]}><Ionicons name="cube-outline" size={22} color={colors.ink40} /></View>}
-                <View style={{ padding: 10 }}><Text style={s.tileName} numberOfLines={2}>{it.name}</Text><Text style={s.tilePrice}>{money(it.selling_price, { symbol: false })}</Text></View>
-                {cart[it.id] ? <View style={s.count}><Text style={s.countText}>{cart[it.id]}</Text></View> : null}
-              </Pressable>
-            ))}
-            <Pressable testID="quick-sale-add-item" onPress={() => router.push("/stock/new")} style={[s.tile, { borderStyle: "dashed", alignItems: "center", justifyContent: "center", minHeight: 150 }]}><Ionicons name="add" size={24} color={colors.ink40} /><Text style={[s.tilePrice, { color: colors.ink60 }]}>New item</Text></Pressable>
-          </View>
+      {/* Only the tiles on screen are drawn; photos further down load as they scroll in. */}
+      <FlatList
+        data={itemsQ.isLoading ? [] : [...grid, ADD_TILE]}
+        keyExtractor={(it) => it.id}
+        numColumns={2}
+        columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 8 }}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={7}
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 12 }}
+        ListHeaderComponent={itemsQ.isLoading ? <Loading /> : null}
+        renderItem={({ item: it, index: i }) => it.id === ADD_TILE.id ? (
+          <Pressable testID="quick-sale-add-item" onPress={() => router.push("/stock/new")} style={[s.tile, { borderStyle: "dashed", alignItems: "center", justifyContent: "center", minHeight: 150 }]}><Ionicons name="add" size={24} color={colors.ink40} /><Text style={[s.tilePrice, { color: colors.ink60 }]}>New item</Text></Pressable>
+        ) : (
+          <Pressable testID={`quick-sale-tile-${it.id}`} onPress={() => addToCart(it.id)} style={({ pressed }) => [s.tile, cart[it.id] ? s.tileOn : null, pressed && { opacity: 0.8 }]}>
+            {it.photo_url
+              ? <Photo url={it.photo_url} size={180} style={s.tileImg} testID={`quick-sale-photo-${it.id}`} />
+              : <View style={[s.tileImg, { backgroundColor: TILE_COLORS[i % TILE_COLORS.length] }]}><Ionicons name="cube-outline" size={22} color={colors.ink40} /></View>}
+            <View style={{ padding: 10 }}><Text style={s.tileName} numberOfLines={2}>{it.name}</Text><Text style={s.tilePrice}>{money(it.selling_price, { symbol: false })}</Text></View>
+            {cart[it.id] ? <View style={s.count}><Text style={s.countText}>{cart[it.id]}</Text></View> : null}
+          </Pressable>
         )}
+        ListFooterComponent={<>
         {lines.length ? (
           <Card style={{ marginTop: 9, paddingVertical: 4 }} testID="quick-sale-cart">
             {lines.map((l, i) => (
@@ -195,7 +208,8 @@ export default function QuickSale() {
             ))}
           </Card>
         ) : null}
-      </ScrollView>
+        </>}
+      />
       <View style={[s.footer, { paddingBottom: pad }]}>
         <Row between style={{ marginBottom: 7 }}><H4>Total</H4><Money size={17} testID="quick-sale-total">{money(total)}</Money></Row>
         <View style={{ flexDirection: "row", gap: 6, marginBottom: 8 }}>

@@ -1,8 +1,8 @@
 // 05.1 Stock — segmented Items/Transfers/Adjustments, value card, working
 // filters (including Archived and Expiring), list or photo grid, and how long
 // each item has been sitting.
-import { useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { memo, useMemo, useState } from "react";
+import { FlatList, Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -16,7 +16,7 @@ import { Sheet } from "@/src/components/sheet";
 import { PickerField } from "@/src/components/picker";
 import { SyncStamp } from "@/src/components/sync";
 import { money } from "@/src/format";
-import { makeStyles, useTheme } from "@/src/theme";
+import { makeStyles, radius, useTheme } from "@/src/theme";
 
 type Chipk = "all" | "low" | "out" | "services" | "expiring" | "archived";
 type Sort = "name" | "value" | "quantity" | "idle";
@@ -28,7 +28,40 @@ const useStyles = makeStyles((c) => ({
   rowPhoto: { width: 40, height: 40, borderRadius: 10, backgroundColor: c.sqAv },
   tile: { width: "48.6%", borderWidth: 1, borderColor: c.border, borderRadius: 13, padding: 8, backgroundColor: c.surfaceSecondary },
   tilePhoto: { width: "100%", height: 104, borderRadius: 9, backgroundColor: c.sqAv },
+  // each row is its own view now (the list only draws what's on screen), so the
+  // card it used to sit in is drawn around the first and last rows instead
+  rowCard: { backgroundColor: c.surfaceSecondary, borderLeftWidth: 1, borderRightWidth: 1, borderColor: c.border, paddingHorizontal: 12 },
+  rowFirst: { borderTopWidth: 1, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, paddingTop: 4 },
+  rowLast: { borderBottomWidth: 1, borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg, paddingBottom: 4 },
 }));
+
+/** One stock row. Kept separate (and memoised) so scrolling doesn't redraw rows
+ *  that haven't changed. */
+const StockRow = memo(function StockRow({ it, last, onPress, sub }: { it: any; last: boolean; onPress: () => void; sub: string }) {
+  const s = useStyles();
+  const isOut = it.track_stock && it.quantity <= 0;
+  const isLow = it.track_stock && !isOut && it.quantity <= it.alert_below;
+  const pct = it.alert_below ? Math.min(100, (it.quantity / (it.alert_below * 4)) * 100) : it.quantity > 0 ? 82 : 0;
+  return (
+    <Li testID={`stock-row-${it.id}`} last={last} onPress={onPress}>
+      {it.photo_url
+        ? <Photo url={it.photo_url} size={40} style={s.rowPhoto} testID={`stock-photo-${it.id}`} />
+        : <Av icon={it.kind === "service" ? "construct-outline" : "cube-outline"} tone={isOut ? "coral" : it.kind === "service" ? "blue" : "sq"} />}
+      <View style={{ flex: 1 }}>
+        <Row between><H4>{it.name}</H4><Money>{money(it.selling_price)}</Money></Row>
+        <Row between style={{ marginTop: 2 }}>
+          <Sub numberOfLines={1} style={{ flex: 1 }}>{sub}</Sub>
+          {it.archived ? <Badge tone="draft">Archived</Badge>
+            : it.kind === "service" ? <Badge tone="info">Service</Badge>
+            : isOut ? <Badge tone="over">Out of stock</Badge>
+            : isLow ? <Badge tone="due">{it.quantity} left</Badge>
+            : <Tag>{it.quantity} in stock</Tag>}
+        </Row>
+        {it.track_stock && !it.archived ? <View style={{ marginTop: 5 }}><Prog pct={isOut ? 2 : pct} tone={isOut ? "bad" : isLow ? "warn" : undefined} /></View> : null}
+      </View>
+    </Li>
+  );
+});
 
 export default function Stock() {
   const s = useStyles();
@@ -45,8 +78,8 @@ export default function Stock() {
   const q = useQuery({ queryKey: ["items"], queryFn: () => api<any[]>("/items") });
   const archivedQ = useQuery({ queryKey: ["items-archived"], queryFn: () => api<any[]>("/items?include_archived=true"), enabled: chip === "archived" });
   const statsQ = useQuery({ queryKey: ["items-stats"], queryFn: () => api<{ stats: Record<string, any> }>("/items-stats") });
-  const stats = statsQ.data?.stats ?? {};
-  const items = q.data ?? [];
+  const stats = useMemo(() => statsQ.data?.stats ?? {}, [statsQ.data]);
+  const items = useMemo(() => q.data ?? [], [q.data]);
   const { user } = useAuth();
   const valueOk = user?.perms?.see_stock_value !== false;
   const editOk = user?.perms?.edit_stock !== false;
@@ -85,6 +118,8 @@ export default function Stock() {
     return bits.filter(Boolean).join(" · ");
   };
 
+  const showList = seg === "items" && !(q.isLoading || (chip === "archived" && archivedQ.isLoading)) && !(q.isError && !q.data) && list.length > 0;
+
   return (
     <View style={[s.root, { paddingTop: insets.top }]} testID="stock-screen">
       <AppBar title="Stock" right={<>
@@ -98,7 +133,34 @@ export default function Stock() {
       <View style={{ paddingHorizontal: 14 }}>
         <Seg testID="stock-seg" value={seg} onChange={setSeg} options={[{ key: "items", label: "Items" }, { key: "transfers", label: "Transfers" }, { key: "adjustments", label: "Adjustments" }]} />
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 9, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}>
+      <FlatList
+        key={grid ? "grid" : "rows"}
+        data={showList ? list : []}
+        keyExtractor={(it) => it.id}
+        numColumns={grid ? 2 : 1}
+        columnWrapperStyle={grid ? { justifyContent: "space-between", marginBottom: 8 } : undefined}
+        // draw a screenful at a time; photos further down load as they come into view
+        initialNumToRender={grid ? 8 : 14}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        removeClippedSubviews
+        contentContainerStyle={{ paddingHorizontal: 14, paddingTop: 9, paddingBottom: 24 }}
+        refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={q.refetch} tintColor={colors.brandPrimary} />}
+        renderItem={({ item: it, index: i }) => grid ? (
+          <Pressable testID={`stock-tile-${it.id}`} onPress={() => router.push(`/stock/${it.id}`)} style={({ pressed }) => [s.tile, pressed && { opacity: 0.8 }]}>
+            {it.photo_url ? <Photo url={it.photo_url} size={170} style={s.tilePhoto} /> : <View style={s.tilePhoto} />}
+            <H4 style={{ marginTop: 7 }} numberOfLines={1}>{it.name}</H4>
+            <Row between style={{ marginTop: 2 }}>
+              <Money size={12.5}>{money(it.selling_price)}</Money>
+              <Tag>{it.track_stock ? `${it.quantity} left` : "service"}</Tag>
+            </Row>
+          </Pressable>
+        ) : (
+          <View style={[s.rowCard, i === 0 && s.rowFirst, i === list.length - 1 && s.rowLast]}>
+            <StockRow it={it} last={i === list.length - 1} onPress={() => router.push(`/stock/${it.id}`)} sub={sub(it)} />
+          </View>
+        )}
+        ListHeaderComponent={<>
         <SyncStamp at={q.dataUpdatedAt} busy={q.isFetching} onRefresh={() => { q.refetch(); statsQ.refetch(); }} testID="stock-sync" />
         <Card style={s.deepCard} testID="stock-value-card">
           <Row between>
@@ -154,49 +216,11 @@ export default function Stock() {
               <Card><Empty icon="cube-outline" title={chip === "all" ? "Nothing in stock yet" : "Nothing matches this filter"}
                 sub={chip === "all" ? "Add your first item to start tracking." : "Try another chip above."}
                 action={chip === "all" && editOk ? <Btn label="Add item" testID="stock-empty-add" onPress={() => router.push("/stock/new")} /> : undefined} /></Card>
-            ) : grid ? (
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }} testID="stock-grid">
-                {list.map((it) => (
-                  <Pressable key={it.id} testID={`stock-tile-${it.id}`} onPress={() => router.push(`/stock/${it.id}`)} style={({ pressed }) => [s.tile, pressed && { opacity: 0.8 }]}>
-                    {it.photo_url ? <Photo url={it.photo_url} style={s.tilePhoto} /> : <View style={s.tilePhoto} />}
-                    <H4 style={{ marginTop: 7 }} numberOfLines={1}>{it.name}</H4>
-                    <Row between style={{ marginTop: 2 }}>
-                      <Money size={12.5}>{money(it.selling_price)}</Money>
-                      <Tag>{it.track_stock ? `${it.quantity} left` : "service"}</Tag>
-                    </Row>
-                  </Pressable>
-                ))}
-              </View>
-            ) : (
-              <Card style={{ paddingVertical: 4 }}>
-                {list.map((it, i) => {
-                  const isOut = it.track_stock && it.quantity <= 0;
-                  const isLow = it.track_stock && !isOut && it.quantity <= it.alert_below;
-                  const pct = it.alert_below ? Math.min(100, (it.quantity / (it.alert_below * 4)) * 100) : it.quantity > 0 ? 82 : 0;
-                  return (
-                    <Li key={it.id} testID={`stock-row-${it.id}`} last={i === list.length - 1} onPress={() => router.push(`/stock/${it.id}`)}>
-                      {it.photo_url
-                        ? <Photo url={it.photo_url} style={s.rowPhoto} testID={`stock-photo-${it.id}`} />
-                        : <Av icon={it.kind === "service" ? "construct-outline" : "cube-outline"} tone={isOut ? "coral" : it.kind === "service" ? "blue" : "sq"} />}
-                      <View style={{ flex: 1 }}>
-                        <Row between><H4>{it.name}</H4><Money>{money(it.selling_price)}</Money></Row>
-                        <Row between style={{ marginTop: 2 }}>
-                          <Sub numberOfLines={1} style={{ flex: 1 }}>{sub(it)}</Sub>
-                          {it.archived ? <Badge tone="draft">Archived</Badge>
-                            : it.kind === "service" ? <Badge tone="info">Service</Badge>
-                            : isOut ? <Badge tone="over">Out of stock</Badge>
-                            : isLow ? <Badge tone="due">{it.quantity} left</Badge>
-                            : <Tag>{it.quantity} in stock</Tag>}
-                        </Row>
-                        {it.track_stock && !it.archived ? <View style={{ marginTop: 5 }}><Prog pct={isOut ? 2 : pct} tone={isOut ? "bad" : isLow ? "warn" : undefined} /></View> : null}
-                      </View>
-                    </Li>
-                  );
-                })}
-              </Card>
-            )}
+            ) : null}
           </>
-        ) : (
+        ) : null}
+        </>}
+        ListFooterComponent={seg !== "items" ? (
           <Card style={{ marginTop: 9 }}>
             {seg === "transfers" ? (
               <Empty icon="swap-horizontal-outline" title="Move stock between shops" sub="Create a transfer, have it approved, then received — with a reason for any shortfall."
@@ -205,8 +229,8 @@ export default function Stock() {
               <Empty icon="time-outline" title="Adjustments live on each item" sub="Open an item and tap Adjust stock. Every change is logged with a reason." />
             )}
           </Card>
-        )}
-      </ScrollView>
+        ) : null}
+      />
 
       <Sheet visible={sheet} onClose={() => setSheet(false)} testID="stock-filter-sheet">
         <Row between>
