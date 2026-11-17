@@ -94,7 +94,7 @@ function Totals({ inv, accent, wide }: { inv: any; accent: string; wide?: boolea
       </Row>
       {inv.paid > 0 ? (
         <>
-          {line("Amount Received", money(inv.paid, { symbol: false }), "pos")}
+          {line(inv.credit_pending ? "Credit Applied" : "Amount Received", money(inv.paid, { symbol: false }), "pos")}
           <Row between style={{ paddingTop: 4, marginTop: 2, borderTopWidth: 1, borderTopColor: "#EDEDED" }}>
             <V>Balance Due</V><N style={{ fontFamily: fonts.docSemibold }} testID="paper-balance">{money(inv.due, { symbol: false })}</N>
           </Row>
@@ -428,7 +428,7 @@ function Simple({ inv, brand, logo }: Props) {
         {t.vat ? kv(`VAT ${inv.vat_rate ?? ""}%`, money(t.vat, { symbol: false })) : null}
         {t.shipping ? kv("Shipping", money(t.shipping, { symbol: false })) : null}
         {kv("TOTAL", money(t.total ?? 0), true)}
-        {paid > 0 ? kv("Paid", money(paid, { symbol: false })) : null}
+        {paid > 0 ? kv(inv.credit_pending ? "Credit" : "Paid", money(paid, { symbol: false })) : null}
         {paid > 0 ? kv("Balance", money(inv.due ?? (t.total ?? 0) - paid, { symbol: false }), true) : null}
         {rule}
         <Text style={s.rcpCentre}>Thank you for your patronage</Text>

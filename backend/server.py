@@ -15,10 +15,10 @@ from urllib.parse import urlparse
 import secrets
 
 import mailer
-from deps import (VAT_RATE, admin_only, can_edit_payments, can_see_money, may, need, doc_business, money_guard, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance,
+from deps import (VAT_RATE, admin_only, can_edit_payments, can_see_money, may, need, doc_business, money_guard, DUMMY_HASH, LIVE_PO, LIVE_QUICK, LIVE_SALE, LineIn, apply_stock, biz_filter, clean, client, create_access_token, current_user, customer_balance, available_credit, NOT_APPLIED_CREDIT,
                   db, decorate_invoice, decorate_invoices, ensure_invoice_room, hash_password, invoice_paid, invoice_status, invoice_totals, line_cost, line_totals, log_activity, stamp_costs, next_number, now, oid,
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
-from routes import activity, admin, admin_customers, billing, documents, invoicing, lookups, offline, purchases, reports, shops, storage, support, users_roles
+from routes import activity, admin, admin_customers, billing, documents, invoicing, lookups, offline, phone_auth, purchases, reports, shops, storage, support, users_roles
 from plans import TRIAL_DAYS
 from dummy_photos import pick_dummy_photo
 
@@ -347,8 +347,8 @@ async def list_customers(user: Annotated[dict, Depends(current_user)]):
     invs = [i async for i in db.invoices.find({**f, "deleted_at": None, "status": LIVE_SALE, "customer_id": {"$nin": [None, ""]}},
                                               {"customer_id": 1, "totals.total": 1, "status": 1, "due_date": 1})]
     alloc = {}
-    async for p in db.payments.find({"business_id": biz, "deleted_at": None}, {"customer_id": 1, "amount": 1, "allocations": 1}):
-        if p.get("customer_id"):
+    async for p in db.payments.find({"business_id": biz, "deleted_at": None}, {"customer_id": 1, "amount": 1, "allocations": 1, "method": 1}):
+        if p.get("customer_id") and p.get("method") != "credit":
             paid_in[p["customer_id"]] = paid_in.get(p["customer_id"], 0) + p["amount"]
         for a in p.get("allocations", []):
             alloc[a.get("invoice_id")] = alloc.get(a.get("invoice_id"), 0) + a["amount"]
@@ -408,7 +408,7 @@ async def get_customer(cid: str, user: Annotated[dict, Depends(current_user)]):
     invoices = await decorate_invoices([inv async for inv in db.invoices.find({**(await scoped(user, "sales")), "customer_id": cid}).sort("created_at", -1)])
     d["invoices"] = invoices
     d["total_purchases"] = round(sum(i["totals"]["total"] for i in invoices if i["status"] != "draft"), 2)
-    d["total_received"] = round(sum([p["amount"] async for p in db.payments.find({**f, "customer_id": cid})]), 2)
+    d["total_received"] = round(sum([p["amount"] async for p in db.payments.find({**f, "customer_id": cid, "deleted_at": None, **NOT_APPLIED_CREDIT})]), 2)
     d["overdue_count"] = sum(1 for i in invoices if i["status"] == "overdue")
     d["max_days_overdue"] = max([i["days_overdue"] for i in invoices] or [0])
     d["unpaid"] = round(sum(i["due"] for i in invoices if i.get("status") not in ("draft", "quote", "cancelled")), 2)
@@ -494,7 +494,7 @@ async def customer_ledger(cid: str, user: Annotated[dict, Depends(current_user)]
     opening = c.get("opening_balance", 0) * (1 if c.get("opening_type") == "owes_me" else -1)
     async for inv in db.invoices.find({**f, "customer_id": cid, "status": LIVE_SALE}):
         entries.append({"date": inv["created_at"], "title": inv["number"], "sub": f"Sale · {len(inv['lines'])} items", "amount": inv["totals"]["total"], "kind": "sale", "ref_id": str(inv["_id"])})
-    async for p in db.payments.find({**f, "customer_id": cid, "deleted_at": None}):
+    async for p in db.payments.find({**f, "customer_id": cid, "deleted_at": None, **NOT_APPLIED_CREDIT}):
         acc = await db.accounts.find_one({"_id": ObjectId(p["account_id"])}) if p.get("account_id") and ObjectId.is_valid(p["account_id"]) else None
         entries.append({"date": p["created_at"], "title": "Payment out" if p["amount"] < 0 else "Payment received",
                         "sub": f"{acc['name'] if acc else 'Cash'} · tap to correct", "amount": -p["amount"], "kind": "payment", "ref_id": str(p["_id"]),
@@ -847,6 +847,31 @@ async def preview_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current
     return {"lines": lines, "totals": invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)}
 
 
+async def _credit_to_apply(business_id: str, customer_id: Optional[str], asked: float, total: float, exclude_invoice: Optional[str] = None) -> float:
+    """What can really come off this invoice: what was asked for, but never more
+    than the invoice total or the credit actually sitting on the account."""
+    if not asked or asked <= 0 or not customer_id:
+        return 0.0
+    return round(max(0.0, min(asked, total, await available_credit(business_id, customer_id, exclude_invoice))), 2)
+
+
+async def _sync_applied_credit(f: dict, inv_id: str, customer_id: Optional[str], credit: float, shop: str, number: str, user: dict):
+    """Keep exactly one "Unused credit applied" payment on an issued invoice,
+    matching the credit it carries. Drafts never get one: nothing is owed yet."""
+    existing = await db.payments.find_one({**f, "method": "credit", "deleted_at": None, "allocations.invoice_id": inv_id})
+    if credit > 0 and customer_id:
+        if existing:
+            await db.payments.update_one({"_id": existing["_id"]}, {"$set": {
+                "customer_id": customer_id, "amount": credit, "allocations": [{"invoice_id": inv_id, "amount": credit}],
+                "note": f"Unused credit applied · {number}", "updated_at": now(), "updated_by": user.get("name", "")}})
+        else:
+            await db.payments.insert_one({**f, "customer_id": customer_id, "amount": credit, "account_id": None, "method": "credit", "shop": shop,
+                                          "allocations": [{"invoice_id": inv_id, "amount": credit}], "note": f"Unused credit applied · {number}",
+                                          "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "deleted_at": None})
+    elif existing:
+        await db.payments.update_one({"_id": existing["_id"]}, {"$set": {"deleted_at": now(), "updated_by": user.get("name", "")}})
+
+
 @api.post("/invoices", status_code=201)
 async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_user)]):
     f = biz_filter(user)
@@ -855,9 +880,11 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
     await ensure_invoice_room(user)
     lines = await stamp_costs(f["business_id"], [line_totals(l) for l in data.lines])
     totals = invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)
+    # Worked out before the invoice exists, so its own total can't eat the credit.
+    credit = await _credit_to_apply(f["business_id"], data.customer_id, data.credit_applied, totals["total"])
     number = await next_number(f["business_id"], "invoice", "INV", 1000) if data.status == "issued" else "Draft"
     shop = await writing_shop(user, data.shop)
-    doc = {**data.model_dump(exclude={"lines", "shop", "issue_date"}), "shop": shop, "rep": writing_rep(user, data.rep),
+    doc = {**data.model_dump(exclude={"lines", "shop", "issue_date"}), "credit_applied": credit, "shop": shop, "rep": writing_rep(user, data.rep),
            "lines": lines, "totals": totals, "number": number, **f,
            "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": _issued_at(data.issue_date)}
     res = await db.invoices.insert_one(doc)
@@ -865,16 +892,13 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
     if data.status == "issued":
         for l in lines:
             await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", number, user, "", shop)
-        if data.payment_mode != "credit":
-            await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": totals["total"], "account_id": data.account_id, "method": data.payment_mode, "shop": shop,
-                                          "allocations": [{"invoice_id": inv_id, "amount": totals["total"]}], "note": f"Paid at sale · {number}", "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now()})
-        # Unused credit the customer already paid in: applied as a payment so the
-        # balance due drops and the ledger still balances.
-        credit = round(min(data.credit_applied, totals["total"]), 2)
-        if credit > 0 and data.customer_id:
-            await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": credit, "account_id": None, "method": "credit", "shop": shop,
-                                          "allocations": [{"invoice_id": inv_id, "amount": credit}], "note": f"Unused credit applied · {number}",
-                                          "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "deleted_at": None})
+        # Paid at the counter: only what the credit didn't already cover.
+        cash = round(totals["total"] - credit, 2)
+        if data.payment_mode != "credit" and cash > 0:
+            await db.payments.insert_one({**f, "customer_id": data.customer_id, "amount": cash, "account_id": data.account_id, "method": data.payment_mode, "shop": shop,
+                                          "allocations": [{"invoice_id": inv_id, "amount": cash}], "note": f"Paid at sale · {number}", "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "deleted_at": None})
+        # Unused credit the customer already paid in settles part of this invoice.
+        await _sync_applied_credit(f, inv_id, data.customer_id, credit, shop, number, user)
     if data.status == "issued":
         await log_activity(f["business_id"], user, "invoice", f"{number} created", "", totals["total"], inv_id, shop)
         if totals["invoice_discount"]:
@@ -930,11 +954,17 @@ async def update_invoice(iid: str, data: InvoiceIn, user: Annotated[dict, Depend
             delta = before.get(item_id, 0) - after.get(item_id, 0)   # more sold = stock down
             if delta:
                 await apply_stock(f["business_id"], item_id, delta, "sale", inv["number"], user, "Invoice edited", shop)
-    patch = {**data.model_dump(exclude={"lines", "shop", "status", "issue_date"}), "lines": lines, "totals": totals, "shop": shop,
+    # An issued invoice already counts against the customer, so leave it out
+    # when asking how much credit is free for it.
+    credit = await _credit_to_apply(f["business_id"], data.customer_id, data.credit_applied, totals["total"],
+                                    exclude_invoice=iid if was_issued else None)
+    patch = {**data.model_dump(exclude={"lines", "shop", "status", "issue_date"}), "credit_applied": credit, "lines": lines, "totals": totals, "shop": shop,
              "updated_at": now(), "updated_by": user.get("name", "")}
     if data.issue_date:
         patch["created_at"] = _issued_at(data.issue_date)
     await db.invoices.update_one({"_id": inv["_id"]}, {"$set": patch})
+    if was_issued:
+        await _sync_applied_credit(f, iid, data.customer_id, credit, shop, inv["number"], user)
     await log_activity(f["business_id"], user, "invoice", f"{inv['number']} edited", "", totals["total"], iid, shop)
     return await decorate_invoice(await db.invoices.find_one({"_id": inv["_id"]}))
 
@@ -990,6 +1020,12 @@ async def issue_invoice(iid: str, user: Annotated[dict, Depends(current_user)]):
     }})
     for l in inv.get("lines", []):
         await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", number, user, "Draft confirmed", shop)
+    # Credit chosen on the draft is applied now. Checked again against what the
+    # customer has today — it may have been used elsewhere since the draft was saved.
+    if inv.get("credit_applied"):
+        credit = await _credit_to_apply(f["business_id"], inv.get("customer_id"), inv["credit_applied"], inv["totals"]["total"], exclude_invoice=iid)
+        await db.invoices.update_one({"_id": inv["_id"]}, {"$set": {"credit_applied": credit}})
+        await _sync_applied_credit(f, iid, inv.get("customer_id"), credit, shop, number, user)
     # Payment is never assumed on confirmation: the app asks next, and the user
     # enters the amount, account and date themselves (or skips it for later).
     await log_activity(f["business_id"], user, "invoice", f"{number} confirmed as a sales order", "Stock deducted", inv["totals"]["total"], iid, shop)
@@ -1024,6 +1060,11 @@ async def delete_invoice(iid: str, user: Annotated[dict, Depends(current_user)],
     # unused credit — it can be applied to the next invoice or refunded later.
     if paid > 0:
         async for p in db.payments.find({**f, "allocations.invoice_id": iid}):
+            if p.get("method") == "credit":
+                # Applied credit was never new money: drop the allocation and the
+                # credit is simply back on the customer's account.
+                await db.payments.update_one({"_id": p["_id"]}, {"$set": {"deleted_at": now(), "note": f"{p.get('note') or 'Unused credit applied'} · released when {inv['number']} was cancelled"}})
+                continue
             keep = [a for a in (p.get("allocations") or []) if a.get("invoice_id") != iid]
             await db.payments.update_one({"_id": p["_id"]}, {"$set": {
                 "allocations": keep,
@@ -1052,6 +1093,10 @@ async def uncancel_invoice(iid: str, user: Annotated[dict, Depends(current_user)
         await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", inv["number"], user, "Cancellation reversed", inv.get("shop", ""))
     await db.invoices.update_one({"_id": inv["_id"]}, {"$set": {"status": "issued"},
                                                        "$unset": {"cancelled_at": "", "cancelled_by": "", "cancelled_reason": ""}})
+    if inv.get("credit_applied"):
+        credit = await _credit_to_apply(f["business_id"], inv.get("customer_id"), inv["credit_applied"], inv["totals"]["total"], exclude_invoice=iid)
+        await db.invoices.update_one({"_id": inv["_id"]}, {"$set": {"credit_applied": credit}})
+        await _sync_applied_credit(f, iid, inv.get("customer_id"), credit, inv.get("shop", ""), inv["number"], user)
     await log_activity(f["business_id"], user, "invoice", f"{inv['number']} restored", "Cancellation reversed", inv["totals"]["total"], iid, inv.get("shop", ""))
     return await decorate_invoice(await db.invoices.find_one({"_id": inv["_id"]}))
 
@@ -1733,7 +1778,7 @@ async def dashboard(user: Annotated[dict, Depends(current_user)]):
     for i in range(6, -1, -1):
         d0 = datetime.combine(today - timedelta(days=i), datetime.min.time(), tzinfo=timezone.utc)
         d1 = d0 + timedelta(days=1)
-        inn = sum([p["amount"] async for p in db.payments.find({**f, "created_at": {"$gte": d0, "$lt": d1}})])
+        inn = sum([p["amount"] async for p in db.payments.find({**f, "created_at": {"$gte": d0, "$lt": d1}, "method": {"$nin": ["credit_note", "credit"]}})])
         out = sum([e["amount"] async for e in db.expenses.find({**f, "created_at": {"$gte": d0, "$lt": d1}})])
         days.append({"day": d0.strftime("%a"), "in": round(inn, 2), "out": round(out, 2)})
     stock_value = 0.0
@@ -1825,6 +1870,7 @@ app.include_router(activity.router)
 app.include_router(lookups.router)
 app.include_router(storage.router)
 app.include_router(billing.router)
+app.include_router(phone_auth.router)
 app.include_router(support.router)
 app.include_router(admin.router)
 app.include_router(admin_customers.router)
@@ -1835,6 +1881,11 @@ app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], 
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
+    # one account per sign-in number; accounts without one are left out of the index
+    try:
+        await db.users.create_index("login_phone", unique=True, partialFilterExpression={"login_phone": {"$type": "string"}})
+    except Exception as exc:   # the endpoints check for a taken number too, so this must never stop the app starting
+        logger.warning("login_phone index not created: %s", exc)
     # every list is read per business; without these each query scans the whole collection
     for col in ("customers", "invoices", "payments", "items", "sales", "expenses", "purchases", "suppliers", "supplier_payments",
                 "movements", "accounts", "returns", "activity", "transfers", "terms"):

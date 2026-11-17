@@ -481,15 +481,31 @@ async def apply_stock(business_id: str, item_id: Optional[str], qty_delta: float
                                    "shop": where, "by": user.get("name", ""), "created_at": now(), "deleted_at": None})
 
 
-async def customer_balance(business_id: str, customer_id: str) -> float:
+# A payment with method "credit" is the customer's unused credit put against an
+# invoice. The money behind it was already counted when it first came in, so it
+# settles that invoice but must never lower the customer's balance a second time.
+NOT_APPLIED_CREDIT = {"method": {"$ne": "credit"}}
+
+
+async def customer_balance(business_id: str, customer_id: str, exclude_invoice: Optional[str] = None) -> float:
     """Positive = customer owes us; negative = unused credit."""
     c = await db.customers.find_one({"_id": oid(customer_id)})
     bal = c.get("opening_balance", 0) * (1 if c.get("opening_type") == "owes_me" else -1)
     async for inv in db.invoices.find({"business_id": business_id, "customer_id": customer_id, "deleted_at": None, "status": LIVE_SALE}):
+        if exclude_invoice and str(inv["_id"]) == exclude_invoice:
+            continue
         bal += inv["totals"]["total"]
-    async for p in db.payments.find({"business_id": business_id, "customer_id": customer_id, "deleted_at": None}):
+    async for p in db.payments.find({"business_id": business_id, "customer_id": customer_id, "deleted_at": None, **NOT_APPLIED_CREDIT}):
         bal -= p["amount"]
     return round(bal, 2)
+
+
+async def available_credit(business_id: str, customer_id: Optional[str], exclude_invoice: Optional[str] = None) -> float:
+    """Unused credit the customer can put against an invoice. When the invoice
+    is already issued, leave it out so its own total doesn't eat the credit."""
+    if not customer_id or not ObjectId.is_valid(customer_id):
+        return 0.0
+    return max(0.0, -(await customer_balance(business_id, customer_id, exclude_invoice)))
 
 
 async def invoice_paid(business_id: str, invoice_id: str) -> float:
@@ -582,7 +598,12 @@ async def decorate_invoices(invs: list) -> list:
     for inv in invs:
         d = clean(inv)
         mine = pays.get(d["id"], [])
-        d.update(invoice_status(inv, round(sum(p["amount"] for p in mine), 2)))
+        paid = round(sum(p["amount"] for p in mine), 2)
+        # A draft owes nothing yet, but the credit chosen for it should still show
+        # on the draft and its PDF; it becomes a real payment when it is issued.
+        pending = round(min(inv.get("credit_applied") or 0, inv["totals"]["total"]), 2) if inv.get("status") in ("draft", "quote") else 0
+        d.update(invoice_status(inv, paid + pending))
+        d["credit_pending"] = pending
         d["totals"].setdefault("shipping", 0)
         d["totals"].setdefault("discount_total", round(d["totals"].get("line_discount", 0) + d["totals"].get("invoice_discount", 0), 2))
         # Which bank accounts print on this document, and the terms set behind it.

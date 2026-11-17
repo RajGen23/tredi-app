@@ -683,3 +683,11 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - Own scope matches created_by_id → created_by name → rep, and ignores shop (reps keep their history after moving shops).
 - Legacy sync step `creators()` links old-app invoices/expenses to the creator (created_by_id, rep, made_by) without touching synced fields.
 - Home "My sales" card for staff is tappable (→ Sales tab). Hidden for staff: suppliers, expenses, accounts, customer balances/ledger/items, stock value, cost/profit, supply history, add/edit/adjust stock.
+
+## Phone sign-in (Twilio Verify, Nigeria)
+- Sign in with a confirmed Nigerian mobile number (+234) and an SMS code; email + password still works.
+- Backend: `backend/sms.py` (Twilio Verify over REST), `backend/routes/phone_auth.py` (`/api/auth/phone/*`).
+- App: Email / Phone number switch on `sign-in.tsx`; More → Phone sign-in (`settings/phone-login.tsx`) to confirm a number.
+- Backend env (all three needed, otherwise the phone option stays hidden):
+  `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`.
+- A number only works for sign-in after its owner confirms it in the app (`users.login_phone`).

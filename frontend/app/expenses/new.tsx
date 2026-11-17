@@ -102,7 +102,7 @@ export default function NewExpense() {
           <Lbl>Amount</Lbl>
           <TextInput testID="expense-amount" value={group(amount)} onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ""))} keyboardType="decimal-pad" placeholder={`${sym()} 0`} placeholderTextColor={colors.ink40} style={s.bigInput} autoFocus />
         </View>
-        <PickerField label="Category" value={category} options={cats.options} onPick={setCategory}
+        <PickerField label="Category" value={category} options={cats.options} onPick={setCategory} manage={cats.manage}
           onAdd={(v) => { cats.add(v); setCategory(v); }} addLabel="Add a category" searchable
           title="What was it spent on?" style={{ marginTop: 12 }} testID="expense-category" />
         <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
