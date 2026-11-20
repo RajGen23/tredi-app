@@ -1,5 +1,5 @@
 // 04.17 Quick sale + 04.18 Sale saved.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { api, isOfflineError } from "@/src/api";
-import { keepOffline } from "@/src/outbox";
+import { keepOffline, newRef } from "@/src/outbox";
 import { AppBar, Av, Badge, Btn, Card, Chip, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { PickerField } from "@/src/components/picker";
 import { Photo } from "@/src/components/photo";
@@ -83,12 +83,19 @@ export default function QuickSale() {
   const change = Math.max(0, parseNum(tendered) - total);
 
   const saleBody = () => ({ lines: lines.map((l) => ({ item_id: l.item.id, name: l.item.name, quantity: l.q, unit_price: l.item.selling_price, unit: l.item.unit })), method, account_id: account?.id ?? null, tendered: method === "cash" ? parseNum(tendered) || total : total });
+  // One reference per sale, made before the first send. If that send reaches the
+  // server but the reply is lost, the queued retry carries the same reference and
+  // the server hands back the sale it already has — never a second one.
+  const attempt = useRef<{ ref: string; at: string } | null>(null);
   const m = useMutation({
     mutationFn: () => {
       const json = saleBody();
-      return edit ? api(`/sales/${edit}`, { method: "PUT", json }) : api("/sales", { method: "POST", json });
+      if (edit) return api(`/sales/${edit}`, { method: "PUT", json });
+      attempt.current ??= { ref: newRef(), at: new Date().toISOString() };
+      return api("/sales", { method: "POST", json: { ...json, client_ref: attempt.current.ref } });
     },
     onSuccess: (sale) => {
+      attempt.current = null;
       ["items", "low-stock", "dashboard", "accounts", "sales", "sale", "activity", "reports-summary"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       setTender(false);
       if (edit) { toast.show("Sale corrected", (sale as any)?.number); return router.replace(`/sales/${edit}`); }
@@ -99,7 +106,8 @@ export default function QuickSale() {
       // customer still gets their change worked out right now.
       if (!edit && isOfflineError(e)) {
         const json = saleBody();
-        await keepOffline("sale", json, { label: `Quick sale · ${method === "credit" ? "on credit" : method}`, total });
+        await keepOffline("sale", json, { label: `Quick sale · ${method === "credit" ? "on credit" : method}`, total }, attempt.current?.ref, attempt.current?.at);
+        attempt.current = null;
         setTender(false);
         setSaved({ offline: true, number: "Given when sent", method, tendered: json.tendered, totals: { total }, change: method === "cash" ? Math.max(0, json.tendered - total) : 0 });
         return;

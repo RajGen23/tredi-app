@@ -860,8 +860,10 @@ async def _sent_before(coll, business_id: str, client_ref: Optional[str]):
     return await coll.find_one({"business_id": business_id, "client_ref": client_ref})
 
 
-def _made_at(value: Optional[str]):
-    """When an offline sale really happened: trusted if it's in the last 30 days."""
+def _made_at(value: Optional[str], user: Optional[dict] = None):
+    """When an offline sale really happened. Owners and managers may send sales up
+    to 30 days old; everyone else up to 3 days (enough for a weekend without
+    signal), so staff can't quietly backdate sales."""
     if not value:
         return now()
     try:
@@ -869,7 +871,8 @@ def _made_at(value: Optional[str]):
         when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
     except ValueError:
         return now()
-    return when if now() - timedelta(days=30) <= when <= now() + timedelta(minutes=5) else now()
+    days = 30 if (user or {}).get("role", "owner") in ("owner", "manager") else 3
+    return when if now() - timedelta(days=days) <= when <= now() + timedelta(minutes=5) else now()
 
 
 async def _credit_to_apply(business_id: str, customer_id: Optional[str], asked: float, total: float, exclude_invoice: Optional[str] = None) -> float:
@@ -1149,9 +1152,10 @@ async def create_sale(data: SaleIn, user: Annotated[dict, Depends(current_user)]
     change = round(max(0.0, data.tendered - totals["total"]), 2) if data.method == "cash" and data.tendered else 0
     doc = {**f, "number": number, "lines": lines, "totals": totals, "method": data.method, "tendered": data.tendered, "change": change, "customer_id": data.customer_id,
            "account_id": data.account_id, "shop": shop, "rep": writing_rep(user, data.rep),
-           "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": _made_at(data.made_at), "synced": True}
+           "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": _made_at(data.made_at if data.client_ref else None, user), "synced": True}
     if data.client_ref:
-        doc.update(client_ref=data.client_ref, offline=True)
+        # a sale sent minutes or more after it was made came from the phone's outbox
+        doc.update(client_ref=data.client_ref, offline=now() - doc["created_at"] > timedelta(minutes=2))
     try:
         res = await db.sales.insert_one(doc)
     except DuplicateKeyError:

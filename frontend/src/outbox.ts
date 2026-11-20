@@ -50,16 +50,18 @@ export async function setOutboxOwner(id: string | null) {
   emit();
 }
 
-function newRef() {
+export function newRef() {
   const r = () => Math.random().toString(36).slice(2, 10);
   return `${Date.now().toString(36)}-${r()}-${r()}`;
 }
 
-/** Keep something made offline. Returns the stored entry. */
-export async function keepOffline(kind: OutboxKind, body: any, meta: { label: string; total: number }): Promise<Pending> {
+/** Keep something made offline. Pass the ref (and time) the first send already
+ *  used, so if that send did get through the server recognises the retry. */
+export async function keepOffline(kind: OutboxKind, body: any, meta: { label: string; total: number },
+                                  ref?: string, madeAt?: string): Promise<Pending> {
   await load();
-  const p: Pending = { ref: newRef(), kind, owner, body, made_at: new Date().toISOString(), label: meta.label, total: meta.total, tries: 0 };
-  items = [...items, p];
+  const p: Pending = { ref: ref || newRef(), kind, owner, body, made_at: madeAt || new Date().toISOString(), label: meta.label, total: meta.total, tries: 0 };
+  items = [...items.filter((x) => x.ref !== p.ref), p];
   await persist();
   emit();
   return p;

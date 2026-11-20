@@ -8,7 +8,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 import { useAuth } from "@/src/auth";
-import { api } from "@/src/api";
+import { api, isOfflineError } from "@/src/api";
 import { Av, Btn, Card, Chip, Field, H4, Row, Sub } from "@/src/components/ui";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -67,7 +67,7 @@ export default function SignIn() {
       await signInWithPhone(phone, smsCode.trim());
       router.replace("/");
     } catch (e: any) {
-      setErr(e.message || "Could not sign in");
+      setErr(isOfflineError(e) ? "You're offline. Connect to the internet to sign in." : e.message || "Could not sign in");
     } finally {
       setBusy(false);
     }
@@ -99,7 +99,7 @@ export default function SignIn() {
       else await signUp(name, email, password, code.trim());
       router.replace("/");
     } catch (e: any) {
-      setErr(e.message || "Could not sign in");
+      setErr(isOfflineError(e) ? "You're offline. Connect to the internet to sign in." : e.message || "Could not sign in");
     } finally {
       setBusy(false);
     }

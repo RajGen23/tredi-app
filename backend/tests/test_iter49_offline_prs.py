@@ -54,7 +54,8 @@ class TestSaleClientRef:
         assert a.status_code == 201 and b.status_code == 201, (a.text, b.text)
         created["sales"].append(a.json()["id"])
         assert a.json()["id"] == b.json()["id"] and a.json()["number"] == b.json()["number"]
-        assert a.json().get("client_ref") == body["client_ref"] and a.json().get("offline") is True
+        # online sales now carry a client_ref too; "offline" is only set when it was sent minutes after it was made
+        assert a.json().get("client_ref") == body["client_ref"]
         assert "_id" not in b.json()
         assert set(a.json().keys()) == set(b.json().keys())
         assert _qty(session, owner_headers, iid) == 8

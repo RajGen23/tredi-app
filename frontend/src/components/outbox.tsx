@@ -64,11 +64,13 @@ export function OutboxBanner({ style }: { style?: object }) {
   const refused = waiting.filter((p) => p.error).length;
   const total = waiting.reduce((a, p) => a + (p.total || 0), 0);
   const n = waiting.length;
+  const sales = waiting.filter((p) => p.kind === "sale").length;
+  const word = sales === n ? (n === 1 ? "sale" : "sales") : sales === 0 ? (n === 1 ? "invoice" : "invoices") : "sales and invoices";
   return (
     <Pressable onPress={() => router.push("/outbox")} style={[s.bar, refused ? s.bad : null, style]} testID="outbox-banner">
       <Ionicons name={refused ? "alert-circle" : "cloud-upload-outline"} size={20} color={refused ? colors.coral : colors.amber} />
       <View style={{ flex: 1 }}>
-        <H4>{n === 1 ? "1 sale saved on this phone" : `${n} sales saved on this phone`}</H4>
+        <H4>{`${n} ${word} saved on this phone`}</H4>
         <Sub>{refused ? `${refused} couldn't be sent: tap to see why` : `${money(total)} · sends by itself when you have signal`}</Sub>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.ink40} />
