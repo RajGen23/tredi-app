@@ -1,0 +1,43 @@
+{
+  "summary": "Re-tested the fix for the iteration 49 HIGH bug (a lost reply caused duplicate sales and invoices) plus the smaller fixes. It is fixed. QUICK SALE: Playwright let the first POST /api/sales reach the server (201), then aborted the reply. The app showed the 'No signal' card and queued the sale under the SAME client_ref and made_at. OutboxSync resent it. The DB holds exactly 1 sale for that ref and stock went down once (20 -> 19). NEW INVOICE: the same test on POST /api/invoices (issued). Both POSTs carried the same client_ref, there is exactly 1 invoice (INV-1426), stock went down once (19 -> 18), and the app moved to /outbox, which showed 'Everything is sent'. Normal online cash sales: two in a row got two different refs and created two records (SL-536139, SL-536140), with the Synced card. Home outbox banner wording is correct in all cases: '1 invoice', '2 invoices', '1 sale', '2 sales', and 'sales and invoices' when mixed. Lock screen wrong PIN shows the toast 'Wrong PIN — try again' in the bad style (coral alert-circle). Sign-in with no network shows 'You're offline. Connect to the internet to sign in.'. Backend: 40/40 pass (test_iter49 16 + test_offline_send 3 + test_iter48 15 + new test_iter50_made_at_rules 6, all with -n 0). Confirmed: made_at is ignored without client_ref; staff (amina) can go 2 days back but 5 days falls back to now; owner can go 20 days back but 40 days falls back to now; the offline flag is False for a fresh ref and True when made_at is more than 2 minutes old.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/sales", "issue": "Online quick sales now always send made_at from the phone clock, and the server accepts it (owner/manager 30 days back, staff 3 days, up to 5 minutes ahead). A phone whose clock is wrong will put normal online sales on the wrong date. A phone clock more than 2 minutes slow also marks online sales offline=True. Before this fix, online sales always used the server's now()."},
+      {"endpoint": "_made_at docstring", "issue": "The docstring says 'Owners and admins' get 30 days, but the code gives 30 days to ('owner','manager'). A user record with no role defaults to 'owner' (the same convention as deps.py)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter50_made_at_rules.py",
+    "/app/backend/tests/test_iter49_offline_prs.py",
+    "/app/backend/tests/test_offline_send.py",
+    "/app/backend/tests/test_iter48_merged_prs.py",
+    "/app/test_reports/pytest/iter50_all.xml"
+  ],
+  "action_items": [
+    "Optional: leave made_at out of the FIRST online POST /api/sales and send only client_ref. The server then uses its own time for a sale that lands at once, and the outbox can still send made_at when it retries. This stops a wrong phone clock from backdating online sales or wrongly flagging them offline. Alternatively, have the server ignore made_at when it is within a few minutes of now.",
+    "Fix the _made_at docstring so it matches the code (owner and manager get 30 days).",
+    "There is no DELETE /api/customers/{id}, so tests have no API way to clean up TEST customers. I removed mine by _id directly in Mongo."
+  ],
+  "critical_code_review_comments": [
+    "quick-sale.tsx: attempt.current is reset only on success or offline. After a 4xx/5xx error the same ref is reused on the next tap. That is safe when the server inserted nothing. But if a 5xx happened after the insert and the user then changes the cart, the retry returns the OLD sale instead of the new cart. This is an edge case.",
+    "create_invoice: next_number() runs before insert_one. When two copies of the same ref race, the DuplicateKeyError path leaves a gap in invoice numbers (and in sale numbers for create_sale). This is minor.",
+    "The invoice outbox entry stores made_at but sendWaiting does not send it for invoices. That matches the design (invoices use issue_date)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter50_made_at_rules.py (new)",
+    "/app/backend/tests/test_offline_send.py (added id-based cleanup fixture; previously left TEST items/sales/invoices behind)"
+  ],
+  "success_rate": {"backend": "100% (40/40)", "frontend": "100% (7/7 flows)"},
+  "seed_data_creation": "Created TEST_it50ui Soap item, TEST_it50 Cust customer, 3 UI sales, 1 UI invoice and the pytest records. All cleaned up by id: sales cancelled, invoice deleted, items deleted, the customer deleted by _id in Mongo (there is no API endpoint for it). Leftovers: my first full run of test_offline_send.py happened before I added its cleanup, so about 3 'TEST xxxxxx' items, 4 sales and 1 invoice remain in the owner business. I do not have their ids, so I did not delete them by prefix.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "conftest uses EXPO_PUBLIC_BACKEND_URL (not EXPO_BACKEND_URL); export it before pytest. To simulate a lost reply in Playwright: page.route('**/api/sales', h), and inside h on the first POST call await route.fetch() then await route.abort('failed'). On web the outbox lives in localStorage key 'tradabooks_outbox_v1', stored double-JSON-encoded; owner user id is 6aa7ae17267e782a241b7e6d. The owner account HAS a lock PIN set (has_pin true, idle 2 min), which test_credentials.md does not mention. The container clock is Nov 2026.",
+  "rca_of_issue": "Iteration 49 duplicate: fixed. The screens now create the ref (and made_at for sales) before the first POST and pass the same ref to keepOffline(). The server's _sent_before plus the unique partial index on (business_id, client_ref) return the existing record when the outbox resends."
+}
