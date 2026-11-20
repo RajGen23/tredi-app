@@ -23,7 +23,7 @@ export default function Plans() {
   const create = useMutation({
     mutationFn: () => adminApi("/plans", { method: "POST", json: { ...form, price: Number(form.price) || 0 } }),
     onSuccess: (res: any) => { toast.show(res.message, "Saved ·"); setOpen(false); setForm(BLANK); qc.invalidateQueries({ queryKey: ["admin-plans"] }); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const cols: Col<any>[] = [

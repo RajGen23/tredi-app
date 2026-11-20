@@ -28,12 +28,12 @@ export default function MigrationConsole() {
   const dry = useMutation({
     mutationFn: () => adminApi(`/migration/${id}/dry-run`, { method: "POST", json: {} }),
     onSuccess: (res: any) => { toast.show(res.message, "Dry run ·"); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const commit = useMutation({
     mutationFn: () => adminApi(`/migration/${id}/commit`, { method: "POST", json: {} }),
     onSuccess: (res: any) => { toast.show(res.message, "Imported ·"); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const map = useMutation({
     mutationFn: (body: { source: string; target: string }) => adminApi(`/migration/${id}/mapping`, { method: "PATCH", json: body }),
@@ -50,7 +50,7 @@ export default function MigrationConsole() {
       ];
       const res = await exportCsv(`Migration report · ${m.tenant}`, `migration-${m.tenant}`, rows);
       toast.show(res.message, "Downloaded ·");
-    } catch (e: any) { toast.show(e.message); }
+    } catch (e: any) { toast.show(e.message, undefined, "bad"); }
   };
   const mapCols: Col<any>[] = [
     { key: "source", label: "Source column", flex: 1.6, render: (r) => <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, color: colors.onSurface }}>{r.source}</Text> },

@@ -31,7 +31,7 @@ export default function Roles() {
   const create = useMutation({
     mutationFn: () => adminApi("/roles/templates", { method: "POST", json: { name, based_on: basedOn } }),
     onSuccess: (res: any) => { toast.show(res.message, "Created ·"); setCreating(false); setName(""); qc.invalidateQueries({ queryKey: ["admin-roles"] }); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const mark = (v: any) => (typeof v === "string"

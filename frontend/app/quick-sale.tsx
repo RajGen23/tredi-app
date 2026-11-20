@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
-import { api } from "@/src/api";
+import { api, isOfflineError } from "@/src/api";
+import { keepOffline } from "@/src/outbox";
 import { AppBar, Av, Badge, Btn, Card, Chip, H4, IconBtn, Li, Lbl, Loading, Money, Row, Sub } from "@/src/components/ui";
 import { PickerField } from "@/src/components/picker";
 import { Photo } from "@/src/components/photo";
@@ -81,9 +82,10 @@ export default function QuickSale() {
   const total = lines.reduce((a, l) => a + l.item.selling_price * l.q, 0);
   const change = Math.max(0, parseNum(tendered) - total);
 
+  const saleBody = () => ({ lines: lines.map((l) => ({ item_id: l.item.id, name: l.item.name, quantity: l.q, unit_price: l.item.selling_price, unit: l.item.unit })), method, account_id: account?.id ?? null, tendered: method === "cash" ? parseNum(tendered) || total : total });
   const m = useMutation({
     mutationFn: () => {
-      const json = { lines: lines.map((l) => ({ item_id: l.item.id, name: l.item.name, quantity: l.q, unit_price: l.item.selling_price, unit: l.item.unit })), method, account_id: account?.id ?? null, tendered: method === "cash" ? parseNum(tendered) || total : total };
+      const json = saleBody();
       return edit ? api(`/sales/${edit}`, { method: "PUT", json }) : api("/sales", { method: "POST", json });
     },
     onSuccess: (sale) => {
@@ -92,7 +94,18 @@ export default function QuickSale() {
       if (edit) { toast.show("Sale corrected", (sale as any)?.number); return router.replace(`/sales/${edit}`); }
       setSaved(sale);
     },
-    onError: (e: Error) => toast.show(e.message, undefined, "bad"),
+    onError: async (e: Error) => {
+      // No signal: the sale is kept on this phone and sent when it can be. The
+      // customer still gets their change worked out right now.
+      if (!edit && isOfflineError(e)) {
+        const json = saleBody();
+        await keepOffline("sale", json, { label: `Quick sale · ${method === "credit" ? "on credit" : method}`, total });
+        setTender(false);
+        setSaved({ offline: true, number: "Given when sent", method, tendered: json.tendered, totals: { total }, change: method === "cash" ? Math.max(0, json.tendered - total) : 0 });
+        return;
+      }
+      toast.show(e.message, undefined, "bad");
+    },
   });
 
   // Prefill the till from the sale being corrected.
@@ -135,7 +148,7 @@ export default function QuickSale() {
       const res = await sharePdf(html, name);
       if (!res.shared) toast.show(`${name} is ready — sharing is not available in this preview`);
     } catch (e: any) {
-      toast.show(e.message ?? "Could not build the receipt");
+      toast.show(e.message ?? "Could not build the receipt", undefined, "bad");
     }
   };
 
@@ -257,14 +270,28 @@ export default function QuickSale() {
               {saved.method === "cash" ? <Li><H4 style={{ flex: 1 }}>Change to give</H4><Money tone="pos" size={14} testID="sale-saved-change">{money(saved.change)}</Money></Li> : null}
               <Li last><Sub style={{ flex: 1 }}>Sale no.</Sub><Money size={11}>{saved.number}</Money></Li>
             </Card>
-            <Card style={[s.amber, { marginTop: 9, flexDirection: "row", alignItems: "center", gap: 8 }]}><Sub style={{ flex: 1 }}>Saved and synced to your book</Sub><Badge tone="paid">Synced</Badge></Card>
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 11 }}>
-              <Btn small variant="ghost" label="Print receipt" style={{ flex: 1 }} onPress={() => receipt(true)} testID="sale-saved-print" />
-              <Btn small variant="deep" label="Share" icon="logo-whatsapp" style={{ flex: 1 }} onPress={() => receipt(false)} testID="sale-saved-share" />
-            </View>
+            {saved.offline ? (
+              <Card style={[s.amber, { marginTop: 9, flexDirection: "row", alignItems: "center", gap: 8 }]} testID="sale-saved-offline">
+                <Sub style={{ flex: 1 }}>{"No signal: saved on this phone. It sends by itself when you're back online, and the receipt is ready then."}</Sub>
+                <Badge tone="due">Waiting</Badge>
+              </Card>
+            ) : (
+              <Card style={[s.amber, { marginTop: 9, flexDirection: "row", alignItems: "center", gap: 8 }]}><Sub style={{ flex: 1 }}>Saved and synced to your book</Sub><Badge tone="paid">Synced</Badge></Card>
+            )}
+            {saved.offline ? null : (
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 11 }}>
+                <Btn small variant="ghost" label="Print receipt" style={{ flex: 1 }} onPress={() => receipt(true)} testID="sale-saved-print" />
+                <Btn small variant="deep" label="Share" icon="logo-whatsapp" style={{ flex: 1 }} onPress={() => receipt(false)} testID="sale-saved-share" />
+              </View>
+            )}
             <Btn label="New sale" style={{ marginTop: 8 }} onPress={reset} testID="sale-saved-new" />
-            <Btn small variant="ghost" label="Open this sale" style={{ marginTop: 8 }} testID="sale-saved-open"
-              onPress={() => { const id = saved.id; setSaved(null); setCart({}); setTendered(""); router.push(`/sales/${id}`); }} />
+            {saved.offline ? (
+              <Btn small variant="ghost" label="See what's waiting to send" style={{ marginTop: 8 }} testID="sale-saved-outbox"
+                onPress={() => { setSaved(null); setCart({}); setTendered(""); router.push("/outbox"); }} />
+            ) : (
+              <Btn small variant="ghost" label="Open this sale" style={{ marginTop: 8 }} testID="sale-saved-open"
+                onPress={() => { const id = saved.id; setSaved(null); setCart({}); setTendered(""); router.push(`/sales/${id}`); }} />
+            )}
           </>
         ) : null}
       </Sheet>

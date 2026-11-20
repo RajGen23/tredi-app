@@ -45,7 +45,7 @@ export default function NewSupplier() {
       toast.show(edit ? "Supplier updated" : "Supplier saved", r.name);
       router.replace(`/suppliers/${r.id}`);
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

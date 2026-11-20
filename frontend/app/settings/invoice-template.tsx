@@ -197,7 +197,7 @@ export default function InvoiceTemplates() {
       },
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["invoice-settings"] }); toast.show("Every invoice will use this look", "Saved"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const pickLogo = async () => {

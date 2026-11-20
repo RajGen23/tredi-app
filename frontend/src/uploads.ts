@@ -3,7 +3,7 @@
 import { Platform } from "react-native";
 
 import { storage } from "@/src/utils/storage";
-import { ApiError, TOKEN_KEY } from "@/src/api";
+import { ApiError, isOfflineError, NO_CONNECTION, TOKEN_KEY } from "@/src/api";
 
 const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
@@ -103,6 +103,7 @@ export async function uploadPhoto(uri: string, name = `photo-${Date.now()}.jpg`,
   let reply: Reply | null = null;
   let lastErr = "";
   let slow = false;
+  let offline = false;
   for (let attempt = 0; attempt < waits.length && !reply; attempt++) {
     if (waits[attempt]) await sleep(waits[attempt]);
     const ctrl = new AbortController();
@@ -111,6 +112,7 @@ export async function uploadPhoto(uri: string, name = `photo-${Date.now()}.jpg`,
       reply = await send(small, token, ctrl.signal);
     } catch (e: any) {
       lastErr = String(e?.message ?? e ?? "").replace(/^\[?\w*Error:?\]?\s*/, "").slice(0, 80);
+      offline = isOfflineError(e);
       if (slow) break;
       // If the device's native uploader itself refused (older runtime shipping
       // an Expo Go without it), don't burn the other tries on the same road.
@@ -118,6 +120,9 @@ export async function uploadPhoto(uri: string, name = `photo-${Date.now()}.jpg`,
     } finally {
       clearTimeout(timer);
     }
+  }
+  if (!reply && offline) {
+    throw new ApiError(NO_CONNECTION, "You're offline, so the photo wasn't uploaded. Tap the photo box to try again when you have signal.");
   }
   if (!reply) {
     const why = `${lastErr || "network dropped"}${bytes ? `, ${kb(bytes)}` : ""}`;

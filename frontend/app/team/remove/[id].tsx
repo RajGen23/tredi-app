@@ -34,7 +34,7 @@ export default function RemoveMember() {
       toast.show(r.moved ? `${r.moved} records handed over` : "Account deactivated", d?.name);
       router.replace("/team");
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

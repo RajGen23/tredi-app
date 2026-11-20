@@ -66,7 +66,7 @@ export default function SaleDetail() {
       const res = await sharePdf(html, name);
       if (!res.shared) toast.show(`${name} is ready — sharing is not available in this preview`);
     } catch (e: any) {
-      toast.show(e.message ?? "Could not build the receipt");
+      toast.show(e.message ?? "Could not build the receipt", undefined, "bad");
     }
   };
 

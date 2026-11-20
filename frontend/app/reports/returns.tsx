@@ -65,7 +65,7 @@ export default function Returns() {
       setQty({});
       toast.show(`${money(r.total)} credited back`, r.number);
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

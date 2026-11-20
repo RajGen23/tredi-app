@@ -22,7 +22,7 @@ export default function Security() {
   const save = useMutation({
     mutationFn: (json: any) => adminApi("/security/policy", { method: "PATCH", json }),
     onSuccess: (res: any) => { toast.show(res.message ?? "Saved", "Policy ·"); qc.invalidateQueries({ queryKey: ["admin-security"] }); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const p = d.data?.policy ?? {};
 

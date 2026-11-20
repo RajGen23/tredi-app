@@ -34,7 +34,7 @@ export default function Analytics() {
       ];
       const res = await exportCsv("Platform analytics", `tredi-analytics-${days}d`, rows);
       toast.show(res.message, "Exported ·");
-    } catch (e: any) { toast.show(e.message); }
+    } catch (e: any) { toast.show(e.message, undefined, "bad"); }
   };
 
   const cols: Col<any>[] = [

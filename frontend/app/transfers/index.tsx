@@ -39,12 +39,12 @@ export default function Transfers() {
   const approve = useMutation({
     mutationFn: (id: string) => api(`/transfers/${id}/approve`, { method: "POST" }),
     onSuccess: (r: any) => { qc.invalidateQueries(); toast.show("Stock left the sending shop", r.number); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const deny = useMutation({
     mutationFn: () => api(`/transfers/${reject}/reject`, { method: "POST", json: { reason } }),
     onSuccess: () => { qc.invalidateQueries(); setReject(null); setReason(""); toast.show("Transfer rejected"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const rows = useMemo(() => {

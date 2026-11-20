@@ -91,7 +91,7 @@ export default function NewExpense() {
       toast.show(`${money(parseNum(amount))} · ${category}`, "Expense saved.");
       router.back();
     },
-    onError: (e: Error) => toast.show(e.message),
+    onError: (e: Error) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

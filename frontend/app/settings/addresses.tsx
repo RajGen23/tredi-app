@@ -37,7 +37,7 @@ export default function Addresses() {
       setForm({ label: "", address: "", phone: "", kind: "shop", is_default: false });
       toast.show("Saved");
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const remove = useMutation({
     mutationFn: (id: string) => api(`/business/addresses/${id}`, { method: "DELETE" }),

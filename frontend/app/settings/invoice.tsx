@@ -40,7 +40,7 @@ export default function InvoiceSettings() {
       },
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["invoice-settings"] }); toast.show("Applied to every invoice", "Saved"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   if (!f) return <View style={[s.root, { paddingTop: insets.top }]}><AppBar title="Invoice settings" back /><Loading /></View>;

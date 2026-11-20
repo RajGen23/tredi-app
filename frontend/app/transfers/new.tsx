@@ -45,7 +45,7 @@ export default function NewTransfer() {
   const save = useMutation({
     mutationFn: () => api("/transfers", { method: "POST", json: { from_shop: from, to_shop: to, lines, needs_approval: approval } }),
     onSuccess: (r: any) => { qc.invalidateQueries(); toast.show(approval ? "Waiting for approval" : "Sent", r.number); router.replace("/transfers"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (
