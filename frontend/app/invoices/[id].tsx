@@ -51,19 +51,19 @@ export default function InvoiceDetail() {
   const issueRepeat = useMutation({
     mutationFn: () => api(`/invoices/${id}/duplicate`, { method: "POST", json: { update_prices: usePrices, issue: true } }),
     onSuccess: (n: any) => { fresh(); setRepeat(false); toast.show(`${n.number} raised for ${money(n.totals.total)}`, "Repeat"); router.replace(`/invoices/${n.id}`); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const confirmIssue = useMutation({
     mutationFn: () => api(`/invoices/${id}/issue`, { method: "POST" }),
     onSuccess: (n: any) => { fresh(); setIssueOpen(false); setPayAsk(true); toast.show(`${n.number} is now a sales order — stock deducted`, "Issued."); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const emailIt = useMutation({
     mutationFn: () => api<any>(`/invoices/${id}/email`, { method: "POST", json: {} }),
     onSuccess: (r) => toast.show(`Sent to ${r.to}`, "Emailed."),
-    onError: (e: any) => toast.show(e.message, "Not sent"),
+    onError: (e: any) => toast.show(e.message, "Not sent", "bad"),
   });
 
   const kill = useMutation({
@@ -75,13 +75,13 @@ export default function InvoiceDetail() {
       toast.show(r.message, r.mode === "deleted" ? "Deleted." : "Cancelled.");
       if (r.mode === "deleted") { if (router.canGoBack()) router.back(); else router.replace("/(tabs)/sales"); }
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const restore = useMutation({
     mutationFn: () => api(`/invoices/${id}/uncancel`, { method: "POST" }),
     onSuccess: () => { fresh(); toast.show("Invoice restored — the stock came off the shelf again", "Restored."); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const over = inv?.status === "overdue";

@@ -99,7 +99,7 @@ export default function ExpenseDetail() {
       setEdit(false);
       toast.show("The change is on the activity trail", "Expense corrected.");
     },
-    onError: (err: any) => { setConfirm(false); toast.show(err.message ?? "Could not save the change"); },
+    onError: (err: any) => { setConfirm(false); toast.show(err.message ?? "Could not save the change", undefined, "bad"); },
   });
 
   const kill = useMutation({
@@ -110,7 +110,7 @@ export default function ExpenseDetail() {
       toast.show(r?.message ?? "Expense removed");
       router.back();
     },
-    onError: (err: any) => toast.show(err.message ?? "Could not remove it"),
+    onError: (err: any) => toast.show(err.message ?? "Could not remove it", undefined, "bad"),
   });
 
   const changeReceipt = async () => {

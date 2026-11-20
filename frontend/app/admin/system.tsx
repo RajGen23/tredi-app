@@ -21,7 +21,7 @@ export default function SystemHealth() {
   const incident = useMutation({
     mutationFn: () => adminApi("/system/incident", { method: "POST", json: {} }),
     onSuccess: (res: any) => { toast.show(res.message, "Incident ·"); qc.invalidateQueries({ queryKey: ["admin-system"] }); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const tone = (l: string) => (l === "ERR" ? colors.coralSoft : l === "WRN" ? "#E8C67A" : "#8FD8BE");

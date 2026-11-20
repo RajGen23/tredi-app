@@ -30,7 +30,7 @@ export default function NewBusiness() {
   const save = useMutation({
     mutationFn: () => api("/businesses", { method: "POST", json: { ...form, type, currency: "NGN", track_stock: true, copy_settings_from: copyFrom } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["businesses"] }); toast.show("Business added", form.name); router.back(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

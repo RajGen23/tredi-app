@@ -52,7 +52,7 @@ export default function Waybill() {
   const save = useMutation({
     mutationFn: () => api("/waybills", { method: "POST", json: { ...form, status: "issued" } }),
     onSuccess: (r: any) => { qc.invalidateQueries(); toast.show("Waybill saved", r.number); router.replace(`/documents/waybill/${r.id}`); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const html = () => buildWaybillHtml(w, {

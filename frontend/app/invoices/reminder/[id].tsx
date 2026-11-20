@@ -41,7 +41,7 @@ export default function Reminder() {
       else toast.show("Reminder logged against the invoice", "Saved");
       router.back();
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

@@ -41,7 +41,7 @@ export default function MergeCustomers() {
       toast.show(`${r.merged} duplicate${r.merged > 1 ? "s" : ""} merged into ${byId[keep!]?.name ?? "one record"}`, "Merged.");
       setPicked([]); setKeep(null);
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const row = (c: C, last: boolean) => {

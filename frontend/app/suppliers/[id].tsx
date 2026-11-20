@@ -46,7 +46,7 @@ export default function SupplierProfile() {
       setAmount("");
       toast.show("Payment sent", money(parseNum(amount)));
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

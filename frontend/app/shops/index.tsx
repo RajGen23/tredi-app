@@ -33,7 +33,7 @@ export default function Shops() {
       if (router.canGoBack()) router.back();
       else router.replace("/(tabs)");
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

@@ -30,7 +30,7 @@ export default function Shortcuts() {
   const save = useMutation({
     mutationFn: () => api("/shortcuts", { method: "PUT", json: { keys: on.map((x) => x.key) } }),
     onSuccess: () => { qc.invalidateQueries(); toast.show("Home updated"); if (router.canGoBack()) router.back(); else router.replace("/(tabs)"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const move = (i: number, dir: -1 | 1) => {

@@ -70,7 +70,7 @@ export default function Import() {
   const preview = useMutation({
     mutationFn: (payload: { filename: string; rows: any[] }) => api("/import/preview", { method: "POST", json: { target, ...payload } }),
     onSuccess: (r: any) => setReport(r),
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const commit = useMutation({
     mutationFn: () => api("/import/commit", { method: "POST", json: { target, filename, rows, skip_rows: [] } }),
@@ -83,7 +83,7 @@ export default function Import() {
       setFilename("");
       setPaste("");
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const load = (name: string, rows: Rows) => {

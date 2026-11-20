@@ -61,9 +61,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<{ msg: string; accent?: string; tone?: "bad" } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const show = useCallback((msg: string, accent?: string, tone?: "bad") => {
+    // a problem never wears the green tick, whoever forgot to say so
+    if (!tone && /^(You're offline|The connection is too slow)/.test(msg)) tone = "bad";
     setToast({ msg, accent, tone });
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setToast(null), 2800);
+    // problems stay up long enough to read a full sentence
+    timer.current = setTimeout(() => setToast(null), tone === "bad" ? 5000 : 2800);
   }, []);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   const value = useMemo(() => ({ show }), [show]);

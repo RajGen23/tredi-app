@@ -38,7 +38,7 @@ export default function Businesses() {
         ends: r.ends_at, users: r.users, shops: r.shops, last_active: r.last_active, signed_up: r.created_at,
       })));
       toast.show(res.message, "Exported ·");
-    } catch (e: any) { toast.show(e.message); }
+    } catch (e: any) { toast.show(e.message, undefined, "bad"); }
   };
 
   const cols: Col<any>[] = [

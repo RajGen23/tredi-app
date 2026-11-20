@@ -65,7 +65,7 @@ export default function BusinessDetail() {
     mutationFn: () => adminApi(`/customers/${id}/activate`, { method: "POST",
       json: { plan, months, amount: Number(amount) || 0, reference, note, extend: true } }),
     onSuccess: (res: any) => { toast.show(res.message, "Activated ·"); setConfirm(false); setReference(""); setNote(""); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const saveCustom = useMutation({
     mutationFn: () => {
@@ -78,23 +78,23 @@ export default function BusinessDetail() {
         name: cName, price: cPrice === "" ? null : Number(cPrice), limits, features } });
     },
     onSuccess: (res: any) => { toast.show(res.message, "Saved ·"); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const clearCustom = useMutation({
     mutationFn: () => adminApi(`/customers/${id}/custom-plan`, { method: "DELETE" }),
     onSuccess: (res: any) => { toast.show(res.message, "Removed ·"); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const endPlan = useMutation({
     mutationFn: () => adminApi(`/customers/${id}/end-plan`, { method: "POST", json: {} }),
     onSuccess: (res: any) => { toast.show(res.message, "Ended ·"); setEnding(false); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const suspend = useMutation({
     mutationFn: () => adminApi(`/customers/${id}/suspend`, { method: "POST", json: { reason } }),
     onSuccess: (res: any) => { toast.show(res.message, "Logged ·"); setPausing(false); setReason(""); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   if (!c) return <AdminShell title="Business" testID="sa-business"><Loading /></AdminShell>;

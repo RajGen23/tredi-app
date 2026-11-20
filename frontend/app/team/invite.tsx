@@ -34,7 +34,7 @@ export default function Invite() {
       toast.show(r.emailed ? `Login details emailed to ${r.email}` : `Email could not be sent — ${r.name} signs in with ${r.password ?? form.password}`, "Invited");
       router.back();
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

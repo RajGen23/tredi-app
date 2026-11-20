@@ -53,7 +53,7 @@ export default function NewRole() {
   const save = useMutation({
     mutationFn: () => api("/roles", { method: "POST", json: { label, start_from: startFrom, can, scopes, assign_to: assign } }),
     onSuccess: (r: any) => { qc.invalidateQueries(); toast.show(`${r.assigned} user${r.assigned === 1 ? "" : "s"} updated`, label); router.back(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

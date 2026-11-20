@@ -89,7 +89,7 @@ export default function ItemDetail() {
   const m = useMutation({
     mutationFn: () => api(`/items/${id}/adjust`, { method: "POST", json: { mode, quantity: n, reason, note } }),
     onSuccess: () => { fresh(); setOpen(false); setVal(""); setNote(""); toast.show(`${it.name} now ${newQty} ${it.unit.toLowerCase()}s`, "Adjusted."); },
-    onError: (e: Error) => toast.show(e.message),
+    onError: (e: Error) => toast.show(e.message, undefined, "bad"),
   });
 
   const kill = useMutation({
@@ -101,13 +101,13 @@ export default function ItemDetail() {
       toast.show(r.message, r.mode === "archived" ? "Archived." : "Deleted.");
       if (r.mode === "deleted") router.back();
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const restore = useMutation({
     mutationFn: () => api(`/items/${id}/restore`, { method: "POST" }),
     onSuccess: () => { fresh(); toast.show("Back in your catalogue", "Restored."); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const low = it && it.track_stock && it.quantity <= it.alert_below;

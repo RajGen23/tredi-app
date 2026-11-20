@@ -47,7 +47,7 @@ export default function PaymentOut() {
       toast.show(editing ? "Payment corrected" : `${money(parseNum(amount))} paid out`, "Saved.");
       router.back();
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

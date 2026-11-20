@@ -41,7 +41,7 @@ export default function AuditLog() {
       })));
       toast.show(res.message, "Exported ·");
       qc.invalidateQueries({ queryKey: ["admin-audit"] });
-    } catch (e: any) { toast.show(e.message); } finally { setExporting(false); }
+    } catch (e: any) { toast.show(e.message, undefined, "bad"); } finally { setExporting(false); }
   };
 
   const cols: Col<any>[] = [
