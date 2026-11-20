@@ -8,6 +8,7 @@ import Ionicons from "@react-native-vector-icons/ionicons";
 import { api } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { Av, Bars, Card, H4, IconBtn, IonName, Kpi, Lbl, Li, Loading, Money, Prog, Row, Sub, Tag } from "@/src/components/ui";
+import { OutboxBanner } from "@/src/components/outbox";
 import { money } from "@/src/format";
 import { fonts, makeStyles, useTheme } from "@/src/theme";
 
@@ -63,6 +64,7 @@ export default function Home() {
         <IconBtn teal name="notifications-outline" testID="home-notifications" dot={!!notifications.data?.count} onPress={() => router.push("/notifications")} />
       </View>
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => { q.refetch(); lowStock.refetch(); }} tintColor={colors.brandPrimary} />}>
+        <OutboxBanner />
         {!d ? <Card style={s.hero}><Loading /></Card> : (
           <Pressable testID="home-total-sales-open" onPress={() => router.push(money_ok ? "/reports/sales" : "/(tabs)/sales")} style={({ pressed }) => pressed && { opacity: 0.85 }}>
             <Card style={s.hero} testID="home-total-sales-card">
