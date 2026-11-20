@@ -37,17 +37,17 @@ export default function PhoneLogin() {
   const start = useMutation({
     mutationFn: () => api("/auth/phone/link/start", { method: "POST", json: { phone } }),
     onSuccess: (r: any) => { setSent(true); toast.show(r.message); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const confirm = useMutation({
     mutationFn: () => api("/auth/phone/link/verify", { method: "POST", json: { phone, code: code.trim() } }),
     onSuccess: (r: any) => done(r.message),
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const remove = useMutation({
     mutationFn: () => api("/auth/phone/link", { method: "DELETE" }),
     onSuccess: () => done("Phone sign-in removed — use your email and password"),
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const d = q.data;

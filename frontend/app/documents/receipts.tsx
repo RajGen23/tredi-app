@@ -46,12 +46,12 @@ export default function Receipts() {
   const create = useMutation({
     mutationFn: () => api("/receipts", { method: "POST", json: { photo_url: draft!.url, title: draft!.title || "Receipt", amount: parseNum(draft!.amount), kind: "other" } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["receipts"] }); setDraft(null); toast.show("Saved — attach it whenever you like", "Receipt"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const link = useMutation({
     mutationFn: (target: any) => api(`/receipts/${linking.id}/link`, { method: "POST", json: { link_type: target.type, link_id: target.id } }),
     onSuccess: () => { qc.invalidateQueries(); setLinking(null); toast.show("Attached"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const capture = async (fromCamera: boolean) => {

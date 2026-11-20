@@ -35,7 +35,7 @@ export default function CustomerPricing() {
   const save = useMutation({
     mutationFn: () => api(`/customers/${id}/prices`, { method: "PUT", json: { prices: Object.fromEntries(list.map((r) => [r.item_id, parseNum(r.price)])) } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["customer-prices", id] }); toast.show("Special prices saved", "Saved."); router.back(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const options = (items.data ?? []).filter((it) => !list.some((r) => r.item_id === it.id))

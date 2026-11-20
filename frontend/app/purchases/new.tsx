@@ -120,7 +120,7 @@ export default function NewPurchase() {
       setSupPhone("");
       toast.show(`${sup.name} added — carry on with the purchase`, "Saved.");
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const addPicked = () => {

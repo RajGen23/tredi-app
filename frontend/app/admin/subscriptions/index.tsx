@@ -50,17 +50,17 @@ export default function Subscriptions() {
     mutationFn: () => adminApi(`/customers/${renew.id}/activate`, { method: "POST",
       json: { plan, months, amount: Number(amount) || 0, reference, extend: true } }),
     onSuccess: (res: any) => { toast.show(res.message, "Renewed ·"); setRenew(null); invalidate(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const approve = useMutation({
     mutationFn: (r: any) => adminApi(`/plan-requests/${r.id}/approve`, { method: "POST", json: { months: 1 } }),
     onSuccess: (res: any) => { toast.show(res.message, "Activated ·"); invalidate(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const refuse = useMutation({
     mutationFn: () => adminApi(`/plan-requests/${decline.id}/decline`, { method: "POST", json: { note: why } }),
     onSuccess: (res: any) => { toast.show(res.message, "Closed ·"); setDecline(null); setWhy(""); invalidate(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const reqCols: Col<any>[] = [

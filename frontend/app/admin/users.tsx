@@ -37,7 +37,7 @@ export default function Users() {
         last_active: r.last_seen, joined: r.joined,
       })));
       toast.show(res.message, "Exported ·");
-    } catch (e: any) { toast.show(e.message); } finally { setExporting(false); }
+    } catch (e: any) { toast.show(e.message, undefined, "bad"); } finally { setExporting(false); }
   };
   const counts = d.data?.counts ?? {};
   const pages = d.data ? Math.max(1, Math.ceil(d.data.total / d.data.size)) : 1;

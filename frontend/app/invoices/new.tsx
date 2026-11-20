@@ -249,7 +249,7 @@ export default function NewInvoice() {
         editId ? "Saved." : status === "draft" ? undefined : "Issued.");
       router.replace(`/invoices/${inv.id}`);
     },
-    onError: (e: Error) => toast.show(e.message),
+    onError: (e: Error) => toast.show(e.message, undefined, "bad"),
   });
 
   const addCustomer = useMutation({
@@ -262,7 +262,7 @@ export default function NewInvoice() {
       setStep(1);
       toast.show(`${c.name} added — carry on with the invoice`, "Saved.");
     },
-    onError: (e: Error) => toast.show(e.message),
+    onError: (e: Error) => toast.show(e.message, undefined, "bad"),
   });
 
   const filteredCustomers = (customersQ.data ?? []).filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));

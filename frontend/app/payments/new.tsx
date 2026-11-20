@@ -76,7 +76,7 @@ export default function PaymentIn() {
       allocations, note: `Payment in · ${PAY_METHODS.find((p) => p.key === method)?.label ?? "Cash"} · ${account?.name ?? "Cash"}`,
     } }),
     onSuccess: () => { ["customers", "customer", "customer-summary", "invoices", "invoice", "dashboard", "accounts", "account", "ledger", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast.show(`${money(parseNum(amount))} from ${c?.name}`, "Recorded."); router.back(); },
-    onError: (e: Error) => toast.show(e.message),
+    onError: (e: Error) => toast.show(e.message, undefined, "bad"),
   });
 
   return (

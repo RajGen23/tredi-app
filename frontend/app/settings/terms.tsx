@@ -31,7 +31,7 @@ export default function Terms() {
       return edit!.id ? api(`/terms/${edit!.id}`, { method: "PUT", json: body }) : api("/terms", { method: "POST", json: body });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["terms"] }); setEdit(null); toast.show("Terms saved"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const remove = useMutation({
     mutationFn: (id: string) => api(`/terms/${id}`, { method: "DELETE" }),

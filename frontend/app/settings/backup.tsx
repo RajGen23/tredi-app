@@ -30,7 +30,7 @@ export default function Backup() {
   const now = useMutation({
     mutationFn: () => api("/sync/backup", { method: "POST" }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["sync-status"] }); toast.show("Everything is on the cloud", "Backed up"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const settings = useMutation({
     mutationFn: (patch: any) => api("/sync/settings", { method: "PUT", json: { auto: d.auto, mobile_data: d.mobile_data, include_photos: d.include_photos, ...patch } }),

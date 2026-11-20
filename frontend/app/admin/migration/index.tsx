@@ -24,7 +24,7 @@ function LiveSync() {
   const start = useMutation({
     mutationFn: () => adminApi<any>("/legacy-sync", { method: "POST", json: {} }),
     onSuccess: (res) => { toast.show(res.message, "Sync ·"); qc.invalidateQueries({ queryKey: ["admin-legacy-sync"] }); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const job = st.data?.job;
   const running = job?.status === "running";

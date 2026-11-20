@@ -45,7 +45,7 @@ export function ExportBar({ build, testID = "report" }: { build: () => ReportDoc
       }
       setOpen(false);
     } catch (e: any) {
-      toast.show(e?.message ?? "Could not build the file");
+      toast.show(e?.message ?? "Could not build the file", undefined, "bad");
     } finally {
       setBusy("");
     }

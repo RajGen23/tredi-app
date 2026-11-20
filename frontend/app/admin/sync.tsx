@@ -23,7 +23,7 @@ export default function SyncMonitor() {
   const replay = useMutation({
     mutationFn: (ids: string[]) => adminApi("/sync/replay", { method: "POST", json: { ids } }),
     onSuccess: (res: any) => { toast.show(res.message, "Replayed ·"); setPicked([]); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const notify = useMutation({
     mutationFn: (id: string) => adminApi(`/sync/${id}/notify`, { method: "POST", json: {} }),

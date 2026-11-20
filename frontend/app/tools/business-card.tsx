@@ -39,7 +39,7 @@ export default function BusinessCard() {
       json: { tagline: f.tagline, hours: f.hours, show_tin: f.show_tin, include_bank: f.include_bank, bank_account_id: f.bank_account_id ?? null, style: f.style },
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["card"] }); toast.show("Card saved"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   if (!f) return <View style={[s.root, { paddingTop: insets.top }]}><AppBar title="Business card" back /><Loading /></View>;

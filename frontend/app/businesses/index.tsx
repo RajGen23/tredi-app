@@ -38,7 +38,7 @@ export default function Businesses() {
       toast.show(`Working in ${b.name}`, "Switched");
       router.replace("/(tabs)");
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const active = d?.businesses?.find((b: any) => b.active);

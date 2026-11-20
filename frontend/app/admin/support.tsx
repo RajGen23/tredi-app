@@ -33,7 +33,7 @@ export default function Support() {
   const end = useMutation({
     mutationFn: () => adminApi("/support/session/end", { method: "POST", json: {} }),
     onSuccess: (res: any) => { toast.show(res.message, "Closed ·"); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const remind = useMutation({
     mutationFn: (id: string) => adminApi(`/support/requests/${id}/remind`, { method: "POST", json: {} }),
@@ -42,7 +42,7 @@ export default function Support() {
   const reply = useMutation({
     mutationFn: ({ id, message }: { id: string; message: string }) => adminApi(`/support/messages/${id}/reply`, { method: "POST", json: { message } }),
     onSuccess: (res: any) => { toast.show(res.message, "Sent ·"); setReplying(null); setReplyText(""); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
   const closeMsg = useMutation({
     mutationFn: (id: string) => adminApi(`/support/messages/${id}/close`, { method: "POST", json: {} }),
@@ -51,7 +51,7 @@ export default function Support() {
   const send = useMutation({
     mutationFn: (queue: boolean) => adminApi("/support/broadcast", { method: "POST", json: { audience, title, message, queue } }),
     onSuccess: (res: any) => { toast.show(res.message, "Broadcast ·"); setTitle(""); setMessage(""); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const cols: Col<any>[] = [

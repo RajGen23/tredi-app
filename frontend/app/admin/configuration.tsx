@@ -26,7 +26,7 @@ export default function Configuration() {
       units: draft.units, categories: draft.categories, flags: draft.flags,
     } }),
     onSuccess: (res: any) => { toast.show(res.message, "Saved ·"); qc.invalidateQueries({ queryKey: ["admin-config"] }); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const setInvoice = (k: string, v: any) => setDraft({ ...draft, invoice: { ...draft.invoice, [k]: v } });

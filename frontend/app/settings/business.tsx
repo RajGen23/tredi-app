@@ -61,7 +61,7 @@ export default function BusinessProfile() {
       qc.invalidateQueries();
       toast.show("Profile saved — it heads every invoice", "Saved");
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   if (!f) return <View style={[s.root, { paddingTop: insets.top }]}><AppBar title="Business profile" back /><Loading /></View>;

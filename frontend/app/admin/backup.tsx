@@ -36,7 +36,7 @@ export default function Backup() {
   const restore = useMutation({
     mutationFn: () => adminApi("/backup/restore", { method: "POST", json: { tenant_id: tenant, snapshot_id: point.id } }),
     onSuccess: (res: any) => { toast.show(res.message, "Restored ·"); setPoint(null); refresh(); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const cols: Col<any>[] = [

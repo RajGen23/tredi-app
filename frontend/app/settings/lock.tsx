@@ -33,7 +33,7 @@ export default function LockSettings() {
   const save = useMutation({
     mutationFn: () => api("/settings/lock", { method: "PUT", json: { enabled, pin, idle_minutes: idle, biometrics: bio } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["lock"] }); setPin(""); toast.show("App lock updated"); },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const test = async () => {

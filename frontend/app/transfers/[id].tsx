@@ -52,7 +52,7 @@ export default function ReceiveTransfer() {
       toast.show(r.state === "discrepancy" ? "Received with a shortfall" : `${t.to_shop} stock updated`, r.number);
       router.replace("/transfers");
     },
-    onError: (e: any) => toast.show(e.message),
+    onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
 
   const bump = (l: any, delta: number) => {
