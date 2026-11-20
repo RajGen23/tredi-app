@@ -1,0 +1,48 @@
+{
+  "summary": "Regression run on merged PR #5 (plain-words offline errors, red-tone error toasts) and PR #6 (offline outbox for quick sales and new invoices, plus client_ref idempotency and made_at on the server). Backend: 14/14 tests pass in the new test_iter49_offline_prs.py, and the 3 tests in the repo's test_offline_send.py also pass. A repeated client_ref returns the same sale or invoice with the same shape and changes stock once. 6 concurrent POSTs with the same ref create exactly 1 sale, and 5 concurrent POSTs create exactly 1 issued invoice. A made_at 2 days old is kept. A made_at more than 30 days old, more than 5 minutes in the future, or unparseable falls back to now. A naive ISO made_at is accepted. An invoice edit keeps the ref. Records without a ref stay separate. Empty lines give 400 and no token gives 401. Frontend (375x667, no page errors): a quick sale with the POST aborted shows the 'Waiting' card with the correct change and no print/share. The outbox lists it, Send now while offline shows the red 'Still no signal' toast, and once back online it is sent and the screen shows 'Everything is sent'. A draft invoice offline goes to /outbox with the 'Saved offline' toast. A 400 on resend shows 'Not sent' with the reason, Try again and Delete, and a red banner on Home. Delete confirm works. Offline sign-in and offline expense save show the plain message (red icon, form kept, toast gone after about 5 s). ONE HIGH BUG: when the first online POST reaches the server but the reply is lost (connection reset or the 15 s timeout), the sale is recorded twice.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/sales, POST /api/invoices (server.py create_sale/create_invoice DuplicateKeyError branch)", "issue": "When two copies race, next_number() has already run for the loser, so a number is skipped. Seen in the concurrency test: SL-536074 was used up and never stored."},
+      {"endpoint": "POST /api/sales made_at (server.py _made_at)", "issue": "Any user, including staff, can backdate a sale by up to 30 days simply by sending client_ref + made_at. The stock movement and activity log still use now(), so they disagree with the sale's created_at. Consider limiting backdating to sales that carry a client_ref, logging it, or blocking it inside a closed period."},
+      {"endpoint": "_sent_before (server.py)", "issue": "This lookup doesn't filter deleted_at. Resending the ref of a draft that was soft-deleted returns the deleted draft instead of a fresh one. This is an edge case."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "OutboxBanner (src/components/outbox.tsx:68)", "issue": "The text always says 'N sale(s) saved on this phone', even when the waiting entry is an invoice. Seen on Home with 1 draft invoice queued: '1 sale saved on this phone'.", "testID": "outbox-banner", "priority": "LOW"},
+      {"component": "lock.tsx:62", "issue": "The 'Wrong PIN — try again' toast doesn't pass the 'bad' tone, so it still shows the green tick. PR #5 missed this one.", "testID": "toast", "priority": "LOW"},
+      {"component": "sign-in offline error (src/api.ts OFFLINE_MESSAGE via loginRequest)", "issue": "Offline sign-in shows 'You're offline, so this wasn't saved...'. Nothing is being saved at sign-in; use a message like 'You're offline: connect to sign in.'", "testID": "sign-in-error", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Quick sale / new invoice when the reply is lost (src/outbox.ts keepOffline, app/quick-sale.tsx:97, app/invoices/new.tsx:253)", "issue": "HIGH. The first online POST carries no client_ref. If it reached the server but the reply was lost (connection reset, or the 15 s abort, which api.ts reports as SLOW_MESSAGE status 0 so isOfflineError() returns true), the screen queues the sale offline under a NEW ref, and OutboxSync sends it again at once. Reproduced with Playwright (route.fetch() then abort('connectionreset')): SL-536085 (no ref) and SL-536086 (ref mwom4xly-...) were both stored for one ₦1,500 sale, and stock dropped by 2 instead of 1. The same path applies to issued invoices, which would get two INV numbers, double stock and a doubled customer balance.", "affected_testIDs": ["tender-save", "sale-saved-offline", "review-send", "review-save-draft"]}
+    ],
+    "design_issues": [
+      {"screen": "quick-sale saved sheet (offline)", "issues": ["The offline result still shows the big green tick and 'Paid · cash' above the amber 'Waiting' card. Consider an amber or cloud icon so the cashier doesn't think the sale is already in the book."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter49_offline_prs.py", "/app/backend/tests/test_offline_send.py", "/app/test_reports/pytest/pytest_iter49.xml"],
+  "action_items": [
+    "HIGH: Make the online attempt idempotent too. Create the client_ref BEFORE the first POST /sales or /invoices, include it in that request, and pass the same ref to keepOffline (add an optional ref param in src/outbox.ts). Also send made_at on the first sale attempt. Then a lost reply or a 15 s timeout followed by an outbox resend returns the existing record instead of a duplicate. Apply this in quick-sale.tsx and invoices/new.tsx.",
+    "Fix the OutboxBanner text so it counts by kind ('1 invoice', '2 sales and 1 invoice', or 'N items waiting to send').",
+    "Pass the 'bad' tone to the toast in lock.tsx:62.",
+    "Optional: give sign-in its own offline message instead of 'this wasn't saved'.",
+    "Optional: in sendWaiting, call persist() before the break on the 5xx branch so tries++ is stored. The file header comment says the banner is also on the invoice list, but it is only on Home and Sales.",
+    "Optional (server): avoid the skipped number when the DuplicateKeyError race happens. Limit made_at backdating to staff with a permission, or log it.",
+    "Test hygiene: the repo's tests/test_offline_send.py creates TEST items, sales and an issued invoice in the real owner business and never cleans up. Add a teardown (cancel the sales, DELETE the invoice with ?reason=, delete the items)."
+  ],
+  "critical_code_review_comments": [
+    "Server idempotency is solid: the unique partial index (business_id, client_ref, $type string) exists on sales and invoices, the find-first check runs before ensure_invoice_room, and DuplicateKeyError is caught. Invoices store client_ref: null when none is sent, which the partial filter ignores correctly.",
+    "outbox.ts: entries are scoped per owner, sent in order, and only one send runs at a time. 401 and offline errors wait, 5xx breaks to retry later, and 4xx marks the entry refused without dropping it. OutboxSync re-runs whenever the count changes, so a newly queued item is attempted at once. That is fine, but it is also what turns the lost-reply case straight into a duplicate.",
+    "api.ts send(): the timeout maps to SLOW_MESSAGE with status 0, the same as offline. For non-idempotent POSTs that is exactly the case where the server probably did process the request, which is why the client_ref must go on the first attempt.",
+    "invoices/new offline body includes issue_date, so a queued invoice keeps the day it was made. Quick sale relies on made_at, which is only sent from the outbox."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter49_offline_prs.py"],
+  "success_rate": {"backend": "100% (14/14 new + 3/3 existing)", "frontend": "~90%: all tested flows work; 1 HIGH duplicate-on-lost-reply bug and 3 low copy/tone issues"},
+  "seed_data_creation": "None kept. TEST_ items, sales and invoices from test_iter49 were cancelled or deleted by id in teardown. I also cleaned up the data from my run of test_offline_send.py (3 items, 3 sales, INV-1398/1399) and the UI test data (item TEST_UIoff Widget, sales SL-536084/85/86, all cancelled). The offline draft invoice in the UI test was never sent; it was deleted from the outbox. Sale and invoice numbers in the owner sequence are used up.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: EXPO_PUBLIC_BACKEND_URL=<frontend/.env> pytest tests/test_iter49_offline_prs.py -n0 (pytest.ini adds xdist flags). To simulate offline in Playwright, use page.route('**/api/sales', ...) with route.abort('internetdisconnected') on POST. To simulate a lost reply, call await route.fetch() and then route.abort('connectionreset'). Issued invoices need DELETE /api/invoices/{id}?reason=... to cancel.",
+  "rca_of_issue": "Duplicate sale on lost reply: quick-sale.tsx mutationFn posts saleBody() with no client_ref. When fetch throws after the server committed the sale (connection reset, or the AbortController firing at 15 s), onError sees isOfflineError() == true and calls keepOffline(), and outbox.newRef() creates a fresh ref. sendWaiting then POSTs with that new ref, _sent_before finds nothing, and a second sale is created. Reproduced with the steps above, and the duplicate was confirmed in MongoDB (stock 2 lower instead of 1). Mitigation: generate the ref up front, send it on the first try, and reuse it in the outbox."
+}
