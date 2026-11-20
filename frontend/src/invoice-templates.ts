@@ -276,10 +276,10 @@ export function buildInvoiceHtml(inv: any, brandIn?: Partial<Brand>): string {
   const headers: Record<string, string> = {
     t1: `<div class="row top">${`<div>${logoTag(brand)}${biz}</div>`}<div class="right">${meta}</div></div><hr/>`,
     t2: `<div class="band"><div>${biz}</div><div class="right">${meta}</div></div>${brand.logo_url ? `<div class="row" style="margin-top:10px">${logoTag(brand)}</div>` : ""}`,
-    t3: `<div class="center">${logoTag(brand)}<div class="biz big">${esc(b.name)}</div><div class="mut">${[esc(b.address), esc(b.phone), esc(b.email)].filter(Boolean).join(" · ")}</div></div>
+    t3: `<div class="center">${logoTag(brand)}<div class="biz big">${esc(b.name)}</div><div class="mut">${[esc(b.address), b.tin ? `TIN ${esc(b.tin)}` : "", esc(b.phone), esc(b.email)].filter(Boolean).join(" · ")}</div></div>
          <div class="row rule">${`<div><div class="lbl">Bill to</div><div class="nm">${esc(inv.customer_name)}</div><div class="mut">${esc(inv.customer_phone)}</div></div>`}<div class="right">${meta}</div></div>`,
     t4: `<div class="accent"></div><div class="row top">${`<div>${logoTag(brand)}${biz}</div>`}<div class="right">${meta}</div></div><hr/>`,
-    t5: `<div class="dark"><div>${logoTag(brand, Math.min(brand.logo_size, 70))}<div class="biz inv">${esc(b.name)}</div><div class="mut inv">${esc(b.address)}</div><div class="mut inv">${[esc(b.phone), esc(b.email)].filter(Boolean).join(" · ")}</div></div><div class="right">${meta}</div></div>`,
+    t5: `<div class="dark"><div>${logoTag(brand, Math.min(brand.logo_size, 70))}<div class="biz inv">${esc(b.name)}</div><div class="mut inv">${esc(b.address)}</div><div class="mut inv">${[b.tin ? `TIN ${esc(b.tin)}` : "", esc(b.phone), esc(b.email)].filter(Boolean).join(" · ")}</div></div><div class="right">${meta}</div></div>`,
     t6: `<div class="row top compact">${`<div>${biz}</div>`}<div class="right">${meta}</div></div><hr/>`,
   };
 
