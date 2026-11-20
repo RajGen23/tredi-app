@@ -11,6 +11,7 @@ import { api } from "@/src/api";
 import { AppBar, Av, Badge, Btn, Card, Chip, Empty, H4, IconBtn, Li, Lbl, Loading, Money, Radio, Row, Sub, Tag } from "@/src/components/ui";
 import { Sheet } from "@/src/components/sheet";
 import { SyncStamp } from "@/src/components/sync";
+import { OutboxBanner } from "@/src/components/outbox";
 import { DateField } from "@/src/components/date-field";
 import { PickerField } from "@/src/components/picker";
 import { useShops } from "@/src/lookups";
@@ -154,6 +155,7 @@ export default function Sales() {
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 24 }} refreshControl={<RefreshControl refreshing={q.isRefetching} onRefresh={() => { q.refetch(); salesQ.refetch(); }} tintColor={colors.brandPrimary} />}>
         <SyncStamp at={Math.min(q.dataUpdatedAt || Date.now(), salesQ.dataUpdatedAt || Date.now())} busy={q.isFetching || salesQ.isFetching}
           onRefresh={() => { q.refetch(); salesQ.refetch(); }} testID="invoices-sync" />
+        <OutboxBanner />
         {extraFilters > 0 ? (
           <Row style={{ gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
             {span !== "all" && !month && !day ? <Chip label={SPANS.find(([k]) => k === span)?.[1] ?? ""} on onPress={() => setSpan("all")} testID="invoices-clear-span" /> : null}

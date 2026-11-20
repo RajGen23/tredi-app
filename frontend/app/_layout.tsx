@@ -13,6 +13,7 @@ import { preloadInvoiceFonts } from "@/src/invoice-fonts";
 import { queryClient } from "@/src/query-client";
 import { AuthProvider, useAuth } from "@/src/auth";
 import { ToastProvider } from "@/src/components/sheet";
+import { OutboxSync } from "@/src/components/outbox";
 import { PeriodProvider } from "@/src/period";
 import { CropHost } from "@/src/components/cropper";
 
@@ -75,6 +76,7 @@ export default function RootLayout() {
               <AuthProvider>
                 <PeriodProvider>
                 <ToastProvider>
+                  <OutboxSync />
                   <StatusBar style="dark" />
                   <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#F3F7F5" } }}>
                     <Stack.Screen name="index" />
