@@ -85,8 +85,11 @@ export default function PlanBilling() {
     },
     onError: (e: any) => toast.show(e.message, undefined, "bad"),
   });
-  // Coming back from Paystack in the browser (web, or a deep link on the phone)
-  useEffect(() => { if (params.paystack) verify.mutate(params.paystack); }, [params.paystack]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Coming back from Paystack in the browser — web only; the phone app never pays
+  useEffect(() => { if (params.paystack && !store) verify.mutate(params.paystack); }, [params.paystack]); // eslint-disable-line react-hooks/exhaustive-deps
+  // phone builds: plan wording without anything about paying
+  const clean = (t: string) => (store ? (t || "").replace(/ before you pay a naira/i, "") : t);
+  const perksOf = (p: any) => (store ? p.perks.filter((x: string) => !/charged|card|pay/i.test(x)) : p.perks);
 
   const pay = useMutation({
     mutationFn: async (plan: string) => {
@@ -125,7 +128,7 @@ export default function PlanBilling() {
   return (
     <View style={s.root} testID="plan-screen">
       <View style={[s.teal, { height: insets.top + 118 }]} />
-      <View style={{ paddingTop: insets.top }}><AppBar teal back title="Plan & billing" /></View>
+      <View style={{ paddingTop: insets.top }}><AppBar teal back title={store ? "Your plan" : "Plan & billing"} /></View>
       {!d || !cat.data ? <Card style={{ marginHorizontal: 14 }}><Loading /></Card> : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: pad }}>
           <Card style={s.hero} testID="plan-current">
@@ -136,10 +139,10 @@ export default function PlanBilling() {
             <Row between style={{ marginTop: 6, alignItems: "flex-end" }}>
               <View style={{ flexShrink: 1 }}>
                 <Text style={s.planName} testID="plan-current-name">{d.name}</Text>
-                <Sub style={{ marginTop: 2 }}>{d.tagline}</Sub>
+                <Sub style={{ marginTop: 2 }}>{clean(d.tagline)}</Sub>
               </View>
               <View style={{ alignItems: "flex-end" }}>
-                <Text style={s.price}>{d.price ? d.price_label : "Free"}</Text>
+                {store ? null : <Text style={s.price}>{d.price ? d.price_label : "Free"}</Text>}
                 <Tag>{d.cadence}</Tag>
               </View>
             </Row>
@@ -175,7 +178,7 @@ export default function PlanBilling() {
                   </View>
                   <Sub style={{ marginTop: 4, fontSize: 10.5 }}>
                     {limit === null ? `No limit on ${u.word}`
-                      : full ? `You are at the limit — move up a plan to add more ${u.word}`
+                      : full ? (store ? `You are at the limit for ${u.word} on ${d.name}` : `You are at the limit — move up a plan to add more ${u.word}`)
                       : `${(limit - used).toLocaleString()} more ${u.word} on ${d.name}`}
                   </Sub>
                 </View>
@@ -187,12 +190,12 @@ export default function PlanBilling() {
             <Lbl>Plans</Lbl>
             <Sub style={{ fontSize: 10.5 }}>Free trial is {cat.data.trial_days} days</Sub>
           </Row>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 9 }}>
+          {store ? null : <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 9 }}>
             {cat.data.cadences.map((c: any) => (
               <Chip key={c.key} label={c.note ? `${c.label} · ${c.note}` : c.label} on={cadence === c.key}
                 onPress={() => setCadence(c.key)} testID={`plan-cadence-${c.key}`} />
             ))}
-          </View>
+          </View>}
 
           {cat.data.plans.map((p: any) => {
             const mine = p.key === d.plan;
@@ -205,12 +208,12 @@ export default function PlanBilling() {
                       <Text style={s.planName}>{p.name}</Text>
                       {mine ? <Badge tone="paid">Current</Badge> : null}
                     </Row>
-                    <Sub style={{ marginTop: 2 }}>{p.tagline}</Sub>
+                    <Sub style={{ marginTop: 2 }}>{clean(p.tagline)}</Sub>
                   </View>
-                  <View style={{ alignItems: "flex-end" }}>
+                  {store ? null : <View style={{ alignItems: "flex-end" }}>
                     <Text style={s.price} testID={`plan-price-${p.key}`}>{trial ? "Free" : p.price_labels[cadence]}</Text>
                     <Tag>{trial ? p.cadence : cat.data.cadences.find((c: any) => c.key === cadence)?.label}</Tag>
-                  </View>
+                  </View>}
                 </Row>
                 <Row style={{ gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                   <Tag>{num(p.limits.businesses)} business{p.limits.businesses === 1 ? "" : "es"}</Tag>
@@ -219,7 +222,7 @@ export default function PlanBilling() {
                   <Tag>{num(p.limits.invoices)} invoices</Tag>
                 </Row>
                 <View style={{ marginTop: 10, gap: 6 }}>
-                  {p.perks.map((perk: string) => (
+                  {perksOf(p).map((perk: string) => (
                     <Row key={perk} style={{ gap: 7, alignItems: "flex-start" }}>
                       <Ionicons name="checkmark-circle" size={15} color={colors.brandPrimary} style={{ marginTop: 1 }} />
                       <Sub style={{ flex: 1 }}>{perk}</Sub>

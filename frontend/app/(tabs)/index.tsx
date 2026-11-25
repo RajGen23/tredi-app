@@ -1,5 +1,5 @@
 // 01.1 Home — teal top, total sales card, shortcuts, KPIs, cash flow.
-import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Platform, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -103,8 +103,8 @@ export default function Home() {
                     ? (plan.data.trialing ? "Your free trial has ended" : "Your subscription has lapsed")
                     : `${Math.max(0, plan.data.days_left ?? 0)} day${plan.data.days_left === 1 ? "" : "s"} left in your free trial`}</H4>
                   <Sub style={{ marginTop: 2 }}>{plan.data.status === "expired"
-                    ? "Your books are safe and readable — pick a plan to start saving again."
-                    : "Pick a plan whenever you are ready. Nothing is charged from the app."}</Sub>
+                    ? (Platform.OS === "web" ? "Your books are safe and readable — pick a plan to start saving again." : "Your books are safe and readable. Saving new records is paused while no plan is active.")
+                    : (Platform.OS === "web" ? "Pick a plan whenever you are ready. Nothing is charged until you do." : "Everything is open to you during the trial.")}</Sub>
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={colors.ink60} />
               </Row>

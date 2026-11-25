@@ -1,5 +1,5 @@
 // More — settings hub linking to the remaining rails.
-import { ScrollView, Text, View } from "react-native";
+import { Platform, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@react-native-vector-icons/ionicons";
@@ -26,7 +26,7 @@ const GROUPS: { title: string; items: { label: string; sub: string; icon: IonNam
     { label: "Users & permissions", sub: "Roles, scope, app lock", icon: "shield-checkmark-outline", route: "/team", testID: "more-users" },
     { label: "Phone sign-in", sub: "Sign in with your number and an SMS code", icon: "phone-portrait-outline", route: "/settings/phone-login", testID: "more-phone-login" },
     { label: "Business profile", sub: "Name, TIN, country, phones and emails", icon: "briefcase-outline", route: "/settings/business", testID: "more-business-profile" },
-    { label: "Plan & billing", sub: "What your plan covers and what you are using", icon: "card-outline", route: "/settings/plan", testID: "more-plan" },
+    { label: Platform.OS === "web" ? "Plan & billing" : "Your plan", sub: "What your plan covers and what you are using", icon: Platform.OS === "web" ? "card-outline" : "ribbon-outline", route: "/settings/plan", testID: "more-plan" },
     { label: "Invoice settings", sub: "Numbering, VAT, conditions of sale", icon: "options-outline", route: "/settings/invoice", testID: "more-invoice-settings" },
     { label: "Invoice templates", sub: "Logo, brand colour, six layouts", icon: "color-palette-outline", route: "/settings/invoice-template", testID: "more-invoice-templates" },
     { label: "Terms of payment", sub: "Named sets reused on documents", icon: "reader-outline", route: "/settings/terms", testID: "more-terms" },

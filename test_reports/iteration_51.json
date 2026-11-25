@@ -1,0 +1,55 @@
+{
+  "summary": "Plan & billing: store-build hiding plus web Paystack checkout. API: GET /subscription shows paystack.enabled=true and test=true (the key starts sk_test). POST /subscription/checkout returns a checkout.paystack.com URL with a TRADA_ reference. /subscription/choose returns 402 while Paystack is on. Verify of an unknown reference returns 404 and a bad plan returns 400. 4/4 pytest passed. WEB at 390x844 as owner (on Pro, active): Starter, Premium and Enterprise show 'Pay & activate <Plan>' and Pro shows 'You are on this plan'. The bottom text says 'You pay securely on Paystack ... Test mode — no real money moves.' Tapping Pay & activate Starter left the app in the same tab and landed on checkout.paystack.com, which showed the Cloudflare 'Verify you are human' page (counted as success, not bypassed). The latest paystack_txns row (TRADA_be106c35105b0bc2dd3a, starter, pending, return_url=/settings/plan) verified as {paid:false, status:'abandoned'}, and the plan stayed Pro with 22 days left. WEB EXPIRED: I set renews_at 2 days in the past, then restored it to the original 2026-12-17T07:56:13.189 (checked: pro, active, 22 days). While expired, the Home banner read 'Your subscription has lapsed — pick a plan to start saving again', the Plan screen showed 'Ended' and the web expired note, Pro showed 'Pay & renew Pro', and POST /customers returned 402 'renew in More → Plan & billing...' (nothing was created). NATIVE (code review only): with store=true, plan.tsx hides all Pay/Activate/Renew buttons, the auto-renew row and the Paystack footer. The expired note on native is 'Saving new records is paused while no plan is active.' Home index.tsx native texts are clean. Some text on native still talks about paying, cards, picking a plan or upgrading; see react_native_issues.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "backend/plans.py expired_message / limit_message / feature_message", "issue": "These 402/403 messages show up as toasts in the native app: 'pick a plan in More → Plan & billing to start saving again', 'renew in More → Plan & billing', 'open More → Plan & billing to upgrade'. On store builds that screen has no way to pick, renew or upgrade. The backend does not know which platform the request came from."},
+      {"endpoint": "backend/plans.py PLANS[trial]", "issue": "The trial tagline 'Premium access for two weeks before you pay a naira.' and the perk 'Nothing is charged, no card needed' come from the API and are shown on native (on the trial plan card, and in the hero while the shop is trialing)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home (web)", "issues": ["The web trial banner says 'Nothing is charged from the app.', but on the web the app now charges cards through Paystack. Reference: /app/frontend/app/(tabs)/index.tsx:107"]}
+    ],
+    "react_native_issues": [
+      {"component": "plan.tsx verify toasts on native", "issue": "The params.paystack useEffect is not gated by !store. A deep link like tradabooks://settings/plan?paystack=REF on a phone would still call /subscription/verify and show 'Payment received' or 'Payment not completed — nothing was charged. Tap the plan to try again.' Reference: /app/frontend/app/settings/plan.tsx:79-89"},
+      {"component": "plan.tsx trial tagline/perks on native", "issue": "Native shows the backend trial tagline 'before you pay a naira' and the perk 'Nothing is charged, no card needed', which mention paying and cards. Reference: /app/frontend/app/settings/plan.tsx:139,208,222-227 (data from backend/plans.py:32,36)"},
+      {"component": "plan.tsx usage hint on native", "issue": "'You are at the limit — move up a plan to add more ...' is shown on native, where there is no way to move up. Reference: /app/frontend/app/settings/plan.tsx:178"},
+      {"component": "plan.tsx prices/discount chips on native", "issue": "Native still shows ₦ prices per plan and the cadence chips '3 months · 20% off' and '12 months · up to 25% off' while purchase is hidden. App Store guideline 3.1.1/3.1.3 and Google Play payments policy may treat prices for a digital subscription bought elsewhere as steering. Consider hiding prices and discounts when store=true. Reference: /app/frontend/app/settings/plan.tsx:142,190-195,211"},
+      {"component": "Upgrade wording in other screens on native", "issue": "'upgrade in Plan & billing' appears on native, and Plan & billing cannot upgrade there. Reference: /app/frontend/app/settings/invoice-template.tsx:315, /app/frontend/app/settings/invoice.tsx:110"},
+      {"component": "Header / menu wording", "issue": "The screen title is 'Plan & billing' (no subtitle) and the More row uses the card-outline icon. Low risk, but 'billing' plus a card icon hint at payment on native. Reference: /app/frontend/app/settings/plan.tsx:128, /app/frontend/app/(tabs)/more.tsx:29"}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter51_store_billing_paystack.py",
+    "/app/backend/tests/iter51_verify_latest.py",
+    "/app/backend/tests/iter51_expire_toggle.py",
+    "/app/test_reports/pytest/iter51.xml"
+  ],
+  "action_items": [
+    "Gate the params.paystack verify useEffect (and the verify/pay toasts) with !store in plan.tsx so native never shows 'Payment received/not completed' text.",
+    "On native, hide or replace the trial tagline and perk that mention paying a naira and cards. Either filter them on the client when store=true, or send store-safe copy from /plans.",
+    "Make the native usage hint neutral (e.g. 'You are at the limit for <word> on <plan>'), and change the 'upgrade in Plan & billing' text in invoice.tsx:110 and invoice-template.tsx:315 for native.",
+    "Make the backend expired/limit/feature messages platform-neutral, or have the client send an X-Client-Platform header and drop 'pick a plan'/'renew'/'upgrade' for native.",
+    "Decide whether to hide ₦ prices and the '% off' cadence chips on store builds (store policy risk).",
+    "Web Home trial banner: 'Nothing is charged from the app' contradicts Paystack checkout on the web. Reword it."
+  ],
+  "critical_code_review_comments": [
+    "plan.tsx:229-235: with store=true the current non-expired plan still shows a disabled 'You are on this plan' button, which is fine. Every other case renders null, so no pay/activate/renew is reachable on native.",
+    "plan.tsx:91-107: the native branch (WebBrowser.openAuthSessionAsync) of pay is now dead code on store builds. Harmless.",
+    "GET /subscription returns renews_at=None while businesses.renews_at is set. The field name differs or is not exposed; this is a note only and the UI uses days_left."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter51_store_billing_paystack.py",
+    "/app/backend/tests/iter51_verify_latest.py",
+    "/app/backend/tests/iter51_expire_toggle.py"
+  ],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% of web flows (plan screen, Pay & activate → Paystack, expired state); native verified by code review only, 6 copy issues found"},
+  "seed_data_creation": "None. Two pending paystack_txns rows were created by checkout (one from pytest, one from the UI tap TRADA_be106c35105b0bc2dd3a) and left in place, as instructed. The owner business renews_at was set in the past for a short time and restored exactly (pro, 2026-12-17T07:56:13.189).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login is form-encoded POST /api/auth/login (username, password). The env var is EXPO_PUBLIC_BACKEND_URL. The Paystack key lives in the process env (sk_test), not in backend/.env. The checkout page shows a Cloudflare challenge in headless Chromium. iter51_expire_toggle.py expire|restore backs up to /tmp/iter51_renews_backup.json.",
+  "rca_of_issue": "Store hiding is done only in the UI layer (store const). Copy that comes from the backend (plan taglines/perks, 402/403 messages) and the deep-link verify effect are not platform-aware, so payment, card and 'pick a plan' wording still reaches native."
+}

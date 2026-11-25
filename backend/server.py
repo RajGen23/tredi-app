@@ -21,6 +21,7 @@ from deps import (VAT_RATE, admin_only, can_edit_payments, can_see_money, may, n
                   period_range, public_user, rep_clause, scoped, shop_qty, shop_scope, stock_map, stock_rows, verify_password, writing_rep, writing_shop)
 from routes import activity, admin, admin_customers, billing, documents, invoicing, lookups, offline, phone_auth, purchases, reports, shops, storage, support, users_roles
 from plans import TRIAL_DAYS
+import plans as plan_rules
 from dummy_photos import pick_dummy_photo
 
 app = FastAPI(title="TradaBooks API")
@@ -1917,6 +1918,12 @@ app.include_router(admin.router)
 app.include_router(admin_customers.router)
 app.include_router(admin_customers.live)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def mark_store_client(request, call_next):
+    plan_rules.store_client.set(request.headers.get("x-app-platform", "").lower() in ("android", "ios"))
+    return await call_next(request)
 
 
 @app.on_event("startup")
