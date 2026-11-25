@@ -71,6 +71,10 @@ export default function PlanBilling() {
   });
 
   const card = !!d?.paystack?.enabled;
+  // Store builds (Play Store / App Store) must sell plans through the store's own
+  // billing, so until that is built the phone app shows the plan and limits only —
+  // no pay buttons. Paystack checkout stays on the web version.
+  const store = Platform.OS !== "web";
   const refresh = () => ["subscription", "plans", "dashboard", "settings-invoice", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   const verify = useMutation({
     mutationFn: (reference: string) => api<any>("/subscription/verify", { method: "POST", json: { reference } }),
@@ -145,7 +149,7 @@ export default function PlanBilling() {
                 Your books are safe and readable — pick a plan below and saving starts again at once.
               </Sub>
             ) : null}
-            {d.paystack?.auto_renew ? (
+            {d.paystack?.auto_renew && !store ? (
               <Row between style={{ marginTop: 10 }} testID="plan-auto-renew">
                 <Sub style={{ flex: 1 }}>Auto-renews on {d.paystack.card?.brand || "card"} •••• {d.paystack.card?.last4 || "—"}</Sub>
                 <Btn small variant="ghost" label="Stop auto-renew" loading={stop.isPending} disabled={!d.can_manage}
@@ -222,7 +226,7 @@ export default function PlanBilling() {
                 </View>
                 {mine && d.status !== "expired" ? (
                   <Btn small variant="ghost" label="You are on this plan" disabled style={{ marginTop: 12 }} testID={`plan-choose-${p.key}`} />
-                ) : trial ? null : (
+                ) : trial || store ? null : (
                   <Btn small variant="deep" label={card ? (mine ? `Pay & renew ${p.name}` : `Pay & activate ${p.name}`) : (mine ? `Renew ${p.name}` : `Activate ${p.name}`)}
                     disabled={!d.can_manage || busy} loading={busy && picking === p.key} style={{ marginTop: 12 }}
                     testID={`plan-choose-${p.key}`} onPress={() => { setPicking(p.key); (card ? pay : choose).mutate(p.key); }} />
@@ -254,10 +258,10 @@ export default function PlanBilling() {
           </Card>
 
           <Sub style={{ marginTop: 12 }}>
-            {card
-              ? `You pay securely on Paystack. Your card is charged again at the end of each period until you stop auto-renew.${d.paystack.test ? " Test mode — no real money moves." : ""}`
-              : "Card payment is not switched on yet, so the plan you tap switches on immediately and we invoice you for it."}
-            {" "}Starter saves photos on items but only Premium and above print them on invoices.
+            {store ? "" : card
+              ? `You pay securely on Paystack. Your card is charged again at the end of each period until you stop auto-renew.${d.paystack.test ? " Test mode — no real money moves." : ""} `
+              : "Card payment is not switched on yet, so the plan you tap switches on immediately and we invoice you for it. "}
+            Starter saves photos on items but only Premium and above print them on invoices.
           </Sub>
         </ScrollView>
       )}
