@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { storage } from "@/src/utils/storage";
 
 export const TOKEN_KEY = "tredi_token";
@@ -62,7 +63,7 @@ export async function api<T = any>(path: string, init: RequestInit & { json?: un
     const res = await send(`${BASE}${path}`, {
       signal: ctl.signal,
       ...rest,
-      headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(await authHeaders()), ...(rest.headers || {}) },
+      headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), "X-App-Platform": Platform.OS, ...(await authHeaders()), ...(rest.headers || {}) },
       body: json !== undefined ? JSON.stringify(json) : rest.body,
     }, () => timedOut);
     return await parse(res);

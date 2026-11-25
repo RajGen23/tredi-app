@@ -1,7 +1,7 @@
 // 04.10b Invoice templates — logo, brand colour, logo size, item photos and the
 // seven document layouts. Saved once, applied to every invoice — old and new.
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Image, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Image, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
@@ -312,7 +312,7 @@ export default function InvoiceTemplates() {
           <Row between>
             <View style={{ flex: 1 }}>
               <H4>Show product image on invoice</H4>
-              <Sub>{f.photos_allowed === false ? `Photos stay saved on your items, but ${f.plan_name ?? "your plan"} does not print them — upgrade in Plan & billing` : "Item photos print beside each line"}</Sub>
+              <Sub>{f.photos_allowed === false ? `Photos stay saved on your items, but ${f.plan_name ?? "your plan"} does not print them${Platform.OS === "web" ? " — upgrade in Plan & billing" : ""}` : "Item photos print beside each line"}</Sub>
             </View>
             <Switch on={!!f.show_photos && f.photos_allowed !== false} onChange={f.photos_allowed === false ? undefined : (v) => setF({ ...f, show_photos: v })} testID="templates-show-photos" />
           </Row>

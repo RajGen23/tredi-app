@@ -7,7 +7,12 @@ mean two different things in two places.
 `None` in a limit means unlimited. Prices are naira, per cadence:
 quarterly saves 20%, yearly roughly 22.5–25%.
 """
+from contextvars import ContextVar
 from typing import Optional
+
+# True while serving the Play Store / App Store app (X-App-Platform: android|ios),
+# so plan messages there never point at a purchase the app can't make.
+store_client: ContextVar[bool] = ContextVar("store_client", default=False)
 
 TRIAL_DAYS = 14
 
@@ -176,7 +181,7 @@ def limit_message(current: str, kind: str, cap: int) -> str:
     word = LIMIT_NAMES.get(kind, kind)
     nxt = next_plan_for_limit(plan["key"], kind)
     tail = ""
-    if nxt:
+    if nxt and not store_client.get():
         room = nxt["limits"].get(kind)
         tail = f" {nxt['name']} gives you {'unlimited' if room is None else f'{room:,}'} — open More → Plan & billing to upgrade."
     return f"{plan['name']} covers {cap:,} {word}. You are already at {cap:,}.{tail}"
@@ -186,11 +191,15 @@ def feature_message(current: str, feature: str) -> str:
     plan = plan_by_key(current)
     what = FEATURE_NAMES.get(feature, feature)
     nxt = next_plan_for_feature(plan["key"], feature)
-    tail = f" It comes with {nxt['name']} — open More → Plan & billing to upgrade." if nxt else ""
+    tail = f" It comes with {nxt['name']} — open More → Plan & billing to upgrade." if nxt and not store_client.get() else ""
     return f"{what} is not part of {plan['name']}.{tail}"
 
 
 def expired_message(plan: dict, trialing: bool) -> str:
+    if store_client.get():
+        # phone store builds: no pointing at a purchase the app can't make
+        return ("Your free trial has ended. " if trialing else f"Your {plan['name']} plan is not active. ") + \
+               "Every record is safe and still readable; saving new records is paused while no plan is active."
     if trialing:
         return (f"Your {TRIAL_DAYS}-day free trial has ended. Every record is safe and still readable — "
                 "pick a plan in More → Plan & billing to start saving again.")
