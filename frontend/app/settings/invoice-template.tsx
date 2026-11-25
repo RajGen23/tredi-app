@@ -201,7 +201,8 @@ export default function InvoiceTemplates() {
   });
 
   const pickLogo = async () => {
-    const perm = await ImagePicker.getMediaLibraryPermissionsAsync();
+    // Android's photo picker needs no permission (media permissions are blocked in app.json)
+    const perm = Platform.OS === "android" ? { granted: true, canAskAgain: true } : await ImagePicker.getMediaLibraryPermissionsAsync();
     let granted = perm.granted;
     if (!granted && perm.canAskAgain) {
       const asked = await ImagePicker.requestMediaLibraryPermissionsAsync();

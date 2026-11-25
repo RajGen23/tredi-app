@@ -1,7 +1,7 @@
 // 13.1 Bills & receipts — snap now, attach later. The unlinked queue is the
 // point of the screen.
 import { useEffect, useState } from "react";
-import { Alert, Image, Linking, ScrollView, View } from "react-native";
+import { Alert, Image, Linking, Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
@@ -56,9 +56,10 @@ export default function Receipts() {
 
   const capture = async (fromCamera: boolean) => {
     // Ask only when the owner has actually tapped snap or choose.
+    // Android's photo picker needs no permission (media permissions are blocked in app.json)
     const perm = fromCamera
       ? await ImagePicker.getCameraPermissionsAsync()
-      : await ImagePicker.getMediaLibraryPermissionsAsync();
+      : Platform.OS === "android" ? { granted: true, canAskAgain: true } : await ImagePicker.getMediaLibraryPermissionsAsync();
     let granted = perm.granted;
     if (!granted && perm.canAskAgain) {
       const asked = fromCamera ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();

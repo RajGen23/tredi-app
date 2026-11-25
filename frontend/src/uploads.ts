@@ -215,9 +215,12 @@ export async function photoDataUri(url: string): Promise<string> {
  *  Callers get a plain url they can store; display goes through photoSource(). */
 export async function pickAndUploadPhoto(opts?: { camera?: boolean; crop?: boolean }): Promise<string> {
   const ImagePicker = await import("expo-image-picker");
-  const { Alert, Linking } = await import("react-native");
+  const { Alert, Linking, Platform } = await import("react-native");
   const camera = !!opts?.camera;
-  const current = camera ? await ImagePicker.getCameraPermissionsAsync() : await ImagePicker.getMediaLibraryPermissionsAsync();
+  // Android's system photo picker needs no permission (and media permissions are
+  // blocked in app.json), so only the camera — or iOS photos — is ever asked for.
+  const skipAsk = !camera && Platform.OS === "android";
+  const current = skipAsk ? { granted: true, canAskAgain: true } : camera ? await ImagePicker.getCameraPermissionsAsync() : await ImagePicker.getMediaLibraryPermissionsAsync();
   let granted = current.granted;
   if (!granted) {
     if (!current.canAskAgain) {
