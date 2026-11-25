@@ -146,7 +146,9 @@ export default function PlanBilling() {
             <Sub style={{ marginTop: 9 }} testID="plan-when">{when()}</Sub>
             {d.status === "expired" ? (
               <Sub style={{ marginTop: 4, color: colors.coral }} testID="plan-expired-note">
-                Your books are safe and readable — pick a plan below and saving starts again at once.
+                {store
+                  ? "Your books are safe and readable. Saving new records is paused while no plan is active."
+                  : "Your books are safe and readable — pick a plan below and saving starts again at once."}
               </Sub>
             ) : null}
             {d.paystack?.auto_renew && !store ? (
