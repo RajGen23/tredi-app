@@ -1,0 +1,47 @@
+{
+  "summary": "Regression run on the 4 merged PRs. Backend: 17/17 tests pass in the new test_iter48_merged_prs.py, and the 21 PR tests already in the repo also pass (test_lookups_manage, test_photo_compression, test_invoice_money_model). PR1 (unused credit): a draft shows credit_pending and its due amount without changing the balance. On issue there is exactly one 'credit' payment. Credit is capped at both the available credit and the invoice total. On a cash sale with credit, cash is charged only for the rest. Editing an issued invoice leaves out its own total and keeps one credit payment. Cancel releases the credit and uncancel re-applies it. The ledger, customer detail, list and summary balances are not double-counted. PR2 (phone sign-in): Twilio keys ARE injected in this env, so the config returns enabled=true. An unknown number gets the generic 200 and then a 429 within 45s. A bad number gives 400. An unknown number on verify gives 400. /mine needs auth. link/verify with no code record gives 400. The Nigerian number normaliser is correct. No real SMS was sent. PR3 (lookups): rename, case-only rename, merge into an existing name, delete (case-insensitive), usage, 404/400 errors, and 403 for staff (amina) all work. PR4 (photos): a PNG upload is stored as a JPEG of at most 1280px. ?w=96 and ?w=5000 come back capped at 96 and 600px. No token or a bad token gives 401. The backend sends 'private, max-age=31536000, immutable', but the preview ingress rewrites Cache-Control to no-store. Frontend (375x667): the sign-in Email/Phone switch, phone validation, the generic send and the wrong-code error all work. More → Phone sign-in shows the form and the error toast for a bad number. The draft invoice tag reads '₦20,000 credit applies on issue'. Edit draft → Review shows the credit card and the switch preloaded. Confirm & issue gives 'Paid in full'. The picker Edit mode renames and removes (with a 'Nothing uses it' confirm). Stock rows request ?w=40 and Quick sale tiles ?w=180 thumbnails. There were no page errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/notifications (routes/activity.py:99) and accounts overview recent (server.py:1267)", "issue": "Applied-credit payments (method 'credit') show as 'Payment received ₦X' ('Unused credit applied · INV-1389'), but this is not new money. Neither query filters deleted_at, so released or cancelled credit entries still show too. Exclude method 'credit' (and credit_note) and deleted rows, like dashboard and reports already do."},
+      {"endpoint": "GET /api/files/{path}?w=", "issue": "When compress_photo returns None (the original is already small, or isn't an image), thumbnail() returns the original without caching it. Every list request then does 2 storage GETs (a 404 on the .wN key, then the original). A non-404 storage error from get_object(key) (requests HTTPError) is not caught and becomes a 500. Earlier in backend.err.log, put_object got a 500 from objstore during an upload (unhandled HTTPError → 500)."},
+      {"endpoint": "GET /api/files/{path}", "issue": "The _readers cache keeps user→business for 60s and does not check user.active, so a dormant staff member's token can still read photos. This was not checked before either. Low risk."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Draft confirm → 'Record a payment now?' sheet", "issue": "When unused credit covers the whole draft, Confirm & issue shows 'Paid in full / Amount due ₦0' but the 'Record a payment now?' sheet still opens. Skip it when due is 0.", "testID": "invoice detail confirm sheet", "priority": "LOW"},
+      {"component": "invoices/new edit draft credit", "issue": "The UI only has an all-or-nothing switch (creditUsed = min(credit, total)). Opening a draft saved with a partial credit_applied (20,000 of 30,000, via the API) and tapping Save changes silently raises it to 30,000. This happens only when the partial amount came from the API or an older record.", "testID": "review-use-credit", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "invoice detail (draft)", "issues": ["In the header, the 'Invoice total ₦30,000' and '₦20,000 credit applies on issue' text runs to the card's right edge with no right padding (the tag overflows the column)."]},
+      {"screen": "invoices/new review", "issues": ["Credit on a draft is labelled 'Amount received', while the PDF says 'Credit Applied'. The customer strip shows 'Owes now ₦0' for a customer who has ₦50,000 credit."]},
+      {"screen": "sign-in", "issues": ["The Email and Phone number chips are 32px tall, and the 'Didn't get it? Send again' link is 19px tall with no hitSlop: both are under the 44pt touch target."]},
+      {"screen": "picker edit mode", "issues": ["The 'Done/Edit' toggle is 33x18 (hitSlop 8 → about 34px). The sheet title reads 'Edit store in list' (from the 'Store in' label); 'Edit locations' would be clearer."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter48_merged_prs.py", "/app/test_reports/pytest/pytest_iter48.xml"],
+  "action_items": [
+    "Leave method 'credit' and deleted payments out of notifications 'Payment received' (activity.py:99) and the accounts overview recent list (server.py:1267).",
+    "Skip the 'Record a payment now?' sheet after Confirm & issue when the invoice is already fully paid (due == 0).",
+    "Optional: keep a partial credit_applied when editing a draft (or show the amount), so Save changes doesn't silently raise it.",
+    "Optional: fix the right-edge overflow of the draft header credit tag, and the small touch targets on the sign-in chips, the resend link and the picker Edit toggle.",
+    "Optional: storage thumbnail(): cache the 'serve original' result, and catch non-404 storage errors so they give a clean 502 instead of a 500.",
+    "Test hygiene: test_lookups_manage.py and test_invoice_money_model.py create TEST items, customers, issued invoices and lookups in the real owner business and never clean up. There are now 26 TEST customers, 20 TEST items and 9 TEST lookups (e.g. 'TEST aisle xxxxx' shows in the owner's Store-in list), and issued invoices use up real INV numbers. Add teardown fixtures."
+  ],
+  "critical_code_review_comments": [
+    "PR1: customer_balance, list_customers, get_customer total_received and the ledger all apply NOT_APPLIED_CREDIT consistently. _sync_applied_credit keeps exactly one credit payment per invoice. Issue and uncancel re-check the available credit with exclude_invoice. This looks correct.",
+    "PR3: the hidden-default and custom-spelling logic in values() is sound. rename_lookup's case-only branch matches lookups by exact 'value: old' instead of _same(old); it works because old comes from _found, which returns the stored spelling.",
+    "PR4: the Photo component asks for w = size × PixelRatio, and the server rounds up to 96/200/400/600. Wikimedia photo-proxy URLs ignore width (each is 22-65KB at 500px). That's acceptable.",
+    "PR2: /start only sends an SMS for existing active users and rate-limits per phone before the user lookup, so it doesn't reveal which numbers have accounts. A partial unique index on login_phone is created at startup."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter48_merged_prs.py"],
+  "success_rate": {"backend": "100% (17/17 new + 21/21 existing PR tests)", "frontend": "100% of tested flows work; 2 low-priority UX bugs"},
+  "seed_data_creation": "None kept. The TEST_ customers, invoices, payments, items and uploads made by test_iter48 are deleted by id in teardown. The UI test customer and invoice INV-1389 (plus its credit payment) and the phone_codes rows were deleted by id. Lookups TEST_UI shelf/TEST_loc/TEST_brand/TEST_a/TEST_b were removed through the API, so they are soft-deleted. INV-1389 and a few earlier INV numbers in the owner's sequence are used up. Stored photo objects in object storage remain (there is no delete API).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Twilio keys are injected through the environment (they are not in backend/.env), so phone sign-in is enabled. Do NOT call /auth/phone/start or link/start with a real number tied to an account, or a real SMS goes out. Only unknown numbers are safe. Run with: EXPO_PUBLIC_BACKEND_URL=<frontend/.env> pytest tests/test_iter48_merged_prs.py -n0. The preview ingress overwrites Cache-Control to no-store; check the immutable header against the backend directly.",
+  "rca_of_issue": ""
+}

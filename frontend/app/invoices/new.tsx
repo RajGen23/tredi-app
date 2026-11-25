@@ -1,6 +1,6 @@
 // 04.3 → 04.4 → 04.5 New invoice, with 04.12 Add item, 04.13 Line item,
 // 04.14 Quick add and 04.20 Discount on whole invoice.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,7 +8,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ionicons from "@react-native-vector-icons/ionicons";
 import dayjs from "dayjs";
 
-import { api } from "@/src/api";
+import { api, isOfflineError } from "@/src/api";
+import { keepOffline, newRef } from "@/src/outbox";
 import { useAuth } from "@/src/auth";
 import { AppBar, Av, Badge, Btn, Card, Check, Chip, Divider, Field, H4, IconBtn, Li, Lbl, Money, Prog, Row, Seg, Sub, Switch, Tag } from "@/src/components/ui";
 import { Sheet, useToast } from "@/src/components/sheet";
@@ -239,17 +240,34 @@ export default function NewInvoice() {
     terms_id: termsOn ? terms?.id ?? null : null, show_photos: showPhotos,
   });
 
+  // One reference per new invoice, made before the first send (see quick-sale):
+  // a lost reply then never turns into a second invoice when the retry goes out.
+  const attempt = useRef<string | null>(null);
   const save = useMutation({
-    mutationFn: (status: "draft" | "issued") =>
-      editId ? api(`/invoices/${editId}`, { method: "PUT", json: body(status) })
-             : api("/invoices", { method: "POST", json: body(status) }),
+    mutationFn: (status: "draft" | "issued") => {
+      if (editId) return api(`/invoices/${editId}`, { method: "PUT", json: body(status) });
+      attempt.current ??= newRef();
+      return api("/invoices", { method: "POST", json: { ...body(status), client_ref: attempt.current } });
+    },
     onSuccess: (inv: any, status) => {
+      attempt.current = null;
       ["invoices", "invoice", "customers", "customer-summary", "items", "low-stock", "dashboard", "accounts", "activity"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       toast.show(editId ? `${inv.number} updated` : status === "draft" ? "Draft saved — nothing has left your stock yet" : `${inv.number} raised for ${money(inv.totals.total)}`,
         editId ? "Saved." : status === "draft" ? undefined : "Issued.");
       router.replace(`/invoices/${inv.id}`);
     },
-    onError: (e: Error) => toast.show(e.message, undefined, "bad"),
+    onError: async (e: Error, status) => {
+      // No signal on a new invoice: keep it on this phone and send it later.
+      // (An edit to an existing invoice still needs the connection.)
+      if (!editId && isOfflineError(e)) {
+        await keepOffline("invoice", body(status), { label: `${customer?.name ?? "Walk-in"} · ${status === "draft" ? "draft invoice" : "invoice"}`, total: totals.total - creditUsed }, attempt.current ?? undefined);
+        attempt.current = null;
+        toast.show("No signal, so it's saved on this phone. It sends by itself and gets its number when you're back online.", "Saved offline.");
+        router.replace("/outbox");
+        return;
+      }
+      toast.show(e.message, undefined, "bad");
+    },
   });
 
   const addCustomer = useMutation({

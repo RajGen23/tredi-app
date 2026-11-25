@@ -691,3 +691,12 @@ Known non-blocking note: a business on `trial` with no `trial_ends_at` reads as 
 - Backend env (all three needed, otherwise the phone option stays hidden):
   `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID`.
 - A number only works for sign-in after its owner confirms it in the app (`users.login_phone`).
+
+## GitHub sync (main 54e6f99) — merged into workspace
+- PRs #1–#4 merged cleanly (unused credit, phone SMS sign-in via Twilio Verify, manage lookups + location filter, photo compression/thumbnails). Do not rewrite those files unless the user asks.
+- app.json slug/scheme → "tradabooks" (name TradaBooks, package com.brandjunction.tredi unchanged). Paystack return-url schemes accept tradabooks:.
+- Twilio keys set via secrets: TWILIO_ACCOUNT_SID, TWILIO_VERIFY_SERVICE_SID, TWILIO_AUTH_TOKEN.
+
+## Store billing (pending)
+- Native builds (Platform.OS !== "web") hide plan pay/activate buttons, auto-renew control and Paystack text on settings/plan.tsx; Paystack remains on web only.
+- Future: in-app subscriptions via RevenueCat using the USER'S OWN RevenueCat account (Flow Apps Limited email) — NOT Emergent-managed. Build once the app exists in Play Console. Backend must grant plans from RevenueCat webhooks.

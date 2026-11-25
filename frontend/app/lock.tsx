@@ -59,7 +59,7 @@ export default function Lock() {
   const verify = useMutation({
     mutationFn: (value: string) => api("/settings/lock/verify", { method: "POST", json: { pin: value } }),
     onSuccess: () => router.replace("/(tabs)"),
-    onError: () => { setPin(""); toast.show("Wrong PIN — try again"); },
+    onError: () => { setPin(""); toast.show("Wrong PIN — try again", undefined, "bad"); },
   });
 
   const press = (k: string) => {

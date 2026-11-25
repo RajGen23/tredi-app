@@ -130,7 +130,7 @@ async def choose_plan(data: PlanChoiceIn, user: CurrentUser):
 PAYSTACK = "https://api.paystack.co"
 INTERVAL = {"monthly": "monthly", "quarterly": "quarterly", "yearly": "annually"}
 SYSTEM = {"_id": "paystack", "name": "Paystack"}
-APP_SCHEMES = ("frontend:", "exp:", "exps:")
+APP_SCHEMES = ("tradabooks:", "frontend:", "exp:", "exps:")
 
 
 def paystack_key() -> str:

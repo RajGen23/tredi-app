@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import Dict, List, Optional, Annotated, Literal
 from datetime import datetime, timedelta, timezone, date
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 import asyncio
 import hashlib
 import logging
@@ -120,6 +121,9 @@ class InvoiceIn(BaseModel):
     bank_account_ids: List[str] = []
     credit_applied: float = 0
     show_photos: Optional[bool] = None
+    # Set by a phone that made this with no signal and is sending it now: the
+    # same reference sent twice (the reply got lost) returns the first one.
+    client_ref: Optional[str] = None
 
 
 class SaleIn(BaseModel):
@@ -130,6 +134,8 @@ class SaleIn(BaseModel):
     account_id: Optional[str] = None
     shop: str = ""
     rep: str = ""
+    client_ref: Optional[str] = None
+    made_at: Optional[str] = None   # when the sale happened, for one sent later from a phone that was offline
 
 
 class PaymentIn(BaseModel):
@@ -847,6 +853,28 @@ async def preview_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current
     return {"lines": lines, "totals": invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)}
 
 
+async def _sent_before(coll, business_id: str, client_ref: Optional[str]):
+    """The record a phone already delivered under this reference, if any."""
+    if not client_ref:
+        return None
+    return await coll.find_one({"business_id": business_id, "client_ref": client_ref})
+
+
+def _made_at(value: Optional[str], user: Optional[dict] = None):
+    """When an offline sale really happened. Owners and managers may send sales up
+    to 30 days old; everyone else up to 3 days (enough for a weekend without
+    signal), so staff can't quietly backdate sales."""
+    if not value:
+        return now()
+    try:
+        when = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return now()
+    days = 30 if (user or {}).get("role", "owner") in ("owner", "manager") else 3
+    return when if now() - timedelta(days=days) <= when <= now() + timedelta(minutes=5) else now()
+
+
 async def _credit_to_apply(business_id: str, customer_id: Optional[str], asked: float, total: float, exclude_invoice: Optional[str] = None) -> float:
     """What can really come off this invoice: what was asked for, but never more
     than the invoice total or the credit actually sitting on the account."""
@@ -877,6 +905,8 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
     f = biz_filter(user)
     if not data.lines:
         raise HTTPException(400, "Add at least one item")
+    if (earlier := await _sent_before(db.invoices, f["business_id"], data.client_ref)):
+        return await decorate_invoice(earlier)
     await ensure_invoice_room(user)
     lines = await stamp_costs(f["business_id"], [line_totals(l) for l in data.lines])
     totals = invoice_totals(lines, data.invoice_discount_type, data.invoice_discount_value, data.vat_rate, data.shipping_fee)
@@ -887,7 +917,10 @@ async def create_invoice(data: InvoiceIn, user: Annotated[dict, Depends(current_
     doc = {**data.model_dump(exclude={"lines", "shop", "issue_date"}), "credit_applied": credit, "shop": shop, "rep": writing_rep(user, data.rep),
            "lines": lines, "totals": totals, "number": number, **f,
            "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": _issued_at(data.issue_date)}
-    res = await db.invoices.insert_one(doc)
+    try:
+        res = await db.invoices.insert_one(doc)
+    except DuplicateKeyError:   # the same phone's copy landed a moment ago
+        return await decorate_invoice(await _sent_before(db.invoices, f["business_id"], data.client_ref))
     inv_id = str(res.inserted_id)
     if data.status == "issued":
         for l in lines:
@@ -958,7 +991,7 @@ async def update_invoice(iid: str, data: InvoiceIn, user: Annotated[dict, Depend
     # when asking how much credit is free for it.
     credit = await _credit_to_apply(f["business_id"], data.customer_id, data.credit_applied, totals["total"],
                                     exclude_invoice=iid if was_issued else None)
-    patch = {**data.model_dump(exclude={"lines", "shop", "status", "issue_date"}), "credit_applied": credit, "lines": lines, "totals": totals, "shop": shop,
+    patch = {**data.model_dump(exclude={"lines", "shop", "status", "issue_date", "client_ref"}), "credit_applied": credit, "lines": lines, "totals": totals, "shop": shop,
              "updated_at": now(), "updated_by": user.get("name", "")}
     if data.issue_date:
         patch["created_at"] = _issued_at(data.issue_date)
@@ -1107,6 +1140,8 @@ async def create_sale(data: SaleIn, user: Annotated[dict, Depends(current_user)]
     f = biz_filter(user)
     if not data.lines:
         raise HTTPException(400, "Add at least one item")
+    if (earlier := await _sent_before(db.sales, f["business_id"], data.client_ref)):
+        return clean(earlier)
     lines = [line_totals(l) for l in data.lines]
     # A new sale has no "old state" to copy costs from — stamp_costs reads
     # today's item cost for any line that did not already carry one.
@@ -1117,8 +1152,14 @@ async def create_sale(data: SaleIn, user: Annotated[dict, Depends(current_user)]
     change = round(max(0.0, data.tendered - totals["total"]), 2) if data.method == "cash" and data.tendered else 0
     doc = {**f, "number": number, "lines": lines, "totals": totals, "method": data.method, "tendered": data.tendered, "change": change, "customer_id": data.customer_id,
            "account_id": data.account_id, "shop": shop, "rep": writing_rep(user, data.rep),
-           "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": now(), "synced": True}
-    res = await db.sales.insert_one(doc)
+           "created_by": user.get("name", ""), "created_by_id": str(user["_id"]), "created_at": _made_at(data.made_at if data.client_ref else None, user), "synced": True}
+    if data.client_ref:
+        # a sale sent minutes or more after it was made came from the phone's outbox
+        doc.update(client_ref=data.client_ref, offline=now() - doc["created_at"] > timedelta(minutes=2))
+    try:
+        res = await db.sales.insert_one(doc)
+    except DuplicateKeyError:
+        return clean(await _sent_before(db.sales, f["business_id"], data.client_ref))
     await log_activity(f["business_id"], user, "sale", f"{number} · quick sale", data.method, totals["total"], str(res.inserted_id), shop)
     for l in lines:
         await apply_stock(f["business_id"], l.get("item_id"), -l["quantity"], "sale", number, user, "", shop)
@@ -1891,6 +1932,12 @@ async def startup():
                 "movements", "accounts", "returns", "activity", "transfers", "terms"):
         await db[col].create_index([("business_id", 1), ("created_at", -1)])
     await db.invoices.create_index([("business_id", 1), ("customer_id", 1)])
+    # one record per offline reference, so a resent sale can never be counted twice
+    for col in ("invoices", "sales"):
+        try:
+            await db[col].create_index([("business_id", 1), ("client_ref", 1)], unique=True, partialFilterExpression={"client_ref": {"$type": "string"}})
+        except Exception as exc:
+            logger.warning("client_ref index on %s not created: %s", col, exc)
     await db.payments.create_index([("business_id", 1), ("customer_id", 1)])
     await db.payments.create_index([("business_id", 1), ("allocations.invoice_id", 1)])
     await db.movements.create_index([("business_id", 1), ("item_id", 1)])
